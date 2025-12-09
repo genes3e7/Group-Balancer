@@ -1,0 +1,4 @@
+.hypothesis/
+group_balancer/__pycache__/
+.vscode/
+tests/__pycache__/
