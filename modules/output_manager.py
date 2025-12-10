@@ -8,7 +8,6 @@ def save_results(final_results):
     try:
         with pd.ExcelWriter(config.OUTPUT_FILENAME, engine='openpyxl') as writer:
             for sheet, groups in final_results.items():
-                # Grid DF
                 s_groups = sorted(groups, key=lambda x: x['id'])
                 rows = []
                 for i in range(0, len(s_groups), 2):
@@ -37,14 +36,16 @@ def save_results(final_results):
                     {'Stat': 'Lowest', 'Val': f"{min(avgs):.3f}"},
                     {'Stat': 'Highest', 'Val': f"{max(avgs):.3f}"},
                     {'Stat': 'Avg', 'Val': f"{np.mean(avgs):.3f}"},
-                    {'Stat': 'StdDev', 'Val': f"{np.std(avgs):.3f}"}
+                    {'Stat': 'StdDev', 'Val': f"{np.std(avgs):.4f}"}
                 ]
                 pd.DataFrame(stats).to_excel(writer, sheet_name=sheet, index=False, startcol=6)
                 
                 # CLI Output
                 print(f"\n--- {sheet} ---")
                 for g in s_groups:
-                    print(f"Grp {g['id']} | Cnt: {len(g['members'])} | Avg: {g['avg']:.3f}")
+                    # Count stars
+                    stars = sum(1 for m in g['members'] if str(m[config.COL_NAME]).endswith(config.ADVANTAGE_CHAR))
+                    print(f"Grp {g['id']} | Count: {len(g['members'])} | Stars: {stars} | Avg: {g['avg']:.3f}")
                 print(f"StdDev: {np.std(avgs):.4f}")
 
         print("\nSuccess! File saved.")

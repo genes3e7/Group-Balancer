@@ -15,4 +15,4 @@ ADVANTAGE_CHAR = '*'
 
 # Search Duration (Seconds per scenario)
 # 900 seconds = 15 Minutes
-SEARCH_DURATION = 3600
+SEARCH_DURATION = 900
