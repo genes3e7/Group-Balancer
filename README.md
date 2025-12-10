@@ -11,6 +11,28 @@ A high-performance, modular Python tool for mathematically perfect group distrib
 * **Paranoid Integrity:** Performs full recalculations of group scores on every modification to prevent floating-point drift, ensuring 100% accuracy.
 * **Drag & Drop Input:** Easily run the script by dragging your Excel file into the terminal.
 
+## Algorithms & Logic
+
+This tool employs a sophisticated stochastic optimization engine to solve the **Multi-Way Number Partitioning Problem**, which is NP-Hard.
+
+### 1. Simulated Annealing (The Core Solver)
+Instead of a simple greedy approach, the script uses Simulated Annealing to avoid getting stuck in "local optima" (sub-optimal solutions that look good only in the short term).
+* **Heat Phase:** At high "temperatures," the algorithm accepts "bad" moves (moves that temporarily worsen the balance). This allows the system to escape local valleys and explore the global solution space.
+* **Cooling Phase:** As the "temperature" drops, the algorithm becomes stricter, only accepting improvements. This polishes the rough grouping into a perfect mathematical shape.
+* **Cyclic Reheating:** If the solution stagnates, the system automatically "reheats," scrambling the groups slightly to restart the search from a new vantage point.
+
+### 2. Topology Mutation (The Move Set)
+The algorithm doesn't just swap players; it dynamically alters the group structure using two distinct move types:
+* **Swap (80% probability):** Exchanges two members between different groups. This balances scores without changing group sizes.
+* **Transfer (20% probability):** Moves a member from a larger group to a smaller group (or vice versa), respecting the size constraint (difference ≤ 1). This is crucial for finding the optimal "Topology" (e.g., deciding whether the highest scorer should be in a group of 4 or a group of 5).
+
+### 3. Parallel "Race" Architecture
+The script splits your CPU cores into two teams:
+* **Team A (Constrained):** Optimizes for score balance while strictly enforcing that "Star" (*) players never share a group (unless mathematically impossible).
+* **Team B (Unconstrained):** Optimizes purely for score balance, ignoring labels.
+
+These teams run in parallel, sharing their best findings in real-time. If Team A finds a solution that is mathematically better than Team B's best effort, the system automatically promotes the Constrained solution to be the final Unconstrained output.
+
 ## Prerequisites
 
 * Python 3.8+
