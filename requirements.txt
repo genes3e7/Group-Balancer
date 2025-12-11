@@ -1,5 +1,4 @@
 pandas
 openpyxl
 numpy
-tqdm
 ortools
