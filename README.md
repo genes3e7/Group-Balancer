@@ -1,35 +1,36 @@
 # Advanced Group Balancer
 
-A high-performance, modular Python tool for **mathematically optimized** group distribution. It utilizes **Parallel Simulated Annealing** with live synchronization to minimize the standard deviation of group averages, finding near-optimal solutions for complex partitioning problems.
+A high-performance Python tool for **mathematically optimal** group distribution. It utilizes **Google OR-Tools (CP-SAT)** to solve the partitioning problem deterministically, finding the absolute best possible balance of scores.
 
 ## Key Features
 
-* **Dual Parallel Search:** Runs "Constrained" (Star separation) and "Unconstrained" (Pure math) optimization scenarios simultaneously across all CPU cores.
-* **Live Dashboard:** Features a real-time progress bar displaying the best Standard Deviation found so far for both scenarios.
-* **Graceful Shutdown:** Supports `Ctrl+C` to stop the search early and immediately save the best results found up to that moment.
-* **Champion Logic:** Automatically cross-validates results. If the Constrained solution is mathematically superior to the Unconstrained one, it promotes it to the final output.
-* **Paranoid Integrity:** Performs full recalculations of group scores on every modification to prevent floating-point drift, ensuring 100% accuracy.
+* **Exact Solver:** Uses the CP-SAT constraint solver to find the global minimum standard deviation. unlike random search algorithms, this finds the mathematically best solution.
+* **Deterministic Results:** Running the tool twice on the same data yields the exact same result every time.
+* **Complex Constraints:**
+    * **Size Balancing:** Automatically calculates the optimal mix of group sizes (e.g., separating 26 people into groups of 5 and 4) so the size difference is never more than 1.
+    * **Star Separation:** Strictly enforces that "Star" (*) players are distributed as evenly as possible across teams.
+* **High Precision:** Uses integer scaling (up to 5 decimal places) to prevent floating-point math errors from affecting the balance.
 * **Drag & Drop Input:** Easily run the script by dragging your Excel file into the terminal.
 
-## Algorithms & Logic
+## How It Works (Layman's Terms)
 
-### 1. Focused Smart Swap (Heuristic Descent)
-To balance speed and precision, the algorithm employs a **Guided Heuristic**:
-* It sorts all groups by their average score.
-* It strictly targets the **Top 3 Highest Scoring Groups** against the **Bottom 3 Lowest Scoring Groups**.
-* It iteratively attempts to swap members between these extremes to reduce variance.
-* This prioritizes fixing the "Outliers" (the widest gaps) first, avoiding wasted cycles on middle groups that are already near the average.
+This tool moves away from "guessing" algorithms (like shuffling players until things look good) and uses **Constraint Programming**.
 
-### 2. Topology Mutation (Annealing)
-To escape the local optima created by greedy swapping (where scores are balanced but group sizes are suboptimal), the system uses **Simulated Annealing**:
-* It randomly moves a member from a larger group to a smaller group (Transfer).
-* It probabilistically accepts "worse" moves based on a cooling schedule.
-* This allows the system to shake up the group structure (Topology) and discover configurations that a pure swap algorithm would miss.
+### 1. The "Sudoku" Approach (CP-SAT)
+Imagine a Sudoku puzzle. You don't solve it by throwing random numbers at the grid; you solve it by logic ("If a 5 is here, a 5 cannot be there").
+The **CP-SAT Solver** works similarly. We tell it the rules (everyone must be in a group, groups must be similar sizes, stars must be separated), and it uses advanced algebra to "prune" impossible combinations until only the best valid solution remains.
 
-### 3. Parallel "Race" Architecture
-The script splits your CPU cores into two teams:
-* **Team A (Constrained):** Optimizes for score balance while strictly enforcing that "Star" (*) players never share a group (unless mathematically impossible).
-* **Team B (Unconstrained):** Optimizes purely for score balance, ignoring labels.
+### 2. Balancing Unequal Groups
+The hardest part of this problem is that groups often have different sizes (e.g., some have 4 members, some have 5).
+* If a group has **4 members**, it needs a lower Total Score to have a "good average."
+* If a group has **5 members**, it needs a higher Total Score to have that *same* average.
+
+The solver calculates the **Exact Target Score** for every group size. It then assigns a "Penalty Cost" to every group based on how far its actual score deviates from that target.
+* **The Goal:** Minimize the Total Penalty Cost.
+* **The Result:** The mathematical variance is squashed to the absolute minimum possible.
+
+### 3. Precision Scaling
+Computers are bad at decimals (e.g., `0.1 + 0.2` often equals `0.30000000000000004`). To ensure perfect accuracy, this tool takes your scores (e.g., `95.5`) and multiplies them by **100,000** (becoming `9,550,000`). It solves the problem using whole integers, guaranteeing that no precision is lost during the complex balancing process.
 
 ## Prerequisites
 
@@ -60,20 +61,13 @@ Create an Excel (`.xlsx`) or CSV file with the following columns:
     ```
 2.  **Drag and drop** your input file into the console window when prompted.
 3.  Enter the desired number of groups.
-4.  The script runs for the duration configured in `modules/config.py` (Default: 15 mins).
-    * **To stop early:** Press `Ctrl+C`. The script will safely finalize and save the current best solution.
-
-## Configuration
-
-You can adjust settings in `modules/config.py`:
-* `SEARCH_DURATION`: Time in seconds to run the optimizer (Default: 900s).
+4.  The solution is calculated typically in seconds.
 
 ## Project Structure
 
 * `group_balancer.py`: Main entry point.
 * `modules/`:
-    * `algorithms.py`: Core logic (Smart Swap & Annealing).
-    * `parallel_engine.py`: Multiprocessing orchestration and live monitoring.
+    * `solver.py`: The Google OR-Tools model definition and solver logic.
     * `data_loader.py`: File I/O and input sanitization.
     * `output_manager.py`: Excel reporting.
     * `config.py`: Global constants.
