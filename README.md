@@ -4,7 +4,7 @@ A high-performance Python tool for **mathematically optimal** group distribution
 
 ## Key Features
 
-* **Exact Solver:** Uses the CP-SAT constraint solver to find the global minimum standard deviation. unlike random search algorithms, this finds the mathematically best solution.
+* **Exact Solver:** Uses the CP-SAT constraint solver to find the global minimum standard deviation. Unlike random search algorithms, this finds the mathematically best solution.
 * **Deterministic Results:** Running the tool twice on the same data yields the exact same result every time.
 * **Complex Constraints:**
     * **Size Balancing:** Automatically calculates the optimal mix of group sizes (e.g., separating 26 people into groups of 5 and 4) so the size difference is never more than 1.
@@ -71,3 +71,9 @@ Create an Excel (`.xlsx`) or CSV file with the following columns:
     * `data_loader.py`: File I/O and input sanitization.
     * `output_manager.py`: Excel reporting.
     * `config.py`: Global constants.
+
+## License
+
+**Copyright (c) 2025 Tan Eugene**
+
+This project is licensed for **Personal Use Only**. Commercial usage is strictly prohibited. See the `LICENSE` file for details.
