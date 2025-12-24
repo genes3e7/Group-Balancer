@@ -8,3 +8,9 @@ ortools
 pyinstaller
 pytest
 ruff
+
+# Note on setuptools:
+# pip-tools may mark setuptools as "unsafe" because it is a bootstrap dependency.
+# If you need to pin it (e.g. for transitive dependencies), do so explicitly here
+# or run pip-compile with --allow-unsafe to include it in requirements.txt.
+# This prevents hash-pinning failures during compilation.

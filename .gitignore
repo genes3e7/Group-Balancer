@@ -46,3 +46,6 @@ Thumbs.db
 # Project specific
 *.xlsx
 *.spec
+
+# CI Artifacts
+artifacts/
