@@ -62,6 +62,9 @@ def solve_with_ortools(
         tuple: (List of group dictionaries, Boolean success flag).
                Returns ([], False) if no solution is found.
     """
+    if num_groups < 1:
+        raise ValueError("num_groups must be at least 1")
+
     model = cp_model.CpModel()
 
     # --- 1. Data Preparation (Integer Scaling) ---
