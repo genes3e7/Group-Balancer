@@ -6,18 +6,18 @@ including file names, column headers, solver settings, and formatting options.
 """
 
 # Output Settings
-OUTPUT_FILENAME = 'balanced_groups.xlsx'
+OUTPUT_FILENAME = "balanced_groups.xlsx"
 
 # Input Data Column Headers (Must match the input Excel/CSV file)
-COL_NAME = 'Name'
-COL_SCORE = 'Score'
+COL_NAME = "Name"
+COL_SCORE = "Score"
 
 # Excel Sheet Names for the Output File
-SHEET_WITH_CONSTRAINT = 'With_Star_Constraint'
-SHEET_WITHOUT_CONSTRAINT = 'No_Constraints'
+SHEET_WITH_CONSTRAINT = "With_Star_Constraint"
+SHEET_WITHOUT_CONSTRAINT = "No_Constraints"
 
 # Symbol used to identify "Star" or "Advantaged" participants in their name
-ADVANTAGE_CHAR = '*'
+ADVANTAGE_CHAR = "*"
 
 # Solver Settings
 # Time limit for the Google OR-Tools CP-SAT solver in seconds.

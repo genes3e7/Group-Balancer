@@ -34,7 +34,7 @@ Computers are bad at decimals (e.g., `0.1 + 0.2` often equals `0.300000000000000
 
 ## Prerequisites
 
-* Python 3.8+
+* Python 3.13 - 3.13
 * Dependencies:
     ```bash
     pip install -r requirements.txt
