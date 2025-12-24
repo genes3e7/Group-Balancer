@@ -37,7 +37,9 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
         sys.stdout.flush()
 
 
-def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars: bool) -> tuple[list[dict], bool]:
+def solve_with_ortools(
+    participants: list[dict], num_groups: int, respect_stars: bool
+) -> tuple[list[dict], bool]:
     """
     Constructs and solves the CP-SAT model for group balancing.
 
@@ -73,7 +75,8 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
 
     # Identify indices of 'Star' participants
     stars = [
-        i for i, p in enumerate(participants)
+        i
+        for i, p in enumerate(participants)
         if str(p[config.COL_NAME]).endswith(config.ADVANTAGE_CHAR)
     ]
 
@@ -96,7 +99,7 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
     x = {}
     for i in range(num_people):
         for g in range(num_groups):
-            x[(i, g)] = model.NewBoolVar(f'assign_p{i}_g{g}')
+            x[(i, g)] = model.NewBoolVar(f"assign_p{i}_g{g}")
 
     # --- 4. Constraints ---
 
@@ -123,29 +126,29 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
     # Minimize: |(GroupSum * NumPeople) - (TotalScore * GroupSize)|
 
     abs_diffs = []
-    
+
     # Upper bound for domain variable (Total Score * Num People)
     # This prevents overflow in constraint definition
     max_domain_val = total_score * num_people
 
     for g in range(num_groups):
         # Variable for the sum of scores in group g
-        g_sum = model.NewIntVar(0, total_score, f'sum_group_{g}')
+        g_sum = model.NewIntVar(0, total_score, f"sum_group_{g}")
         model.Add(g_sum == sum(x[(i, g)] * scores[i] for i in range(num_people)))
 
         # Target value for this group size (TotalScore * GroupSize)
         target_val = total_score * group_sizes_map[g]
 
         # Actual value scaled (GroupSum * NumPeople)
-        actual_val = model.NewIntVar(0, max_domain_val, f'actual_val_{g}')
+        actual_val = model.NewIntVar(0, max_domain_val, f"actual_val_{g}")
         model.Add(actual_val == g_sum * num_people)
 
         # Difference variable (can be negative)
-        diff = model.NewIntVar(-max_domain_val, max_domain_val, f'diff_{g}')
+        diff = model.NewIntVar(-max_domain_val, max_domain_val, f"diff_{g}")
         model.Add(diff == actual_val - target_val)
 
         # Absolute difference variable (must be positive)
-        abs_diff = model.NewIntVar(0, max_domain_val, f'abs_diff_{g}')
+        abs_diff = model.NewIntVar(0, max_domain_val, f"abs_diff_{g}")
         model.AddAbsEquality(abs_diff, diff)
 
         abs_diffs.append(abs_diff)
@@ -156,7 +159,7 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = config.SOLVER_TIMEOUT
     solver.parameters.num_search_workers = config.SOLVER_NUM_WORKERS
-    
+
     # Use callback to show progress
     printer = SolutionPrinter(time.time())
     status = solver.Solve(model, printer)
@@ -167,26 +170,21 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result_groups = []
         for g in range(num_groups):
-            group_data = {
-                'id': g + 1,
-                'members': [],
-                'current_sum': 0.0,
-                'avg': 0.0
-            }
+            group_data = {"id": g + 1, "members": [], "current_sum": 0.0, "avg": 0.0}
             result_groups.append(group_data)
 
         for i in range(num_people):
             for g in range(num_groups):
                 if solver.Value(x[(i, g)]) == 1:
-                    result_groups[g]['members'].append(participants[i])
+                    result_groups[g]["members"].append(participants[i])
 
         # Recalculate float stats for final output
         for g in result_groups:
             # Use original float scores for display accuracy
-            g_sum = sum(float(m[config.COL_SCORE]) for m in g['members'])
-            count = len(g['members'])
-            g['current_sum'] = g_sum
-            g['avg'] = g_sum / count if count > 0 else 0.0
+            g_sum = sum(float(m[config.COL_SCORE]) for m in g["members"])
+            count = len(g["members"])
+            g["current_sum"] = g_sum
+            g["avg"] = g_sum / count if count > 0 else 0.0
 
         return result_groups, True
     else:
