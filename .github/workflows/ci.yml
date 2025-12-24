@@ -42,6 +42,9 @@ jobs:
     # 3. Commit changes if anything was modified
     - name: Commit and Push changes
       if: always()
+      env:
+        # Securely capture the ref name in an environment variable
+        REF_NAME: ${{ github.head_ref || github.ref_name }}
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -53,5 +56,6 @@ jobs:
         else
           git commit -m "style: auto-fix linting and formatting (ruff)"
           # Explicitly push to the branch associated with this Pull Request/Push
-          git push origin HEAD:${{ github.head_ref || github.ref_name }}
+          # Using the environment variable prevents shell injection
+          git push origin HEAD:"$REF_NAME"
         fi
