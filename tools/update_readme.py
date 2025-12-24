@@ -6,34 +6,37 @@ def update_readme(min_version, max_version):
     readme_path = 'README.md'
     if not os.path.exists(readme_path):
         print(f"Error: {readme_path} not found.")
-        return
+        sys.exit(1)
 
     with open(readme_path, 'r') as f:
         content = f.read()
 
-    # Regex to find "Python 3.x+" or similar patterns and replace/add version info
-    # We look for the Prerequisites section
-    pattern = r"(## Prerequisites\n\n\* Python )[\d\.]+(\+?)"
-    replacement = f"\\1{min_version} - {max_version}"
-    
-    new_content = re.sub(pattern, replacement, content)
-    
-    # Also look for a badge if it exists, or just the text
-    # If the pattern wasn't found (maybe it's formatted differently), we try a broader search
-    if new_content == content:
-         pattern = r"(Python )[\d\.]+(\+)"
-         new_content = re.sub(pattern, f"Python {min_version} - {max_version}", content)
+    version_string = f"{min_version} - {max_version}"
+    print(f"Updating README to support Python: {version_string}")
 
-    with open(readme_path, 'w') as f:
-        f.write(new_content)
+    # Regex for "* Python ..." line
+    pattern = r"(\* Python ).*"
     
-    print(f"Updated README.md with Python versions: {min_version} - {max_version}")
+    if not re.search(pattern, content):
+        # Fallback regex
+        pattern = r"(Python )[\d\.]+(?: - [\d\.]+)?(?:\+)?"
+        if not re.search(pattern, content):
+             print("Critical: Could not find Python version definition in README.")
+             sys.exit(1)
+
+    # Use lambda to avoid backslash escaping issues in replacement string
+    new_content = re.sub(pattern, lambda m: f"{m.group(1)}{version_string}", content)
+
+    if new_content != content:
+        with open(readme_path, 'w') as f:
+            f.write(new_content)
+        print("README.md updated successfully.")
+    else:
+        print("README.md already up to date.")
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python update_readme_versions.py <min_version> <max_version>")
+        print("Usage: python update_readme.py <min_version> <max_version>")
         sys.exit(1)
     
-    min_ver = sys.argv[1]
-    max_ver = sys.argv[2]
-    update_readme(min_ver, max_ver)
+    update_readme(sys.argv[1], sys.argv[2])
