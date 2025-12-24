@@ -106,7 +106,7 @@ def test_solver_single_group():
 def test_solver_empty_input():
     """Test empty input handling."""
     # Case 1: 0 participants, 0 groups -> Should be invalid
-    
+
     # Case 2: 0 participants, 1 group -> Valid, result is 1 group with 0 members
     groups, success = solver.solve_with_ortools([], num_groups=1, respect_stars=True)
     assert success is True
@@ -129,16 +129,16 @@ def test_solver_score_balancing():
     ]
     # Total 340. 2 Groups -> Target ~170 per group.
     # Optimal: (100+70)=170 and (90+80)=170.
-    
+
     groups, success = solver.solve_with_ortools(
         participants, num_groups=2, respect_stars=False
     )
-    
+
     assert success is True
     # Groups should have similar averages (within reasonable tolerance)
-    avg_diff = abs(groups[0]['avg'] - groups[1]['avg'])
+    avg_diff = abs(groups[0]["avg"] - groups[1]["avg"])
     assert avg_diff <= 1.0
-    
+
     # Verify sums specifically (both should be 170)
-    sums = sorted([g['current_sum'] for g in groups])
+    sums = sorted([g["current_sum"] for g in groups])
     assert sums == [170.0, 170.0]
