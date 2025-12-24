@@ -3,10 +3,10 @@ Unit tests for output_manager.
 """
 
 from unittest.mock import patch, MagicMock
-from modules import output_manager
+from modules import output_manager, config
 
 
-@patch("pandas.ExcelWriter")
+@patch("modules.output_manager.pd.ExcelWriter")
 def test_save_results(mock_writer):
     """Test that save_results calls ExcelWriter correctly."""
     # Mock context manager
@@ -32,5 +32,5 @@ def test_save_results(mock_writer):
 
     output_manager.save_results(test_results)
 
-    # Verify writer was called
-    mock_writer.assert_called()
+    # Verify writer was called with correct arguments
+    mock_writer.assert_called_once_with(config.OUTPUT_FILENAME, engine="openpyxl")

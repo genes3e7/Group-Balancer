@@ -147,7 +147,6 @@ jobs:
         pip install -r requirements.txt
         python build.py
 
-    # New step to construct the commit message
     - name: Construct Commit Message
       id: commit_msg
       run: |
@@ -164,7 +163,6 @@ jobs:
         fi
         
         # Check for code changes (linting/formatting)
-        # Exclude README and requirements from this check to distinguish linting fixes
         if ! git diff --quiet -- . ':(exclude)README.md' ':(exclude)requirements.txt'; then
           MSG="$MSG fix linting/formatting;"
         fi
@@ -180,8 +178,7 @@ jobs:
         fi
 
     - name: Commit and Push changes
-      # Only run if changes were detected
-      if: env.HAS_CHANGES == 'true'
+      if: ${{ env.HAS_CHANGES == 'true' }}
       env:
         REF_NAME: ${{ github.head_ref || github.ref_name }}
       run: |
