@@ -1,0 +1,149 @@
+name: CI
+
+on: [push, pull_request]
+
+permissions:
+  contents: write
+
+jobs:
+  test-matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        # Include a range, including the alpha version of 3.14
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14.0-alpha.2"]
+      fail-fast: false # Crucial: Let other versions pass even if one fails
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        allow-prereleases: true
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install from requirements.in if it exists to test resolution
+        if [ -f requirements.in ]; then 
+          pip install -r requirements.in
+        elif [ -f requirements.txt ]; then
+          pip install -r requirements.txt
+        fi
+        pip install pytest
+
+    - name: Test with Pytest
+      run: pytest tests/
+
+    # If successful, create a marker file
+    - name: Create Success Artifact
+      if: success()
+      run: echo "${{ matrix.python-version }}" > success.txt
+
+    - name: Upload Success Artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: passed-version-${{ matrix.python-version }}
+        path: success.txt
+
+  finalize-updates:
+    needs: test-matrix
+    runs-on: ubuntu-latest
+    if: always() # Run even if some matrix jobs failed
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    # We need a stable python to orchestrate the update
+    - name: Set up Utility Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Download Success Artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: passed_versions
+        pattern: passed-version-*
+        merge-multiple: true
+
+    - name: Determine Supported Range
+      id: process-versions
+      run: |
+        # Check if we have any passed versions
+        if [ -z "$(ls -A passed_versions)" ]; then
+           echo "No python versions passed tests. Failing job."
+           exit 1
+        fi
+        
+        # Sort versions to find min and max
+        # Note: 'sort -V' handles version numbers correctly (e.g. 3.10 > 3.9)
+        cat passed_versions/*.txt | sort -V > sorted_versions.txt
+        
+        MIN_VER=$(head -n 1 sorted_versions.txt)
+        MAX_VER=$(tail -n 1 sorted_versions.txt)
+        
+        echo "Supported Python Range: $MIN_VER - $MAX_VER"
+        echo "MIN_VER=$MIN_VER" >> $GITHUB_ENV
+        echo "MAX_VER=$MAX_VER" >> $GITHUB_ENV
+
+    - name: Update README
+      run: |
+        # Update the README with the actual passed range
+        python tools/update_readme.py "$MIN_VER" "$MAX_VER"
+
+    # Now we switch to the LOWEST supported python to compile requirements.
+    # This ensures requirements.txt is compatible with the minimum version.
+    - name: Set up Lowest Supported Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.MIN_VER }}
+        allow-prereleases: true
+
+    - name: Compile Requirements (Lowest Compatible)
+      run: |
+        python -m pip install --upgrade pip
+        pip install pip-tools
+        # Compile requirements.txt using the lowest supported version environment
+        pip-compile requirements.in --output-file requirements.txt --resolver=backtracking
+
+    # Switch back to utility python for linting/formatting (optional, but ruff runs anywhere)
+    - name: Ruff Auto-Fix and Format
+      run: |
+        pip install ruff
+        ruff check . --fix
+        ruff format .
+
+    - name: Verify Builder (PyInstaller)
+      run: |
+        pip install pyinstaller
+        # Install the just-compiled requirements
+        pip install -r requirements.txt
+        python build.py
+
+    - name: Commit and Push changes
+      env:
+        REF_NAME: ${{ github.head_ref || github.ref_name }}
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        
+        # Explicitly add only the files we expect to change
+        git add README.md requirements.txt
+        
+        # Also include any source code files modified by Ruff
+        # We can use git diff to find them, or just add the current directory recursively
+        # BUT excluding hidden/build files. 
+        # A safer way if Ruff modifies code is:
+        git add *.py modules/*.py tests/*.py tools/*.py
+        
+        if git diff --staged --quiet; then
+          echo "No changes to commit."
+        else
+          git commit -m "chore: update supported versions (${{ env.MIN_VER }}-${{ env.MAX_VER }}) and requirements"
+          git push origin HEAD:"$REF_NAME"
+        fi
