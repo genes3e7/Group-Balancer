@@ -7,6 +7,17 @@ from modules import solver, config
 
 # Helper to generate dummy participants
 def make_participants(count, score=100, star_indices=None):
+    """
+    Create a list of participant dictionaries with standardized name and score fields.
+    
+    Parameters:
+    	count (int): Number of participants to generate.
+    	score (int | float): Score assigned to every participant.
+    	star_indices (Iterable[int] | None): Indices whose participant names should include the advantage marker.
+    
+    Returns:
+    	list[dict]: A list of participants where each item maps config.COL_NAME to a name "P{index}" (with the advantage character appended when the index is in `star_indices`) and config.COL_SCORE to `score`.
+    """
     if star_indices is None:
         star_indices = []
 
