@@ -37,17 +37,18 @@ jobs:
     - name: Test with Pytest
       run: pytest tests/
 
-    # Create a file indicating success for this version
+    # Create a file indicating success for this version.
+    # The filename is unique per matrix job to avoid conflicts when downloading.
     - name: Record Success
       if: success()
-      run: echo "${{ matrix.python-version }}" > success.txt
+      run: echo "${{ matrix.python-version }}" > python_version_${{ matrix.python-version }}.txt
 
     - name: Upload Success Artifact
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: passed-version-${{ matrix.python-version }}
-        path: success.txt
+        path: python_version_${{ matrix.python-version }}.txt
 
   finalize-updates:
     needs: test-matrix
@@ -73,16 +74,25 @@ jobs:
            exit 1
         fi
         
-        # Collect all versions into a file and sort them using version sort (-V)
-        # This handles 3.10 > 3.9 correctly
-        ls artifacts > passed_versions.txt
-        sort -V passed_versions.txt -o passed_versions.txt
+        echo "Found artifact files:"
+        ls -l artifacts/
         
-        MIN_VER=$(head -n 1 passed_versions.txt)
-        MAX_VER=$(tail -n 1 passed_versions.txt)
+        # Concatenate all version files into one list
+        cat artifacts/*.txt > all_versions.txt
         
-        echo "Passed versions: $(cat passed_versions.txt)"
-        echo "Supported Range: $MIN_VER - $MAX_VER"
+        echo "Raw versions list:"
+        cat all_versions.txt
+        
+        # Sort versions using version sort (-V)
+        sort -V all_versions.txt -o sorted_versions.txt
+        
+        MIN_VER=$(head -n 1 sorted_versions.txt)
+        MAX_VER=$(tail -n 1 sorted_versions.txt)
+        
+        echo "Sorted versions:"
+        cat sorted_versions.txt
+        
+        echo "Calculated Range: $MIN_VER - $MAX_VER"
         
         echo "MIN_VER=$MIN_VER" >> $GITHUB_ENV
         echo "MAX_VER=$MAX_VER" >> $GITHUB_ENV
@@ -96,7 +106,7 @@ jobs:
       run: python tools/update_readme.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"
 
     # Setup the LOWEST supported version to compile requirements
-    # This ensures requirements.txt is compatible with the minimum version.
+    # This ensures max compatibility
     - name: Set up Lowest Python (${{ env.MIN_VER }})
       uses: actions/setup-python@v5
       with:
