@@ -10,9 +10,9 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        # Include a range, including the alpha version of 3.14
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14.0-alpha.2"]
-      fail-fast: false # Crucial: Let other versions pass even if one fails
+        # Testing a wide range. 3.14 will resolve to alpha/beta/rc or stable if available.
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+      fail-fast: false # Let all run so we can find the valid range
 
     steps:
     - uses: actions/checkout@v4
@@ -26,7 +26,7 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        # Install from requirements.in if it exists to test resolution
+        # Try to install from .in first to test resolution on this version
         if [ -f requirements.in ]; then 
           pip install -r requirements.in
         elif [ -f requirements.txt ]; then
@@ -37,8 +37,8 @@ jobs:
     - name: Test with Pytest
       run: pytest tests/
 
-    # If successful, create a marker file
-    - name: Create Success Artifact
+    # Create a file indicating success for this version
+    - name: Record Success
       if: success()
       run: echo "${{ matrix.python-version }}" > success.txt
 
@@ -52,67 +52,71 @@ jobs:
   finalize-updates:
     needs: test-matrix
     runs-on: ubuntu-latest
-    if: always() # Run even if some matrix jobs failed
+    if: always()
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
 
-    # We need a stable python to orchestrate the update
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        pattern: passed-version-*
+        merge-multiple: true
+
+    - name: Determine Supported Range
+      id: versions
+      run: |
+        if [ -z "$(ls -A artifacts)" ]; then
+           echo "No versions passed! Failing job."
+           exit 1
+        fi
+        
+        # Collect all versions into a file and sort them using version sort (-V)
+        # This handles 3.10 > 3.9 correctly
+        ls artifacts > passed_versions.txt
+        sort -V passed_versions.txt -o passed_versions.txt
+        
+        MIN_VER=$(head -n 1 passed_versions.txt)
+        MAX_VER=$(tail -n 1 passed_versions.txt)
+        
+        echo "Passed versions: $(cat passed_versions.txt)"
+        echo "Supported Range: $MIN_VER - $MAX_VER"
+        
+        echo "MIN_VER=$MIN_VER" >> $GITHUB_ENV
+        echo "MAX_VER=$MAX_VER" >> $GITHUB_ENV
+
     - name: Set up Utility Python
       uses: actions/setup-python@v5
       with:
         python-version: "3.12"
 
-    - name: Download Success Artifacts
-      uses: actions/download-artifact@v4
-      with:
-        path: passed_versions
-        pattern: passed-version-*
-        merge-multiple: true
-
-    - name: Determine Supported Range
-      id: process-versions
-      run: |
-        # Check if we have any passed versions
-        if [ -z "$(ls -A passed_versions)" ]; then
-           echo "No python versions passed tests. Failing job."
-           exit 1
-        fi
-        
-        # Sort versions to find min and max
-        # Note: 'sort -V' handles version numbers correctly (e.g. 3.10 > 3.9)
-        cat passed_versions/*.txt | sort -V > sorted_versions.txt
-        
-        MIN_VER=$(head -n 1 sorted_versions.txt)
-        MAX_VER=$(tail -n 1 sorted_versions.txt)
-        
-        echo "Supported Python Range: $MIN_VER - $MAX_VER"
-        echo "MIN_VER=$MIN_VER" >> $GITHUB_ENV
-        echo "MAX_VER=$MAX_VER" >> $GITHUB_ENV
-
     - name: Update README
-      run: |
-        # Update the README with the actual passed range
-        python tools/update_readme.py "$MIN_VER" "$MAX_VER"
+      run: python tools/update_readme.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"
 
-    # Now we switch to the LOWEST supported python to compile requirements.
+    # Setup the LOWEST supported version to compile requirements
     # This ensures requirements.txt is compatible with the minimum version.
-    - name: Set up Lowest Supported Python
+    - name: Set up Lowest Python (${{ env.MIN_VER }})
       uses: actions/setup-python@v5
       with:
         python-version: ${{ env.MIN_VER }}
         allow-prereleases: true
 
-    - name: Compile Requirements (Lowest Compatible)
+    - name: Compile requirements.txt
       run: |
         python -m pip install --upgrade pip
         pip install pip-tools
-        # Compile requirements.txt using the lowest supported version environment
+        # Compile requirements.txt from .in
         pip-compile requirements.in --output-file requirements.txt --resolver=backtracking
 
-    # Switch back to utility python for linting/formatting (optional, but ruff runs anywhere)
-    - name: Ruff Auto-Fix and Format
+    # Formatting check (using standard utility python)
+    - name: Set up Python for Linting
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Ruff Format & Fix
       run: |
         pip install ruff
         ruff check . --fix
@@ -121,7 +125,6 @@ jobs:
     - name: Verify Builder (PyInstaller)
       run: |
         pip install pyinstaller
-        # Install the just-compiled requirements
         pip install -r requirements.txt
         python build.py
 
@@ -132,13 +135,9 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         
-        # Explicitly add only the files we expect to change
+        # Add specific files
         git add README.md requirements.txt
-        
-        # Also include any source code files modified by Ruff
-        # We can use git diff to find them, or just add the current directory recursively
-        # BUT excluding hidden/build files. 
-        # A safer way if Ruff modifies code is:
+        # Add any python files modified by Ruff
         git add *.py modules/*.py tests/*.py tools/*.py
         
         if git diff --staged --quiet; then
