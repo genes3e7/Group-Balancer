@@ -39,7 +39,7 @@ def run_solver_interface(participants: list[dict], n_groups: int):
 
     std_c = 99999.0
     if found_c:
-        avgs_c = [g['avg'] for g in groups_c]
+        avgs_c = [g["avg"] for g in groups_c]
         std_c = np.std(avgs_c)
         print(f"  > Finished in {dt_c:.2f}s. StdDev: {std_c:.4f}")
         results[config.SHEET_WITH_CONSTRAINT] = groups_c
@@ -55,7 +55,7 @@ def run_solver_interface(participants: list[dict], n_groups: int):
     dt_u = time.time() - t0
 
     if found_u:
-        avgs_u = [g['avg'] for g in groups_u]
+        avgs_u = [g["avg"] for g in groups_u]
         std_u = np.std(avgs_u)
         print(f"  > Finished in {dt_u:.2f}s. StdDev: {std_u:.4f}")
 
@@ -64,7 +64,9 @@ def run_solver_interface(participants: list[dict], n_groups: int):
         # mathematical topology for size distribution than the 'Unconstrained'
         # search path within the time limit. If Constrained is strictly better, use it.
         if found_c and (std_c < std_u - 0.0001):
-            print("  > Champion Wins! (Constrained result promoted to Unconstrained slot)")
+            print(
+                "  > Champion Wins! (Constrained result promoted to Unconstrained slot)"
+            )
             results[config.SHEET_WITHOUT_CONSTRAINT] = groups_c
         else:
             results[config.SHEET_WITHOUT_CONSTRAINT] = groups_u
@@ -92,9 +94,9 @@ def main():
         if not n_groups_str.isdigit():
             print("Error: Please enter a valid integer.")
             return
-        
+
         n_groups = int(n_groups_str)
-        
+
         if n_groups <= 0:
             print("Error: Number of groups must be positive.")
             return

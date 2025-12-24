@@ -1,0 +1,10 @@
+# Core Dependencies
+pandas
+openpyxl
+numpy
+ortools
+
+# Dev / Build / Test Dependencies
+pyinstaller
+pytest
+ruff

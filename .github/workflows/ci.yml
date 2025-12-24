@@ -1,0 +1,57 @@
+name: CI
+
+on: [push, pull_request]
+
+# 1. Permission to write back to the repo
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0 # Fetch full history for pushing
+
+    - name: Set up Python 3.13
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.13"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install from requirements.in if it exists, else requirements.txt
+        if [ -f requirements.in ]; then pip install -r requirements.in; fi
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    # 2. RUN BOTH FIX AND FORMAT
+    - name: Ruff Auto-Fix and Format
+      run: |
+        ruff check . --fix
+        ruff format .
+
+    - name: Test with Pytest
+      run: pytest tests/
+
+    - name: Verify Builder (PyInstaller)
+      run: |
+        python build.py
+
+    # 3. Commit changes if anything was modified
+    - name: Commit and Push changes
+      if: always()
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add .
+        
+        # Check if there are staged changes to commit
+        if git diff --staged --quiet; then
+          echo "No changes to commit. Skipping push."
+        else
+          git commit -m "style: auto-fix linting and formatting (ruff)"
+          # Explicitly push to the branch associated with this Pull Request/Push
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
+        fi

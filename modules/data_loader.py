@@ -32,9 +32,9 @@ def get_file_path_from_user() -> str:
             user_input = input(">> ").strip()
 
             # Remove leading '& ' often added by PowerShell drag-and-drop
-            if user_input.startswith('& '):
+            if user_input.startswith("& "):
                 user_input = user_input[2:]
-            elif user_input.startswith('&'):
+            elif user_input.startswith("&"):
                 user_input = user_input[1:]
 
             # Remove surrounding quotes (common in Windows/macOS paths)
@@ -72,9 +72,9 @@ def load_data(filepath: str) -> list[dict] | None:
         return None
 
     try:
-        if filepath.lower().endswith('.csv'):
+        if filepath.lower().endswith(".csv"):
             df = pd.read_csv(filepath)
-        elif filepath.lower().endswith(('.xls', '.xlsx')):
+        elif filepath.lower().endswith((".xls", ".xlsx")):
             df = pd.read_excel(filepath)
         else:
             print("Error: Unsupported file format. Please use .csv or .xlsx")
@@ -85,7 +85,9 @@ def load_data(filepath: str) -> list[dict] | None:
 
         # Validate required columns
         if config.COL_NAME not in df.columns or config.COL_SCORE not in df.columns:
-            print(f"Error: Input file must contain columns '{config.COL_NAME}' and '{config.COL_SCORE}'.")
+            print(
+                f"Error: Input file must contain columns '{config.COL_NAME}' and '{config.COL_SCORE}'."
+            )
             print(f"Found columns: {list(df.columns)}")
             return None
 
@@ -94,9 +96,11 @@ def load_data(filepath: str) -> list[dict] | None:
         df[config.COL_NAME] = df[config.COL_NAME].astype(str).str.strip()
 
         # Ensure scores are numeric, coercing errors to NaN then filling with 0
-        df[config.COL_SCORE] = pd.to_numeric(df[config.COL_SCORE], errors='coerce').fillna(0)
+        df[config.COL_SCORE] = pd.to_numeric(
+            df[config.COL_SCORE], errors="coerce"
+        ).fillna(0)
 
-        records = df.to_dict('records')
+        records = df.to_dict("records")
         if not records:
             print("Error: The input file appears to be empty.")
             return None
