@@ -31,8 +31,8 @@ def test_get_file_path_sanitization(mock_exists, mock_input):
     assert "'" not in path
 
 
-@patch("pandas.read_excel")
-@patch("pandas.read_csv")
+@patch("modules.data_loader.pd.read_excel")
+@patch("modules.data_loader.pd.read_csv")
 def test_load_data_valid(mock_csv, mock_excel):
     """Test loading valid data."""
     # Setup mock DF
@@ -49,7 +49,7 @@ def test_load_data_valid(mock_csv, mock_excel):
 
 def test_load_data_invalid_columns():
     """Test error when columns are missing."""
-    with patch("pandas.read_csv") as mock_read:
+    with patch("modules.data_loader.pd.read_csv") as mock_read:
         mock_read.return_value = pd.DataFrame({"WrongName": ["A"], "Score": [1]})
         data = data_loader.load_data("test.csv")
         assert data is None
@@ -57,7 +57,7 @@ def test_load_data_invalid_columns():
 
 def test_load_data_empty():
     """Test error when file is empty."""
-    with patch("pandas.read_csv") as mock_read:
+    with patch("modules.data_loader.pd.read_csv") as mock_read:
         mock_read.return_value = pd.DataFrame(
             columns=[config.COL_NAME, config.COL_SCORE]
         )

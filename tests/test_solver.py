@@ -105,22 +105,40 @@ def test_solver_single_group():
 
 def test_solver_empty_input():
     """Test empty input handling."""
-    # Case 1: 0 participants, 0 groups -> Should be valid (empty result)
-    # Note: CP-SAT might error on 0 variables or constraints if not careful,
-    # but logically 0 people into 0 groups is empty set.
-    # The solver code calculates base_size = num_people // num_groups.
-    # If num_groups is 0, this raises ZeroDivisionError.
-    # We should expect the solver (or wrapper) to handle this, or we catch the error.
-    # Given the solver implementation, let's assume num_groups > 0 is required for the math.
-
+    # Case 1: 0 participants, 0 groups -> Should be invalid
+    
     # Case 2: 0 participants, 1 group -> Valid, result is 1 group with 0 members
     groups, success = solver.solve_with_ortools([], num_groups=1, respect_stars=True)
     assert success is True
     assert len(groups) == 1
     assert len(groups[0]["members"]) == 0
 
-    # Case 3: 0 participants, 0 groups -> Expect ZeroDivisionError or similar if not guarded
-    # The main script guards against n_groups < 1.
-    # If we call solver directly:
-    with pytest.raises(ZeroDivisionError):
+    # Case 3: 0 participants, 0 groups -> num_groups < 1 is invalid
+    # Expect ValueError with meaningful message (or document as precondition)
+    with pytest.raises(ValueError):
         solver.solve_with_ortools([], num_groups=0, respect_stars=True)
+
+
+def test_solver_score_balancing():
+    """Test that solver balances groups by score, not just count."""
+    participants = [
+        {config.COL_NAME: "P1", config.COL_SCORE: 100},
+        {config.COL_NAME: "P2", config.COL_SCORE: 90},
+        {config.COL_NAME: "P3", config.COL_SCORE: 80},
+        {config.COL_NAME: "P4", config.COL_SCORE: 70},
+    ]
+    # Total 340. 2 Groups -> Target ~170 per group.
+    # Optimal: (100+70)=170 and (90+80)=170.
+    
+    groups, success = solver.solve_with_ortools(
+        participants, num_groups=2, respect_stars=False
+    )
+    
+    assert success is True
+    # Groups should have similar averages (within reasonable tolerance)
+    avg_diff = abs(groups[0]['avg'] - groups[1]['avg'])
+    assert avg_diff <= 1.0
+    
+    # Verify sums specifically (both should be 170)
+    sums = sorted([g['current_sum'] for g in groups])
+    assert sums == [170.0, 170.0]
