@@ -22,6 +22,27 @@ A high-performance Web Application for **mathematically optimal** group distribu
 
 This tool moves away from "guessing" algorithms (like shuffling players until things look good) and uses **Constraint Programming**.
 
+```mermaid
+sequenceDiagram
+    participant User as User
+    participant UI as Streamlit UI
+    participant Validator as Data Validator
+    participant Optimizer as OR-Tools Solver
+    participant ExcelGen as Excel Generator
+
+    User->>UI: Upload Excel/CSV (Name, Score)
+    UI->>Validator: Validate & normalize data
+    Validator-->>UI: Return parsed preview
+    User->>UI: Set num_groups & respect_stars
+    User->>UI: Trigger optimization
+    UI->>Optimizer: solve_with_ortools(participants, num_groups, respect_stars)
+    Optimizer->>Optimizer: Build CP-SAT model (assignment vars, group size, optional star separation)
+    Optimizer->>Optimizer: Minimize deviation, solve with time limit
+    Optimizer-->>UI: Return grouped results & per-group stats
+    UI->>ExcelGen: generate_excel_bytes(final_results)
+    ExcelGen-->>UI: Return Excel bytes for download
+```
+
 ### 1. The "Sudoku" Approach
 Imagine a Sudoku puzzle. You don't solve it by throwing random numbers at the grid; you solve it by logic. The **CP-SAT Solver** works similarly. We tell it the rules (everyone must be in a group, groups must be balanced, stars must be separated), and it uses advanced algebra to "prune" impossible combinations until only the best valid solution remains.
 

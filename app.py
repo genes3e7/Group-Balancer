@@ -74,9 +74,12 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
 
     # C: Star Separation
     if respect_stars and stars:
+        # Enforce both upper and lower bounds for strict even distribution
         max_stars_per_group = math.ceil(len(stars) / num_groups)
+        min_stars_per_group = len(stars) // num_groups
         for g in range(num_groups):
             model.Add(sum(x[(i, g)] for i in stars) <= max_stars_per_group)
+            model.Add(sum(x[(i, g)] for i in stars) >= min_stars_per_group)
 
     # 5. Objective: Minimize deviation
     abs_diffs = []
@@ -241,97 +244,116 @@ if uploaded_file:
             # Clean types
             df[COL_NAME] = df[COL_NAME].astype(str).str.strip()
             df[COL_SCORE] = pd.to_numeric(df[COL_SCORE], errors="coerce")
-            invalid_count = df[COL_SCORE].isna().sum()
-            if invalid_count > 0:
-                st.warning(f"{invalid_count} invalid score(s) replaced with 0.")
-            df[COL_SCORE] = df[COL_SCORE].fillna(0)
+            
+            # FIX: Validate negative scores
+            if (df[COL_SCORE] < 0).any():
+                st.error("The file contains negative scores. Please ensure all scores are non-negative (>= 0).")
+            else:
+                invalid_count = df[COL_SCORE].isna().sum()
+                if invalid_count > 0:
+                    st.warning(f"{invalid_count} invalid score(s) replaced with 0.")
+                df[COL_SCORE] = df[COL_SCORE].fillna(0)
 
-            participants = df.to_dict("records")
-            st.success(f"Loaded {len(participants)} participants.")
+                participants = df.to_dict("records")
+                
+                # FIX: Explicit handling for empty file
+                if not participants:
+                    st.error("The uploaded file contains no data rows.")
+                else:
+                    st.success(f"Loaded {len(participants)} participants.")
 
-            with st.expander("View Data Preview"):
-                st.dataframe(df.head())
+                    with st.expander("View Data Preview"):
+                        st.dataframe(df.head())
 
-            # 2. Settings
-            # Limit max groups to number of participants to avoid error
-            max_groups = len(participants) if len(participants) > 0 else 1
-            num_groups = st.number_input(
-                "Number of Groups", min_value=1, max_value=max_groups, value=2, step=1
-            )
-
-            # 3. Action
-            if st.button("🚀 Generate Balanced Groups", type="primary"):
-                with st.spinner("Solving mathematical model..."):
-                    results = {}
-                    constrained_is_better = False
-
-                    # Scenario 1: Constrained
-                    groups_c, found_c = solve_with_ortools(
-                        participants, num_groups, respect_stars=True
+                    # 2. Settings
+                    # Limit max groups to number of participants to avoid error
+                    max_groups = len(participants) if len(participants) > 0 else 1
+                    num_groups = st.number_input(
+                        "Number of Groups", min_value=1, max_value=max_groups, value=2, step=1
                     )
-                    if found_c:
-                        results[SHEET_WITH_CONSTRAINT] = groups_c
-                        std_c = np.std([g["avg"] for g in groups_c])
-                    else:
-                        std_c = float("inf")
 
-                    # Scenario 2: Unconstrained
-                    groups_u, found_u = solve_with_ortools(
-                        participants, num_groups, respect_stars=False
-                    )
-                    if found_u:
-                        std_u = np.std([g["avg"] for g in groups_u])
+                    # 3. Action
+                    if st.button("🚀 Generate Balanced Groups", type="primary"):
+                        with st.spinner("Solving mathematical model..."):
+                            results = {}
+                            constrained_is_better = False
 
-                        # Champion Logic:
-                        # Sometimes the 'Constrained' logic inadvertently finds a better
-                        # mathematical topology for size distribution than the 'Unconstrained'
-                        # search path within the time limit. If Constrained is strictly better, use it.
-                        constrained_is_better = found_c and (std_c < std_u - 0.0001)
-                        if constrained_is_better:
-                            results[SHEET_BEST_RESULT] = groups_c
-                        else:
-                            results[SHEET_BEST_RESULT] = groups_u
-
-                    # 4. Results & Export
-                    if not results:
-                        st.error(
-                            "No solution found. Try reducing constraints or checking data."
-                        )
-                    else:
-                        st.success("Optimization Complete!")
-
-                        # Display Summary metrics
-                        col1, col2 = st.columns(2)
-                        if found_c:
-                            col1.metric("StdDev (Strict Stars)", f"{std_c:.4f}")
-                        if found_u:
-                            best_std = std_c if constrained_is_better else std_u
-                            col2.metric("StdDev (Best Solution)", f"{best_std:.4f}")
-
-                        # Generate Excel
-                        excel_data = generate_excel_bytes(results)
-
-                        st.download_button(
-                            label="📥 Download Excel Report",
-                            data=excel_data,
-                            file_name="balanced_groups.xlsx",
-                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                        )
-
-                        # Visual Display of groups (Constrained)
-                        if SHEET_WITH_CONSTRAINT in results:
-                            st.subheader("Preview: Constrained Solution")
-                            tabs = st.tabs(
-                                [
-                                    f"Group {g['id']}"
-                                    for g in results[SHEET_WITH_CONSTRAINT]
-                                ]
+                            # Scenario 1: Constrained
+                            groups_c, found_c = solve_with_ortools(
+                                participants, num_groups, respect_stars=True
                             )
-                            for i, tab in enumerate(tabs):
-                                g = results[SHEET_WITH_CONSTRAINT][i]
-                                with tab:
-                                    st.write(f"**Average:** {g['avg']:.2f}")
-                                    st.table(pd.DataFrame(g["members"]))
+                            if found_c:
+                                results[SHEET_WITH_CONSTRAINT] = groups_c
+                                std_c = np.std([g["avg"] for g in groups_c])
+                            else:
+                                std_c = float("inf")
+
+                            # Scenario 2: Unconstrained
+                            groups_u, found_u = solve_with_ortools(
+                                participants, num_groups, respect_stars=False
+                            )
+                            if found_u:
+                                std_u = np.std([g["avg"] for g in groups_u])
+
+                                # Champion Logic:
+                                # Sometimes the 'Constrained' logic inadvertently finds a better
+                                # mathematical topology for size distribution than the 'Unconstrained'
+                                # search path within the time limit. If Constrained is strictly better, use it.
+                                constrained_is_better = found_c and (std_c < std_u - 0.0001)
+                                if constrained_is_better:
+                                    results[SHEET_BEST_RESULT] = groups_c
+                                else:
+                                    results[SHEET_BEST_RESULT] = groups_u
+                            
+                            # Fallback: If unconstrained failed but constrained succeeded, show constrained
+                            elif found_c:
+                                results[SHEET_BEST_RESULT] = groups_c
+
+                            # 4. Results & Export
+                            if not results:
+                                st.error(
+                                    "No solution found. Try reducing constraints or checking data."
+                                )
+                            else:
+                                st.success("Optimization Complete!")
+
+                                # Display Summary metrics
+                                col1, col2 = st.columns(2)
+                                if found_c:
+                                    col1.metric("StdDev (Strict Stars)", f"{std_c:.4f}")
+                                
+                                # FIX: Display "Best" metric if ANY solution was found
+                                if found_c or found_u:
+                                    if found_c and (not found_u or constrained_is_better):
+                                        best_std = std_c
+                                    else:
+                                        best_std = std_u
+                                    col2.metric("StdDev (Best Solution)", f"{best_std:.4f}")
+
+                                # Generate Excel
+                                excel_data = generate_excel_bytes(results)
+
+                                st.download_button(
+                                    label="📥 Download Excel Report",
+                                    data=excel_data,
+                                    file_name="balanced_groups.xlsx",
+                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                )
+
+                                # Visual Display of groups (Constrained)
+                                if SHEET_WITH_CONSTRAINT in results:
+                                    st.subheader("Preview: Constrained Solution")
+                                    tabs = st.tabs(
+                                        [
+                                            f"Group {g['id']}"
+                                            for g in results[SHEET_WITH_CONSTRAINT]
+                                        ]
+                                    )
+                                    for i, tab in enumerate(tabs):
+                                        g = results[SHEET_WITH_CONSTRAINT][i]
+                                        with tab:
+                                            st.write(f"**Average:** {g['avg']:.2f}")
+                                            st.table(pd.DataFrame(g["members"]))
 
     except Exception as e:
         # Log full traceback for debugging, but keep UI message simple
