@@ -1,0 +1,9 @@
+# Constrain to production versions
+-c requirements.txt
+
+# Install production dependencies (so tests can run)
+-r requirements.in
+
+# Dev Tools
+pytest
+ruff
