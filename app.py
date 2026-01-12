@@ -3,7 +3,14 @@ import pandas as pd
 import numpy as np
 import math
 import io
+import logging
 from ortools.sat.python import cp_model
+
+# ==========================================
+# LOGGING SETUP
+# ==========================================
+logging.basicConfig(level=logging.ERROR)
+logger = logging.getLogger(__name__)
 
 # ==========================================
 # CONFIGURATION & CONSTANTS
@@ -12,19 +19,21 @@ COL_NAME = "Name"
 COL_SCORE = "Score"
 ADVANTAGE_CHAR = "*"
 SCALE_FACTOR = 100000
-SOLVER_TIMEOUT = 10  # Reduced for web interactivity, increase if needed
+SOLVER_TIMEOUT = 10  # Reduced for web interactivity
 SHEET_WITH_CONSTRAINT = "With_Star_Constraint"
-SHEET_WITHOUT_CONSTRAINT = "No_Constraints"
+# Renamed to reflect that this sheet holds the winner of the champion logic
+SHEET_BEST_RESULT = "Best_Balanced_Solution"
 
 
 # ==========================================
-# SOLVER MODULE (Adapted from solver.py)
+# SOLVER MODULE
 # ==========================================
 def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars: bool):
     """
     Solves the partitioning problem using Google OR-Tools.
     """
-    if num_groups < 1:
+    # FIX: Validation for empty list or invalid group count
+    if not participants or num_groups < 1:
         return [], False
 
     model = cp_model.CpModel()
@@ -92,7 +101,6 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
     # 6. Solve
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = SOLVER_TIMEOUT
-    # We removed the printer callback for the web version to avoid stdout clutter
     status = solver.Solve(model)
 
     # 7. Reconstruct Results
@@ -120,7 +128,7 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
 
 
 # ==========================================
-# EXCEL GENERATION (Adapted from output_manager.py)
+# EXCEL GENERATION
 # ==========================================
 def generate_excel_bytes(final_results: dict):
     """
@@ -211,7 +219,6 @@ Distribute participants into mathematically optimal groups using Google OR-Tools
 **Star (*)** participants are distributed evenly.
 """)
 
-# 1. File Upload
 uploaded_file = st.file_uploader("Upload Excel or CSV", type=["xlsx", "xls", "csv"])
 
 if uploaded_file:
@@ -235,17 +242,14 @@ if uploaded_file:
             participants = df.to_dict("records")
             st.success(f"Loaded {len(participants)} participants.")
 
-            # Show Preview
             with st.expander("View Data Preview"):
                 st.dataframe(df.head())
 
             # 2. Settings
+            # Limit max groups to number of participants to avoid error
+            max_groups = len(participants) if len(participants) > 0 else 1
             num_groups = st.number_input(
-                "Number of Groups",
-                min_value=1,
-                max_value=len(participants),
-                value=2,
-                step=1,
+                "Number of Groups", min_value=1, max_value=max_groups, value=2, step=1
             )
 
             # 3. Action
@@ -270,11 +274,15 @@ if uploaded_file:
                     if found_u:
                         std_u = np.std([g["avg"] for g in groups_u])
 
-                        # Champion Logic (Keep logic from original script)
+                        # Champion Logic:
+                        # Sometimes the 'Constrained' logic inadvertently finds a better
+                        # mathematical topology for size distribution than the 'Unconstrained'
+                        # search path within the time limit. If Constrained is strictly better, use it.
+                        # We save the winner into 'SHEET_BEST_RESULT'
                         if found_c and (std_c < std_u - 0.0001):
-                            results[SHEET_WITHOUT_CONSTRAINT] = groups_c
+                            results[SHEET_BEST_RESULT] = groups_c
                         else:
-                            results[SHEET_WITHOUT_CONSTRAINT] = groups_u
+                            results[SHEET_BEST_RESULT] = groups_u
 
                     # 4. Results & Export
                     if not results:
@@ -287,9 +295,9 @@ if uploaded_file:
                         # Display Summary metrics
                         col1, col2 = st.columns(2)
                         if found_c:
-                            col1.metric("StdDev (With Constraints)", f"{std_c:.4f}")
+                            col1.metric("StdDev (Strict Stars)", f"{std_c:.4f}")
                         if found_u:
-                            col2.metric("StdDev (No Constraints)", f"{std_u:.4f}")
+                            col2.metric("StdDev (Best Possible)", f"{std_u:.4f}")
 
                         # Generate Excel
                         excel_data = generate_excel_bytes(results)
@@ -317,4 +325,6 @@ if uploaded_file:
                                     st.table(pd.DataFrame(g["members"]))
 
     except Exception as e:
+        # FIX: Log full traceback for debugging, but keep UI message simple
+        logger.exception("Error processing uploaded file")
         st.error(f"Error processing file: {e}")
