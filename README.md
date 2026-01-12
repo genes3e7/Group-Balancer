@@ -2,7 +2,7 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app)
 
-A high-performance Web Application for **mathematically optimal** group distribution. This tool utilizes **Google OR-Tools (CP-SAT)** to solve the partitioning problem deterministically, finding the absolute best possible balance of scores directly in your browser.
+A high-performance Web Application for **mathematically optimal** group distribution. This tool utilizes **Google OR-Tools (CP-SAT)** to solve the partitioning problem deterministically, finding the best possible balance of scores within a set time limit directly in your browser.
 
 ## 🔗 Live Demo
 
@@ -10,7 +10,7 @@ A high-performance Web Application for **mathematically optimal** group distribu
 
 ## Key Features
 
-* **Exact Solver:** Uses the CP-SAT constraint solver to find the global minimum standard deviation. Unlike random search algorithms, this finds the mathematically best solution.
+* **Optimization Engine:** Uses the CP-SAT constraint solver to minimize standard deviation. It seeks the global optimum and returns the best solution found within the execution time limit (returning `cp_model.OPTIMAL` if proven, or `cp_model.FEASIBLE` if the limit is reached).
 * **Web Interface:** Simple drag-and-drop Excel/CSV upload. No command line required.
 * **Complex Constraints:**
   * **Size Balancing:** Automatically calculates the optimal mix of group sizes so the size difference is never more than 1.
@@ -36,9 +36,9 @@ sequenceDiagram
     User->>UI: Set num_groups & respect_stars
     User->>UI: Trigger optimization
     UI->>Optimizer: solve_with_ortools(participants, num_groups, respect_stars)
-    Optimizer->>Optimizer: Build CP-SAT model (assignment vars, group size, optional star separation)
+    Optimizer->>Optimizer: Build CP-SAT model (assignment vars, group size)
     Optimizer->>Optimizer: Minimize deviation, solve with time limit
-    Optimizer-->>UI: Return grouped results & per-group stats
+    Optimizer-->>UI: Return grouped results
     UI->>ExcelGen: generate_excel_bytes(final_results)
     ExcelGen-->>UI: Return Excel bytes for download
 ```
@@ -89,6 +89,8 @@ If you prefer to run the application locally instead of using the web version:
 
 ## License
 
-**Copyright (c) 2025 Tan Eugene**
+### Copyright
+
+Copyright (c) 2025 Tan Eugene
 
 This project is licensed for **Personal Use Only**. Commercial usage is strictly prohibited without prior written consent. See the `LICENSE` file for details.
