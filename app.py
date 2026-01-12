@@ -237,7 +237,11 @@ if uploaded_file:
         else:
             # Clean types
             df[COL_NAME] = df[COL_NAME].astype(str).str.strip()
-            df[COL_SCORE] = pd.to_numeric(df[COL_SCORE], errors="coerce").fillna(0)
+            df[COL_SCORE] = pd.to_numeric(df[COL_SCORE], errors="coerce")
+            invalid_count = df[COL_SCORE].isna().sum()
+            if invalid_count > 0:
+                st.warning(f"{invalid_count} invalid score(s) replaced with 0.")
+            df[COL_SCORE] = df[COL_SCORE].fillna(0)
 
             participants = df.to_dict("records")
             st.success(f"Loaded {len(participants)} participants.")
@@ -297,7 +301,8 @@ if uploaded_file:
                         if found_c:
                             col1.metric("StdDev (Strict Stars)", f"{std_c:.4f}")
                         if found_u:
-                            col2.metric("StdDev (Best Possible)", f"{std_u:.4f}")
+                            best_std = std_c if (found_c and std_c < std_u - 0.0001) else std_u
+                            col2.metric("StdDev (Best Solution)", f"{best_std:.4f}")
 
                         # Generate Excel
                         excel_data = generate_excel_bytes(results)

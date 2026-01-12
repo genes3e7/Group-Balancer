@@ -51,7 +51,7 @@ If you prefer to run the application locally instead of using the web version:
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/yourusername/group-balancer.git
+    git clone https://github.com/genes3e7/group-balancer.git
     cd group-balancer
     ```
 
