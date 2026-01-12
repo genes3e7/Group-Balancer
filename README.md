@@ -13,8 +13,8 @@ A high-performance Web Application for **mathematically optimal** group distribu
 * **Exact Solver:** Uses the CP-SAT constraint solver to find the global minimum standard deviation. Unlike random search algorithms, this finds the mathematically best solution.
 * **Web Interface:** Simple drag-and-drop Excel/CSV upload. No command line required.
 * **Complex Constraints:**
-    * **Size Balancing:** Automatically calculates the optimal mix of group sizes so the size difference is never more than 1.
-    * **Star Separation:** Strictly enforces that "Star" (*) players are distributed as evenly as possible across teams.
+  * **Size Balancing:** Automatically calculates the optimal mix of group sizes so the size difference is never more than 1.
+  * **Star Separation:** Strictly enforces that "Star" (*) players are distributed as evenly as possible across teams.
 * **High Precision:** Uses integer scaling (up to 5 decimal places) to prevent floating-point math errors.
 * **Instant Export:** Download your results directly as a formatted Excel file.
 

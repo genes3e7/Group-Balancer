@@ -20,6 +20,7 @@ COL_SCORE = "Score"
 ADVANTAGE_CHAR = "*"
 SCALE_FACTOR = 100000
 SOLVER_TIMEOUT = 10  # Reduced for web interactivity
+SOLVER_NUM_WORKERS = 8  # Enable parallel solving
 SHEET_WITH_CONSTRAINT = "With_Star_Constraint"
 # Renamed to reflect that this sheet holds the winner of the champion logic
 SHEET_BEST_RESULT = "Best_Balanced_Solution"
@@ -32,8 +33,8 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
     """
     Solves the partitioning problem using Google OR-Tools.
     """
-    # FIX: Validation for empty list or invalid group count
-    if not participants or num_groups < 1:
+    # FIX: Validation for empty list, invalid group count, or groups > participants
+    if not participants or num_groups < 1 or num_groups > len(participants):
         return [], False
 
     model = cp_model.CpModel()
@@ -101,6 +102,7 @@ def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars:
     # 6. Solve
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = SOLVER_TIMEOUT
+    solver.parameters.num_search_workers = SOLVER_NUM_WORKERS
     status = solver.Solve(model)
 
     # 7. Reconstruct Results
@@ -224,7 +226,8 @@ uploaded_file = st.file_uploader("Upload Excel or CSV", type=["xlsx", "xls", "cs
 if uploaded_file:
     try:
         # Load and clean data
-        if uploaded_file.name.endswith(".csv"):
+        # FIX: Case insensitive extension check
+        if uploaded_file.name.lower().endswith(".csv"):
             df = pd.read_csv(uploaded_file)
         else:
             df = pd.read_excel(uploaded_file)
@@ -260,6 +263,7 @@ if uploaded_file:
             if st.button("🚀 Generate Balanced Groups", type="primary"):
                 with st.spinner("Solving mathematical model..."):
                     results = {}
+                    constrained_is_better = False
 
                     # Scenario 1: Constrained
                     groups_c, found_c = solve_with_ortools(
@@ -282,8 +286,8 @@ if uploaded_file:
                         # Sometimes the 'Constrained' logic inadvertently finds a better
                         # mathematical topology for size distribution than the 'Unconstrained'
                         # search path within the time limit. If Constrained is strictly better, use it.
-                        # We save the winner into 'SHEET_BEST_RESULT'
-                        if found_c and (std_c < std_u - 0.0001):
+                        constrained_is_better = found_c and (std_c < std_u - 0.0001)
+                        if constrained_is_better:
                             results[SHEET_BEST_RESULT] = groups_c
                         else:
                             results[SHEET_BEST_RESULT] = groups_u
@@ -301,7 +305,7 @@ if uploaded_file:
                         if found_c:
                             col1.metric("StdDev (Strict Stars)", f"{std_c:.4f}")
                         if found_u:
-                            best_std = std_c if (found_c and std_c < std_u - 0.0001) else std_u
+                            best_std = std_c if constrained_is_better else std_u
                             col2.metric("StdDev (Best Solution)", f"{best_std:.4f}")
 
                         # Generate Excel
@@ -330,6 +334,6 @@ if uploaded_file:
                                     st.table(pd.DataFrame(g["members"]))
 
     except Exception as e:
-        # FIX: Log full traceback for debugging, but keep UI message simple
+        # Log full traceback for debugging, but keep UI message simple
         logger.exception("Error processing uploaded file")
         st.error(f"Error processing file: {e}")
