@@ -1,361 +1,238 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import math
-import io
-import logging
-from ortools.sat.python import cp_model
+import time
+from src.core import config, solver_interface
+from src.ui import components, results_renderer
+from src.utils import exporter
 
-# ==========================================
-# LOGGING SETUP
-# ==========================================
-logging.basicConfig(level=logging.ERROR)
-logger = logging.getLogger(__name__)
+# Initialize Page
+components.setup_page()
 
-# ==========================================
-# CONFIGURATION & CONSTANTS
-# ==========================================
-COL_NAME = "Name"
-COL_SCORE = "Score"
-ADVANTAGE_CHAR = "*"
-SCALE_FACTOR = 100000
-SOLVER_TIMEOUT = 10  # Reduced for web interactivity
-SOLVER_NUM_WORKERS = 8  # Enable parallel solving
-SHEET_WITH_CONSTRAINT = "With_Star_Constraint"
-# Renamed to reflect that this sheet holds the winner of the champion logic
-SHEET_BEST_RESULT = "Best_Balanced_Solution"
+# Initialize Session State
+if "step" not in st.session_state:
+    st.session_state.update({"step": 1, "participants_df": None, "results_df": None})
 
+# Initialize the 'working' dataframe for the editor if it doesn't exist
+if "manual_df" not in st.session_state:
+    st.session_state.manual_df = pd.DataFrame(
+        {
+            config.COL_NAME: ["Player 1", "Player 2*", "Player 3"],
+            config.COL_SCORE: [80, 95, 60],
+        }
+    )
 
-# ==========================================
-# SOLVER MODULE
-# ==========================================
-def solve_with_ortools(participants: list[dict], num_groups: int, respect_stars: bool):
-    """
-    Solves the partitioning problem using Google OR-Tools.
-    """
-    # FIX: Validation for empty list, invalid group count, or groups > participants
-    if not participants or num_groups < 1 or num_groups > len(participants):
-        return [], False
-
-    model = cp_model.CpModel()
-
-    # 1. Data Preparation
-    num_people = len(participants)
-    scores = [int(round(float(p[COL_SCORE]) * SCALE_FACTOR)) for p in participants]
-    total_score = sum(scores)
-
-    stars = [
-        i
-        for i, p in enumerate(participants)
-        if str(p[COL_NAME]).endswith(ADVANTAGE_CHAR)
-    ]
-
-    # 2. Group Size Pre-calculation
-    base_size = num_people // num_groups
-    remainder = num_people % num_groups
-    group_sizes_map = {}
-    for g in range(num_groups):
-        group_sizes_map[g] = base_size + 1 if g < remainder else base_size
-
-    # 3. Decision Variables
-    x = {}
-    for i in range(num_people):
-        for g in range(num_groups):
-            x[(i, g)] = model.NewBoolVar(f"assign_p{i}_g{g}")
-
-    # 4. Constraints
-    # A: Everyone in exactly one group
-    for i in range(num_people):
-        model.Add(sum(x[(i, g)] for g in range(num_groups)) == 1)
-
-    # B: Group sizes
-    for g in range(num_groups):
-        model.Add(sum(x[(i, g)] for i in range(num_people)) == group_sizes_map[g])
-
-    # C: Star Separation
-    if respect_stars and stars:
-        # Enforce both upper and lower bounds for strict even distribution
-        max_stars_per_group = math.ceil(len(stars) / num_groups)
-        min_stars_per_group = len(stars) // num_groups
-        for g in range(num_groups):
-            model.Add(sum(x[(i, g)] for i in stars) <= max_stars_per_group)
-            model.Add(sum(x[(i, g)] for i in stars) >= min_stars_per_group)
-
-    # 5. Objective: Minimize deviation
-    abs_diffs = []
-    max_domain_val = total_score * num_people  # Prevent overflow
-
-    for g in range(num_groups):
-        g_sum = model.NewIntVar(0, total_score, f"sum_group_{g}")
-        model.Add(g_sum == sum(x[(i, g)] * scores[i] for i in range(num_people)))
-
-        target_val = total_score * group_sizes_map[g]
-        actual_val = model.NewIntVar(0, max_domain_val, f"actual_val_{g}")
-        model.Add(actual_val == g_sum * num_people)
-
-        diff = model.NewIntVar(-max_domain_val, max_domain_val, f"diff_{g}")
-        model.Add(diff == actual_val - target_val)
-
-        abs_diff = model.NewIntVar(0, max_domain_val, f"abs_diff_{g}")
-        model.AddAbsEquality(abs_diff, diff)
-        abs_diffs.append(abs_diff)
-
-    model.Minimize(sum(abs_diffs))
-
-    # 6. Solve
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = SOLVER_TIMEOUT
-    solver.parameters.num_search_workers = SOLVER_NUM_WORKERS
-    status = solver.Solve(model)
-
-    # 7. Reconstruct Results
-    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        result_groups = []
-        for g in range(num_groups):
-            result_groups.append(
-                {"id": g + 1, "members": [], "current_sum": 0.0, "avg": 0.0}
-            )
-
-        for i in range(num_people):
-            for g in range(num_groups):
-                if solver.Value(x[(i, g)]) == 1:
-                    result_groups[g]["members"].append(participants[i])
-
-        for g in result_groups:
-            g_sum = sum(float(m[COL_SCORE]) for m in g["members"])
-            count = len(g["members"])
-            g["current_sum"] = g_sum
-            g["avg"] = g_sum / count if count > 0 else 0.0
-
-        return result_groups, True
-    else:
-        return [], False
+# Render Progress & Description
+components.render_steps_bar(st.session_state.step)
 
 
-# ==========================================
-# EXCEL GENERATION
-# ==========================================
-def generate_excel_bytes(final_results: dict):
-    """
-    Writes the specific side-by-side format to an in-memory Excel file.
-    """
-    output = io.BytesIO()
-    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-        for sheet_name, groups in final_results.items():
-            if not groups:
-                continue
-
-            # --- 1. Prepare Main Grid Data ---
-            s_groups = sorted(groups, key=lambda x: x["id"])
-            rows = []
-
-            for i in range(0, len(s_groups), 2):
-                g1 = s_groups[i]
-                g2 = s_groups[i + 1] if (i + 1) < len(s_groups) else None
-
-                # Header Row
-                rows.append(
-                    {
-                        "A": f"GROUP {g1['id']}",
-                        "B": f"AVG: {g1['avg']:.2f}",
-                        "C": "",
-                        "D": f"GROUP {g2['id']}" if g2 else "",
-                        "E": f"AVG: {g2['avg']:.2f}" if g2 else "",
-                    }
-                )
-                # Sub-header Row
-                rows.append(
-                    {
-                        "A": "Name",
-                        "B": "Score",
-                        "C": "",
-                        "D": "Name" if g2 else "",
-                        "E": "Score" if g2 else "",
-                    }
-                )
-
-                # Member Rows
-                len1 = len(g1["members"])
-                len2 = len(g2["members"]) if g2 else 0
-                max_len = max(len1, len2)
-
-                for k in range(max_len):
-                    m1 = g1["members"][k] if k < len1 else None
-                    m2 = g2["members"][k] if g2 and k < len2 else None
-
-                    rows.append(
-                        {
-                            "A": m1[COL_NAME] if m1 else "",
-                            "B": m1[COL_SCORE] if m1 else "",
-                            "C": "",
-                            "D": m2[COL_NAME] if m2 else "",
-                            "E": m2[COL_SCORE] if m2 else "",
-                        }
-                    )
-                rows.append({})  # Spacer
-
-            pd.DataFrame(rows).to_excel(
-                writer, sheet_name=sheet_name, index=False, header=False, startcol=0
-            )
-
-            # --- 2. Calculate Statistics ---
-            avgs = [g["avg"] for g in groups]
-            if avgs:
-                stats = [
-                    {"Stat": "Lowest", "Val": min(avgs)},
-                    {"Stat": "Highest", "Val": max(avgs)},
-                    {"Stat": "Global Avg", "Val": np.mean(avgs)},
-                    {"Stat": "StdDev", "Val": np.std(avgs)},
-                ]
-                pd.DataFrame(stats).to_excel(
-                    writer, sheet_name=sheet_name, index=False, startcol=6
-                )
-
-    return output.getvalue()
+def go_to_step(step):
+    st.session_state.step = step
+    st.rerun()
 
 
-# ==========================================
-# STREAMLIT UI
-# ==========================================
-st.set_page_config(page_title="Group Balancer", page_icon="⚖️")
-st.title("⚖️ Advanced Group Balancer")
-st.markdown("""
-Distribute participants into mathematically optimal groups using Google OR-Tools.
-**Star (*)** participants are distributed evenly.
-""")
-
-uploaded_file = st.file_uploader("Upload Excel or CSV", type=["xlsx", "xls", "csv"])
-
-if uploaded_file:
-    try:
-        # Load and clean data
-        # FIX: Case insensitive extension check
-        if uploaded_file.name.lower().endswith(".csv"):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-
-        # Normalize columns
-        df.columns = df.columns.str.strip()
-
-        if COL_NAME not in df.columns or COL_SCORE not in df.columns:
-            st.error(f"File must contain columns: '{COL_NAME}' and '{COL_SCORE}'")
-        else:
-            # Clean types
-            df[COL_NAME] = df[COL_NAME].astype(str).str.strip()
-            df[COL_SCORE] = pd.to_numeric(df[COL_SCORE], errors="coerce")
-            
-            # FIX: Validate negative scores
-            if (df[COL_SCORE] < 0).any():
-                st.error("The file contains negative scores. Please ensure all scores are non-negative (>= 0).")
+# --- Callback for File Upload ---
+def load_uploaded_file():
+    """Reads the uploaded file and updates the manual_df session state."""
+    uploaded = st.session_state.u_file
+    if uploaded is not None:
+        try:
+            if uploaded.name.endswith(".csv"):
+                df_new = pd.read_csv(uploaded)
             else:
-                invalid_count = df[COL_SCORE].isna().sum()
-                if invalid_count > 0:
-                    st.warning(f"{invalid_count} invalid score(s) replaced with 0.")
-                df[COL_SCORE] = df[COL_SCORE].fillna(0)
+                df_new = pd.read_excel(uploaded)
 
-                participants = df.to_dict("records")
-                
-                # FIX: Explicit handling for empty file
-                if not participants:
-                    st.error("The uploaded file contains no data rows.")
-                else:
-                    st.success(f"Loaded {len(participants)} participants.")
+            # Clean columns
+            df_new.columns = df_new.columns.str.strip()
 
-                    with st.expander("View Data Preview"):
-                        st.dataframe(df.head())
+            # Basic Validation
+            if config.COL_NAME in df_new.columns and config.COL_SCORE in df_new.columns:
+                # Update the session state used by the editor
+                st.session_state.manual_df = df_new
+                st.toast(f"✅ Imported {len(df_new)} rows from file!", icon="📂")
+            else:
+                st.error(
+                    f"File missing required columns: {config.COL_NAME}, {config.COL_SCORE}"
+                )
+        except Exception as e:
+            st.error(f"Error reading file: {e}")
 
-                    # 2. Settings
-                    # Limit max groups to number of participants to avoid error
-                    max_groups = len(participants) if len(participants) > 0 else 1
-                    num_groups = st.number_input(
-                        "Number of Groups", min_value=1, max_value=max_groups, value=2, step=1
-                    )
 
-                    # 3. Action
-                    if st.button("🚀 Generate Balanced Groups", type="primary"):
-                        with st.spinner("Solving mathematical model..."):
-                            results = {}
-                            constrained_is_better = False
+# ==========================================
+# STEP 1: IMPORT & EDIT DATA
+# ==========================================
+if st.session_state.step == 1:
+    st.header("Step 1: Data Entry")
 
-                            # Scenario 1: Constrained
-                            groups_c, found_c = solve_with_ortools(
-                                participants, num_groups, respect_stars=True
-                            )
-                            if found_c:
-                                results[SHEET_WITH_CONSTRAINT] = groups_c
-                                std_c = np.std([g["avg"] for g in groups_c])
-                            else:
-                                std_c = float("inf")
+    # 1. File Uploader (Importer)
+    with st.expander("📂 Import from Excel/CSV (Optional)", expanded=True):
+        st.caption("Uploading a file will overwrite the table below.")
+        st.file_uploader(
+            "Select file to import",
+            type=["xlsx", "csv"],
+            key="u_file",
+            on_change=load_uploaded_file,
+        )
 
-                            # Scenario 2: Unconstrained
-                            groups_u, found_u = solve_with_ortools(
-                                participants, num_groups, respect_stars=False
-                            )
-                            if found_u:
-                                std_u = np.std([g["avg"] for g in groups_u])
+    # 2. The Data Editor (Source of Truth)
+    st.subheader("Edit Participants")
+    st.caption("Verify your data below. You can manually add rows or edit values.")
 
-                                # Champion Logic:
-                                # Sometimes the 'Constrained' logic inadvertently finds a better
-                                # mathematical topology for size distribution than the 'Unconstrained'
-                                # search path within the time limit. If Constrained is strictly better, use it.
-                                constrained_is_better = found_c and (std_c < std_u - 0.0001)
-                                if constrained_is_better:
-                                    results[SHEET_BEST_RESULT] = groups_c
-                                else:
-                                    results[SHEET_BEST_RESULT] = groups_u
-                            
-                            # Fallback: If unconstrained failed but constrained succeeded, show constrained
-                            elif found_c:
-                                results[SHEET_BEST_RESULT] = groups_c
+    edited_df = st.data_editor(
+        st.session_state.manual_df,
+        num_rows="dynamic",
+        use_container_width=True,
+        key="editor_input",  # Unique key to prevent state conflicts
+    )
 
-                            # 4. Results & Export
-                            if not results:
-                                st.error(
-                                    "No solution found. Try reducing constraints or checking data."
-                                )
-                            else:
-                                st.success("Optimization Complete!")
+    # 3. Validation & Navigation
+    if st.button("Next: Configure", type="primary"):
+        if edited_df is not None and not edited_df.empty:
+            # Ensure columns exist (in case user deleted them manually)
+            if (
+                config.COL_NAME not in edited_df.columns
+                or config.COL_SCORE not in edited_df.columns
+            ):
+                st.error(
+                    f"Table must contain columns: '{config.COL_NAME}' and '{config.COL_SCORE}'"
+                )
+            else:
+                # Clean Data types before proceeding
+                clean_df = edited_df.copy()
+                clean_df[config.COL_NAME] = clean_df[config.COL_NAME].astype(str)
+                clean_df[config.COL_SCORE] = pd.to_numeric(
+                    clean_df[config.COL_SCORE], errors="coerce"
+                ).fillna(0)
 
-                                # Display Summary metrics
-                                col1, col2 = st.columns(2)
-                                if found_c:
-                                    col1.metric("StdDev (Strict Stars)", f"{std_c:.4f}")
-                                
-                                # FIX: Display "Best" metric if ANY solution was found
-                                if found_c or found_u:
-                                    if found_c and (not found_u or constrained_is_better):
-                                        best_std = std_c
-                                    else:
-                                        best_std = std_u
-                                    col2.metric("StdDev (Best Solution)", f"{best_std:.4f}")
+                st.session_state.participants_df = clean_df
+                go_to_step(2)
+        else:
+            st.warning("Please add at least one participant.")
 
-                                # Generate Excel
-                                excel_data = generate_excel_bytes(results)
+# ==========================================
+# STEP 2: CONFIG & GENERATE
+# ==========================================
+elif st.session_state.step == 2:
+    st.header("Step 2: Configuration")
+    df = st.session_state.participants_df
 
-                                st.download_button(
-                                    label="📥 Download Excel Report",
-                                    data=excel_data,
-                                    file_name="balanced_groups.xlsx",
-                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                )
+    c1, c2 = st.columns(2)
+    with c1:
+        num_groups = st.number_input(
+            "Groups", min_value=1, max_value=max(1, len(df)), value=2
+        )
+    with c2:
+        st.info(f"Participants: {len(df)}")
+        st.caption(
+            f"Note: Names ending in '{config.ADVANTAGE_CHAR}' are treated as Star players."
+        )
 
-                                # Visual Display of groups (Constrained)
-                                if SHEET_WITH_CONSTRAINT in results:
-                                    st.subheader("Preview: Constrained Solution")
-                                    tabs = st.tabs(
-                                        [
-                                            f"Group {g['id']}"
-                                            for g in results[SHEET_WITH_CONSTRAINT]
-                                        ]
-                                    )
-                                    for i, tab in enumerate(tabs):
-                                        g = results[SHEET_WITH_CONSTRAINT][i]
-                                        with tab:
-                                            st.write(f"**Average:** {g['avg']:.2f}")
-                                            st.table(pd.DataFrame(g["members"]))
+    c_back, c_go = st.columns([1, 5])
+    if c_back.button("⬅ Back"):
+        go_to_step(1)
 
-    except Exception as e:
-        # Log full traceback for debugging, but keep UI message simple
-        logger.exception("Error processing uploaded file")
-        st.error(f"Error processing file: {e}")
+    if c_go.button("🚀 Generate Groupings", type="primary"):
+        st.session_state.num_groups_target = num_groups
+
+        status_box = st.empty()
+
+        with st.spinner("Initializing solver engine..."):
+            result_df = solver_interface.run_optimization(
+                st.session_state.participants_df.to_dict("records"),
+                st.session_state.num_groups_target,
+                status_box,
+            )
+
+        if result_df is not None:
+            st.session_state.results_df = result_df
+            status_box.success("Optimization Complete!")
+            time.sleep(0.5)
+            go_to_step(3)
+        else:
+            status_box.error("No solution found. Try reducing constraints.")
+
+# ==========================================
+# STEP 3: RESULTS
+# ==========================================
+elif st.session_state.step == 3:
+    # --- Top Navigation ---
+    col_top_back, col_top_title = st.columns([1, 6])
+    if col_top_back.button("⬅ Back to Config"):
+        go_to_step(2)
+    with col_top_title:
+        st.header("Step 3: Results")
+
+    if "interactive_df" not in st.session_state:
+        st.session_state.interactive_df = st.session_state.results_df.copy()
+
+    # View Toggle
+    view_mode = st.radio(
+        "Display Mode:",
+        ["📝 Editor (Table)", "🃏 Group Cards (Visual)"],
+        horizontal=True,
+    )
+
+    st.divider()
+
+    # --- Main Content ---
+    if st.session_state.interactive_df is None or st.session_state.interactive_df.empty:
+        st.error("No results to display. Please go back and regenerate.")
+    else:
+        if view_mode == "📝 Editor (Table)":
+            stats_col, editor_col = st.columns([1, 3])
+
+            with editor_col:
+                st.subheader("Edit Assignments")
+                edited_df = st.data_editor(
+                    st.session_state.interactive_df,
+                    column_config={
+                        config.COL_GROUP: st.column_config.NumberColumn(
+                            "Group ID",
+                            min_value=1,
+                            max_value=st.session_state.num_groups_target,
+                            format="%d",
+                        ),
+                        config.COL_SCORE: st.column_config.NumberColumn(disabled=True),
+                        config.COL_NAME: st.column_config.TextColumn(disabled=True),
+                    },
+                    hide_index=True,
+                    use_container_width=True,
+                )
+                st.session_state.interactive_df = edited_df
+
+            with stats_col:
+                st.subheader("Live Stats")
+                gdf = (
+                    edited_df.groupby(config.COL_GROUP)[config.COL_SCORE]
+                    .agg(["count", "mean", "sum"])
+                    .reset_index()
+                )
+                gdf.columns = ["Group", "Count", "Avg", "Sum"]
+                st.metric("Std Dev", f"{gdf['Avg'].std():.4f}")
+                st.dataframe(gdf.style.format({"Avg": "{:.2f}"}), hide_index=True)
+
+        else:
+            # Card View
+            results_renderer.render_group_cards(st.session_state.interactive_df)
+
+    st.divider()
+
+    # --- Footer Actions ---
+    c_dl, c_reset = st.columns([1, 1])
+
+    excel_data = exporter.generate_excel_bytes(
+        st.session_state.interactive_df,
+        config.COL_GROUP,
+        config.COL_SCORE,
+        config.COL_NAME,
+    )
+    c_dl.download_button(
+        "📥 Download Excel",
+        excel_data,
+        "balanced_groups.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        type="primary",
+    )
+
+    if c_reset.button("🔄 Start Over"):
+        st.session_state.clear()
+        st.rerun()
