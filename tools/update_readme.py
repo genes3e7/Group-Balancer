@@ -23,7 +23,7 @@ def load_gitignore_patterns(startpath: str) -> list[str]:
     """
     # Default ignores to ensure clean output even without .gitignore
     patterns = [".git", "__pycache__", ".DS_Store", "venv", ".venv", ".idea", ".vscode"]
-    
+
     gitignore_path = os.path.join(startpath, ".gitignore")
     if os.path.exists(gitignore_path):
         with open(gitignore_path, "r", encoding="utf-8") as f:
@@ -73,7 +73,7 @@ def generate_tree(startpath: str) -> str:
         str: Formatted file tree string.
     """
     tree_lines = ["```text", "."]
-    
+
     # Load ignore patterns once
     patterns = load_gitignore_patterns(startpath)
 
@@ -83,7 +83,7 @@ def generate_tree(startpath: str) -> str:
         # This prevents os.walk from entering ignored directories (like venv or artifacts)
         # and removes them from the generated tree.
         dirs[:] = [d for d in dirs if not should_ignore(d, True, patterns)]
-        
+
         # Sort for consistent output
         dirs.sort()
         files.sort()
