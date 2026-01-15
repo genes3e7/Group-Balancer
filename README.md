@@ -1,96 +1,170 @@
-# Advanced Group Balancer
+# ⚖️ Group Balancer
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app)
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app/)
+[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.10 - 3.14](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
-A high-performance Web Application for **mathematically optimal** group distribution. This tool utilizes **Google OR-Tools (CP-SAT)** to solve the partitioning problem deterministically, finding the best possible balance of scores within a set time limit directly in your browser.
+A powerful, mathematical team generation tool built with **Streamlit** and **Google OR-Tools**.
 
-## 🔗 Live Demo
+This application solves the "fair partition" problem by ensuring:
+1. **Skill Balance:** Minimizes the difference in average scores between groups.
+2. **Expert Distribution:** "Star" players (e.g., leaders/experts) are spread evenly across teams.
+3. **Interactive Control:** Users can manually tweak assignments after generation with live statistical feedback.
 
-**Access the tool here:** [group-balancer.streamlit.app](https://group-balancer.streamlit.app)
+---
 
-## Key Features
+## 🛡️ Data Privacy & Security
 
-* **Optimization Engine:** Uses the CP-SAT constraint solver to minimize standard deviation. It seeks the global optimum and returns the best solution found within the execution time limit (returning `cp_model.OPTIMAL` if proven, or `cp_model.FEASIBLE` if the limit is reached).
-* **Web Interface:** Simple drag-and-drop Excel/CSV upload. No command line required.
-* **Complex Constraints:**
-  * **Size Balancing:** Automatically calculates the optimal mix of group sizes so the size difference is never more than 1.
-  * **Star Separation:** Strictly enforces that "Star" (*) players are distributed as evenly as possible across teams.
-* **High Precision:** Uses integer scaling (up to 5 decimal places) to prevent floating-point math errors.
-* **Instant Export:** Download your results directly as a formatted Excel file.
+This application is designed to be **stateless and secure**:
+* **No Persistent Storage:** When using the Web UI, uploaded files and generated results exist **only in memory (RAM)** during your active session. They are *not* saved to the server's hard drive or a database.
+* **Session Isolation:** Each user's data is isolated via Streamlit's session state mechanism. Concurrent users cannot see or access each other's data.
+* **Local Execution:** The solver runs entirely on the host machine. No data is sent to external cloud APIs for processing.
 
-## How It Works
+---
 
-This tool moves away from "guessing" algorithms (like shuffling players until things look good) and uses **Constraint Programming**.
+## 🧩 How It Works
+
+The tool uses the **CP-SAT Solver** (Constraint Programming - Satisfiability) from Google OR-Tools. Instead of random shuffling or simple greedy algorithms, it models the problem as an integer optimization task:
+
+1. **Variables:** A boolean matrix defining "is person $P$ in group $G$?".
+2. **Constraints:**
+   - Every person must belong to exactly one group.
+   - Group sizes must be balanced (difference $\le 1$).
+   - **Star Logic:** If a name ends with `*` (e.g., `Captain*`), the solver forces these individuals to be distributed as evenly as possible (e.g., 2 per group).
+3. **Objective:** Minimize the **Sum of Absolute Deviations** of group totals from the ideal average.
+
+### Workflow Diagram
 
 ```mermaid
 sequenceDiagram
-    participant User as User
-    participant UI as Streamlit UI
-    participant Validator as Data Validator
-    participant Optimizer as OR-Tools Solver
-    participant ExcelGen as Excel Generator
+    actor User
+    participant Browser as Web UI (Streamlit)
+    participant Core as Data Engine
+    participant Solver as OR-Tools (CP-SAT)
 
-    User->>UI: Upload Excel/CSV (Name, Score)
-    UI->>Validator: Validate & normalize data
-    Validator-->>UI: Return parsed preview
-    User->>UI: Set num_groups & respect_stars
-    User->>UI: Trigger optimization
-    UI->>Optimizer: solve_with_ortools(participants, num_groups, respect_stars)
-    Optimizer->>Optimizer: Build CP-SAT model (assignment vars, group size)
-    Optimizer->>Optimizer: Minimize deviation, solve with time limit
-    Optimizer-->>UI: Return grouped results
-    UI->>ExcelGen: generate_excel_bytes(final_results)
-    ExcelGen-->>UI: Return Excel bytes for download
+    %% Step 1
+    User->>Browser: Uploads Excel/CSV or Edits Table
+    Browser->>Core: Parses & Validates Data (In-Memory)
+    Core-->>Browser: Returns Clean DataFrame
+
+    %% Step 2
+    User->>Browser: Sets # of Groups & Clicks "Generate"
+    Browser->>Solver: inputs = {Participants, GroupCount}
+    
+    rect rgb(240, 248, 255)
+    note right of Solver: Optimization Loop (Default 300s)
+    Solver->>Solver: Define Variables & Constraints
+    Solver->>Solver: Minimize Sum of Abs Deviations
+    end
+    
+    Solver-->>Browser: Returns Optimal Grouping
+    
+    %% Step 3
+    Browser->>User: Displays Group Cards & Stats
+    
+    opt Manual Adjustment
+        User->>Browser: Drags/Changes Group ID
+        Browser-->>User: Live Stats Update (StdDev recalculation)
+    end
+    
+    User->>Browser: Clicks "Download Excel"
+    Browser-->>User: balanced_groups.xlsx (Generated from RAM)
 ```
 
-### 1. The "Sudoku" Approach
-Imagine a Sudoku puzzle. You don't solve it by throwing random numbers at the grid; you solve it by logic. The **CP-SAT Solver** works similarly. We tell it the rules (everyone must be in a group, groups must be balanced, stars must be separated), and it uses advanced algebra to "prune" impossible combinations until only the best valid solution remains.
+---
 
-### 2. Balancing Unequal Groups
-If you have 26 people and want 6 groups, you inevitably have some groups of 4 and some of 5.
-* Groups with **fewer members** need a lower Total Score to have a "good average."
-* Groups with **more members** need a higher Total Score.
+## 🚀 Quick Start
 
-The solver calculates the **Exact Target Score** for every group size and minimizes the deviation from that target.
+### 1. Prerequisites
+- Python 3.10 - 3.14
+- [Optional] Virtual Environment (Recommended)
 
-## Input Data Format
+### 2. Installation
+Clone the repository and install dependencies:
 
-Prepare an Excel (`.xlsx`) or CSV file with the following headers:
+```bash
+# Create and activate virtual environment (Windows)
+python -m venv venv
+venv\Scripts\activate
 
-| Name       | Score |
-| :---       | :---  |
-| Player A   | 88    |
-| Player B* | 95    |
-| Player C   | 40    |
+# Install requirements
+pip install -r requirements.txt
+```
 
-* **Name:** Participant name. Add a `*` suffix (e.g., `Name*`) to mark "Star" participants who should be separated across groups.
-* **Score:** The numerical value used for balancing.
+### 3. Running the App (Web UI)
+The recommended way to use the tool is via the Streamlit interface:
 
-## Local Installation & Usage
+```bash
+streamlit run app.py
+```
+*The app will automatically open in your default browser at `http://localhost:8501`.*
 
-If you prefer to run the application locally instead of using the web version:
+### 4. Running the CLI (Headless)
+If you prefer a command-line interface for batch processing:
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/genes3e7/group-balancer.git
-    cd group-balancer
-    ```
+```bash
+python group_balancer.py
+```
 
-2.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
+---
 
-3.  **Run the App:**
-    ```bash
-    streamlit run app.py
-    ```
-    The application will open automatically in your web browser.
+## 📂 Project Structure
 
-## License
+The project has been refactored into a modular `src/` architecture:
 
-### Copyright
+<!-- PROJECT_TREE_START -->
+```text
+.
+│   ├── GroupBalancer.spec
+│   ├── LICENSE
+│   ├── README.md
+│   ├── all_versions.txt
+│   ├── app.py
+│   ├── build.py
+│   ├── group_balancer.py
+│   ├── pyproject.toml
+│   ├── requirements-dev.in
+│   ├── requirements-dev.txt
+│   ├── requirements.in
+│   ├── requirements.txt
+│   ├── sorted_versions.txt
+│   ├── artifacts/
+│   │   ├── python_version_3.10.txt
+│   │   ├── python_version_3.11.txt
+│   │   ├── python_version_3.12.txt
+│   │   ├── python_version_3.13.txt
+│   │   └── python_version_3.14.txt
+│   ├── src/
+│   │   ├── __init__.py
+│   │   ├── core/
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── data_loader.py
+│   │   │   ├── solver.py
+│   │   │   └── solver_interface.py
+│   │   ├── ui/
+│   │   │   ├── __init__.py
+│   │   │   ├── components.py
+│   │   │   ├── results_renderer.py
+│   │   │   ├── session_manager.py
+│   │   │   └── steps.py
+│   │   ├── utils/
+│   │   │   ├── __init__.py
+│   │   │   ├── exporter.py
+│   │   │   └── group_helpers.py
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_config.py
+│   │   ├── test_data_loader.py
+│   │   ├── test_exporter.py
+│   │   └── test_solver.py
+│   ├── tools/
+│   │   ├── __init__.py
+│   │   └── update_readme.py
+```
+<!-- PROJECT_TREE_END -->
 
-Copyright (c) 2025 Tan Eugene
-
-This project is licensed for **Personal Use Only**. Commercial usage is strictly prohibited without prior written consent. See the `LICENSE` file for details.
+## 🛠 Configuration
+You can adjust solver settings in `src/core/config.py`:
+- `SOLVER_TIMEOUT`: Maximum time (seconds) to search for a solution.
+- `SCALE_FACTOR`: Precision multiplier for floating-point scores.
