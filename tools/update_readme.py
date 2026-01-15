@@ -23,7 +23,7 @@ def load_gitignore_patterns(startpath: str) -> list[str]:
     """
     # Default ignores to ensure clean output even without .gitignore
     patterns = [".git", "__pycache__", ".DS_Store", "venv", ".venv", ".idea", ".vscode"]
-
+    
     gitignore_path = os.path.join(startpath, ".gitignore")
     if os.path.exists(gitignore_path):
         with open(gitignore_path, "r", encoding="utf-8") as f:
@@ -43,7 +43,7 @@ def should_ignore(name: str, is_dir: bool, patterns: list[str]) -> bool:
 
     Note:
         This implementation primarily matches against the file/directory basename.
-        Complex path-based patterns (e.g. 'foo/bar' or '**/*.log') are not
+        Complex path-based patterns (e.g. 'foo/bar' or '**/*.log') are not 
         fully supported by simple fnmatch on the basename.
 
     Args:
@@ -81,7 +81,7 @@ def generate_tree(startpath: str) -> str:
         str: Formatted file tree string.
     """
     tree_lines = ["```text", "."]
-
+    
     # Load ignore patterns once
     patterns = load_gitignore_patterns(startpath)
 
@@ -91,7 +91,7 @@ def generate_tree(startpath: str) -> str:
         # This prevents os.walk from entering ignored directories (like venv or artifacts)
         # and removes them from the generated tree.
         dirs[:] = [d for d in dirs if not should_ignore(d, True, patterns)]
-
+        
         # Sort for consistent output
         dirs.sort()
         files.sort()
@@ -147,28 +147,32 @@ def update_readme():
 
         # Check for duplicate markers
         if content.count(start_marker) > 1 or content.count(end_marker) > 1:
-            print(
-                f"Error: Multiple occurrences of markers found in {readme_path}. Please resolve manually."
-            )
+            print(f"Error: Multiple occurrences of markers found in {readme_path}. Please resolve manually.")
             return
 
         # Validate existence and correct order
         if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
             # Safe slicing using validated indices
             pre = content[:start_idx]
-            post = content[end_idx + len(end_marker) :]
-
+            post = content[end_idx + len(end_marker):]
+            
             new_content = f"{pre}{start_marker}\n{tree}\n{end_marker}{post}"
 
             with open(readme_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
             print("Successfully updated README.md with new project structure.")
-
+        
         else:
             if start_idx != -1 and end_idx != -1 and start_idx > end_idx:
-                print(
-                    f"Error: Markers found but in wrong order (END before START) in {readme_path}."
-                )
+                print(f"Error: Markers found but in wrong order (END before START) in {readme_path}.")
+                return
+            
+            # Warn about orphaned markers to prevent corruption
+            if start_idx != -1 and end_idx == -1:
+                print(f"Warning: START marker found without END marker in {readme_path}.")
+                return
+            elif end_idx != -1 and start_idx == -1:
+                print(f"Warning: END marker found without START marker in {readme_path}.")
                 return
 
             print("Markers not found or invalid. Appending tree to end of file.")
