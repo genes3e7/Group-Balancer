@@ -22,7 +22,7 @@ if "manual_df" not in st.session_state:
     )
 
 # Render Progress & Description
-components.render_steps_bar(st.session_state.step)
+components.render_page_header(st.session_state.step)
 
 
 def go_to_step(step):
@@ -99,9 +99,20 @@ if st.session_state.step == 1:
                 # Clean Data types before proceeding
                 clean_df = edited_df.copy()
                 clean_df[config.COL_NAME] = clean_df[config.COL_NAME].astype(str)
+
+                # Handle Score Coercion with Warning
                 clean_df[config.COL_SCORE] = pd.to_numeric(
                     clean_df[config.COL_SCORE], errors="coerce"
-                ).fillna(0)
+                )
+
+                # Check for NaNs (invalid scores)
+                coerced_count = clean_df[config.COL_SCORE].isna().sum()
+                clean_df[config.COL_SCORE] = clean_df[config.COL_SCORE].fillna(0)
+
+                if coerced_count > 0:
+                    st.warning(
+                        f"⚠️ {coerced_count} invalid score(s) were set to 0. Please check your input."
+                    )
 
                 st.session_state.participants_df = clean_df
                 go_to_step(2)
@@ -144,6 +155,9 @@ elif st.session_state.step == 2:
 
         if result_df is not None:
             st.session_state.results_df = result_df
+            # Fix: Reset interactive view to match new results immediately
+            st.session_state.interactive_df = result_df.copy()
+
             status_box.success("Optimization Complete!")
             time.sleep(0.5)
             go_to_step(3)

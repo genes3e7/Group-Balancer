@@ -32,7 +32,8 @@ def generate_excel_bytes(df_results, col_group, col_score, col_name):
                 )
 
         rows = []
-        groups.sort(key=lambda x: x["id"])
+        # Redundant sort removed (groups are already sorted via unique_groups loop)
+
         # Create pairs of groups for side-by-side view
         for i in range(0, len(groups), 2):
             g1 = groups[i]

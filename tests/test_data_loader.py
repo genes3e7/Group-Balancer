@@ -39,7 +39,16 @@ def test_load_data_valid(mock_csv, mock_excel):
 
 
 def test_load_data_invalid_columns():
+    """Test error when Name column is missing."""
     with patch("src.core.data_loader.pd.read_csv") as mock_read:
         mock_read.return_value = pd.DataFrame({"Wrong": ["A"], "Score": [1]})
+        data = data_loader.load_data("test.csv")
+        assert data is None
+
+
+def test_load_data_missing_score_column():
+    """Test error when Score column is missing."""
+    with patch("src.core.data_loader.pd.read_csv") as mock_read:
+        mock_read.return_value = pd.DataFrame({"Name": ["Alice"], "Wrong": [1]})
         data = data_loader.load_data("test.csv")
         assert data is None

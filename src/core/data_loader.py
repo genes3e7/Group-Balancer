@@ -1,11 +1,11 @@
 """
 Data Loader Module.
 
-This module is responsible for:
-1. interacting with the user to get file paths.
-2. sanitizing drag-and-drop input strings.
-3. loading data from Excel or CSV files.
-4. validating the structure and content of the loaded data.
+This module handles:
+1. User interaction for retrieving file paths via standard input.
+2. Sanitization of input strings (removing artifacts from drag-and-drop).
+3. Loading and parsing of data from Excel or CSV files.
+4. Validation and cleaning of the loaded dataset.
 """
 
 import os
@@ -15,14 +15,16 @@ from src.core import config
 
 def get_file_path_from_user() -> str:
     """
-    Prompts the user to input a file path via standard input.
+    Prompt the user to input a file path via standard input.
 
-    Handles common artifacts introduced by drag-and-dropping files into
-    terminal windows, such as surrounding quotes or leading '& ' symbols
-    often seen in PowerShell.
+    This function handles artifacts commonly introduced by dragging and dropping
+    files into a terminal, such as surrounding quotes or PowerShell's '& ' prefix.
 
     Returns:
         str: The sanitized, absolute file path entered by the user.
+
+    Raises:
+        SystemExit: If the user interrupts the input (Ctrl+C).
     """
     print("\n[INPUT REQUIRED]")
     print("Please drag and drop your Excel/CSV file here and press Enter:")
@@ -31,13 +33,13 @@ def get_file_path_from_user() -> str:
         try:
             user_input = input(">> ").strip()
 
-            # Remove leading '& ' often added by PowerShell drag-and-drop
+            # Sanitize input: Remove PowerShell '& ' artifacts
             if user_input.startswith("& "):
                 user_input = user_input[2:]
             elif user_input.startswith("&"):
                 user_input = user_input[1:]
 
-            # Remove surrounding quotes (common in Windows/macOS paths)
+            # Sanitize input: Remove surrounding quotes
             user_input = user_input.strip('"').strip("'").strip()
 
             if not user_input:
@@ -57,21 +59,27 @@ def get_file_path_from_user() -> str:
 
 def load_data(filepath: str) -> list[dict] | None:
     """
-    Loads data from an Excel or CSV file into a list of dictionaries.
+    Load data from an Excel or CSV file into a list of dictionaries.
 
-    Performs validation to ensure required columns exist and cleans up data types.
+    This function performs the following steps:
+    1. Determines file type by extension.
+    2. Reads the file into a pandas DataFrame.
+    3. Normalizes column headers.
+    4. Validates the existence of required columns.
+    5. Cleans data types (strings for names, numerics for scores).
 
     Args:
         filepath (str): The absolute path to the source file.
 
     Returns:
-        list[dict] | None: A list of participant records if successful,
-                           or None if an error occurred.
+        list[dict] | None: A list of participant records (dict) if successful,
+                           or None if validation fails or an error occurs.
     """
     if not filepath:
         return None
 
     try:
+        # Determine loader based on extension
         if filepath.lower().endswith(".csv"):
             df = pd.read_csv(filepath)
         elif filepath.lower().endswith((".xls", ".xlsx")):
@@ -80,10 +88,10 @@ def load_data(filepath: str) -> list[dict] | None:
             print("Error: Unsupported file format. Please use .csv or .xlsx")
             return None
 
-        # Normalize column names (strip whitespace)
+        # Normalize column names
         df.columns = df.columns.str.strip()
 
-        # Validate required columns
+        # Validate schema
         if config.COL_NAME not in df.columns or config.COL_SCORE not in df.columns:
             print(
                 f"Error: Input file must contain columns '{config.COL_NAME}' and '{config.COL_SCORE}'."
@@ -91,11 +99,10 @@ def load_data(filepath: str) -> list[dict] | None:
             print(f"Found columns: {list(df.columns)}")
             return None
 
-        # Clean Data
-        # Ensure names are strings and strip whitespace
+        # Clean Data: Enforce string type for names
         df[config.COL_NAME] = df[config.COL_NAME].astype(str).str.strip()
 
-        # Ensure scores are numeric, coercing errors to NaN then filling with 0
+        # Clean Data: Enforce numeric type for scores, handling coercion
         df[config.COL_SCORE] = pd.to_numeric(
             df[config.COL_SCORE], errors="coerce"
         ).fillna(0)
