@@ -29,7 +29,10 @@ def load_gitignore_patterns(startpath: str) -> list[str]:
         with open(gitignore_path, "r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
-                if line and not line.startswith("#"):
+                # Skip comments and negation patterns (simple implementation)
+                # Negation patterns (starting with !) are currently ignored/skipped
+                # rather than implemented logic-wise.
+                if line and not line.startswith("#") and not line.startswith("!"):
                     patterns.append(line)
     return patterns
 
@@ -37,6 +40,11 @@ def load_gitignore_patterns(startpath: str) -> list[str]:
 def should_ignore(name: str, is_dir: bool, patterns: list[str]) -> bool:
     """
     Checks if a file or directory name matches any of the ignore patterns.
+
+    Note:
+        This implementation primarily matches against the file/directory basename.
+        Complex path-based patterns (e.g. 'foo/bar' or '**/*.log') are not 
+        fully supported by simple fnmatch on the basename.
 
     Args:
         name (str): The name of the file or directory.
@@ -95,23 +103,23 @@ def generate_tree(startpath: str) -> str:
         # Use relpath for robust level calculation
         try:
             rel_path = os.path.relpath(root, startpath)
-            level = rel_path.count(os.sep)
+            # If root is startpath, rel_path is '.', count of sep is 0
+            if rel_path == ".":
+                level = 0
+            else:
+                level = rel_path.count(os.sep) + 1
         except ValueError:
             level = 0
-
-        if root == startpath:
-            level = 0
-        else:
-            level += 1
 
         indent = "│   " * level
 
         if root != startpath:
+            # Note: Connectors for directories are simplified here.
             tree_lines.append(f"{indent}├── {os.path.basename(root)}/")
 
         subindent = "│   " * (level + 1)
         for i, f in enumerate(files):
-            # Use '└──' if it's the last file and no subdirectories follow
+            # Use '└──' if it's the last file and no subdirectories follow in this folder
             connector = "└──" if i == len(files) - 1 and not dirs else "├──"
             tree_lines.append(f"{subindent}{connector} {f}")
 
@@ -125,6 +133,7 @@ def update_readme():
     """
     tree = generate_tree(".")
     readme_path = "README.md"
+    
     # Concrete markers defined to prevent logic errors during split
     start_marker = "<!-- PROJECT_TREE_START -->"
     end_marker = "<!-- PROJECT_TREE_END -->"
@@ -133,22 +142,32 @@ def update_readme():
         with open(readme_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        if (
-            start_marker
-            and end_marker
-            and start_marker in content
-            and end_marker in content
-        ):
-            # Replace the content between markers
-            pre = content.split(start_marker)[0]
-            post = content.split(end_marker)[1]
+        start_idx = content.find(start_marker)
+        end_idx = content.find(end_marker)
+
+        # Check for duplicate markers
+        if content.count(start_marker) > 1 or content.count(end_marker) > 1:
+            print(f"Error: Multiple occurrences of markers found in {readme_path}. Please resolve manually.")
+            return
+
+        # Validate existence and correct order
+        if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
+            # Safe slicing using validated indices
+            pre = content[:start_idx]
+            post = content[end_idx + len(end_marker):]
+            
             new_content = f"{pre}{start_marker}\n{tree}\n{end_marker}{post}"
 
             with open(readme_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
             print("Successfully updated README.md with new project structure.")
+        
         else:
-            print("Markers not found. Appending tree to end of file.")
+            if start_idx != -1 and end_idx != -1 and start_idx > end_idx:
+                print(f"Error: Markers found but in wrong order (END before START) in {readme_path}.")
+                return
+
+            print("Markers not found or invalid. Appending tree to end of file.")
             with open(readme_path, "a", encoding="utf-8") as f:
                 f.write(
                     f"\n## Project Structure\n\n{start_marker}\n{tree}\n{end_marker}\n"
