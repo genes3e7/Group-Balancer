@@ -34,7 +34,24 @@ def generate_tree(startpath: str) -> str:
         ]
         files = [f for f in files if not f.startswith(".")]
 
-        level = root.replace(startpath, "").count(os.sep)
+        # Use relpath for robust level calculation, avoiding replacement issues
+        try:
+            level = os.path.relpath(root, startpath).count(os.sep)
+        except ValueError:
+            level = 0
+
+        # Adjust level if root is same as startpath (relpath is '.')
+        if root == startpath:
+            level = 0
+        else:
+            # os.walk yields subdirectories; relpath calculation handles nesting depth
+            # If root is "./src", level is 0 (assuming startpath is ".").
+            # We want level based on depth relative to startpath.
+            if os.path.relpath(root, startpath) == ".":
+                level = 0
+            else:
+                level = os.path.relpath(root, startpath).count(os.sep) + 1
+
         indent = "│   " * level
 
         if root != startpath:
@@ -56,8 +73,9 @@ def update_readme():
     """
     tree = generate_tree(".")
     readme_path = "README.md"
-    start_marker = "<!-- PROJECT_TREE_START -->"
-    end_marker = "<!-- PROJECT_TREE_END -->"
+    # Concrete markers defined to prevent logic errors during split
+    start_marker = ""
+    end_marker = ""
 
     if os.path.exists(readme_path):
         with open(readme_path, "r", encoding="utf-8") as f:

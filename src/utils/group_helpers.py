@@ -29,6 +29,10 @@ def aggregate_groups(
     if df is None or df.empty:
         return groups
 
+    # Defensive check: ensure the group column exists
+    if col_group not in df.columns:
+        return groups
+
     unique_groups = sorted(df[col_group].unique())
 
     for g_id in unique_groups:

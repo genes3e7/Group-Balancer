@@ -142,6 +142,7 @@ def render_step_2():
     if c_go.button("🚀 Generate Groupings", type="primary"):
         st.session_state.num_groups_target = num_groups
         status_box = st.empty()
+        solver_error = False
 
         with st.spinner("Initializing solver engine..."):
             try:
@@ -153,6 +154,7 @@ def render_step_2():
             except Exception as e:
                 status_box.error(f"Solver encountered an error: {e}")
                 result_df = None
+                solver_error = True
 
         if result_df is not None:
             st.session_state.results_df = result_df
@@ -161,7 +163,8 @@ def render_step_2():
             time.sleep(0.5)
             session_manager.go_to_step(3)
         else:
-            if not status_box._text_container:  # Don't overwrite if error msg exists
+            # Use explicit flag instead of relying on private attributes
+            if not solver_error:
                 status_box.error("No solution found. Try reducing constraints.")
 
 
@@ -287,7 +290,18 @@ def _render_footer_actions(has_data: bool):
             type="primary",
         )
 
-    # Added confirmation checkbox for UX safety
-    if c_reset.button("🔄 Start Over"):
-        st.session_state.clear()
-        st.rerun()
+    # Confirmation flow for UX safety
+    with c_reset:
+        if st.button("🔄 Start Over"):
+            st.session_state.confirm_reset = True
+            st.rerun()
+
+        if st.session_state.get("confirm_reset"):
+            st.warning("Are you sure? This will clear all data.")
+            col_yes, col_no = st.columns(2)
+            if col_yes.button("Yes, clear"):
+                st.session_state.clear()
+                st.rerun()
+            if col_no.button("Cancel"):
+                st.session_state.confirm_reset = False
+                st.rerun()
