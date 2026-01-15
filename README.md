@@ -115,22 +115,52 @@ The project has been refactored into a modular `src/` architecture:
 <!-- PROJECT_TREE_START -->
 ```text
 .
-├── app.py                  # Main Entry Point (Streamlit)
-├── group_balancer.py       # Legacy CLI Entry Point
-├── requirements.txt        # Dependency list
-├── src/
-│   ├── core/               # Business Logic
-│   │   ├── config.py       # Constants (Column names, Solver settings)
-│   │   ├── solver.py       # Raw OR-Tools Logic
-│   │   ├── solver_interface.py # Adapter for Solver API & Threading
-│   │   └── data_loader.py  # File I/O
-│   ├── ui/                 # Frontend Components
-│   │   ├── components.py   # Page setup, Progress bars
-│   │   ├── results_renderer.py # "Card View" visualization
-│   │   ├── session_manager.py  # Session state initialization and step navigation
-│   │   └── steps.py        # Step-specific UI rendering (Data Entry, Configuration, Results)
-│   └── utils/              # Helpers
-│       └── exporter.py     # Excel Generation Logic
+│   ├── GroupBalancer.spec
+│   ├── LICENSE
+│   ├── README.md
+│   ├── all_versions.txt
+│   ├── app.py
+│   ├── build.py
+│   ├── group_balancer.py
+│   ├── pyproject.toml
+│   ├── requirements-dev.in
+│   ├── requirements-dev.txt
+│   ├── requirements.in
+│   ├── requirements.txt
+│   ├── sorted_versions.txt
+│   ├── artifacts/
+│   │   ├── python_version_3.10.txt
+│   │   ├── python_version_3.11.txt
+│   │   ├── python_version_3.12.txt
+│   │   ├── python_version_3.13.txt
+│   │   └── python_version_3.14.txt
+│   ├── src/
+│   │   ├── __init__.py
+│   │   ├── core/
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── data_loader.py
+│   │   │   ├── solver.py
+│   │   │   └── solver_interface.py
+│   │   ├── ui/
+│   │   │   ├── __init__.py
+│   │   │   ├── components.py
+│   │   │   ├── results_renderer.py
+│   │   │   ├── session_manager.py
+│   │   │   └── steps.py
+│   │   ├── utils/
+│   │   │   ├── __init__.py
+│   │   │   ├── exporter.py
+│   │   │   └── group_helpers.py
+│   ├── tests/
+│   │   ├── __init__.py
+│   │   ├── test_config.py
+│   │   ├── test_data_loader.py
+│   │   ├── test_exporter.py
+│   │   └── test_solver.py
+│   ├── tools/
+│   │   ├── __init__.py
+│   │   └── update_readme.py
 ```
 <!-- PROJECT_TREE_END -->
 
