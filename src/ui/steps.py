@@ -41,17 +41,6 @@ def _load_uploaded_file():
             st.error(f"Error reading file: {e}")
 
 
-def _update_results_state():
-    """
-    Callback for Step 3 editor changes.
-    Syncs the interactive editor state with the main session state.
-    """
-    if "results_editor" in st.session_state:
-        new_value = st.session_state["results_editor"]
-        if isinstance(new_value, pd.DataFrame):
-            st.session_state.interactive_df = new_value
-
-
 def render_step_1():
     """
     Renders the Data Entry step (Step 1).
@@ -155,11 +144,15 @@ def render_step_2():
         status_box = st.empty()
 
         with st.spinner("Initializing solver engine..."):
-            result_df = solver_interface.run_optimization(
-                st.session_state.participants_df.to_dict("records"),
-                st.session_state.num_groups_target,
-                status_box,
-            )
+            try:
+                result_df = solver_interface.run_optimization(
+                    st.session_state.participants_df.to_dict("records"),
+                    st.session_state.num_groups_target,
+                    status_box,
+                )
+            except Exception as e:
+                status_box.error(f"Solver encountered an error: {e}")
+                result_df = None
 
         if result_df is not None:
             st.session_state.results_df = result_df
@@ -168,7 +161,8 @@ def render_step_2():
             time.sleep(0.5)
             session_manager.go_to_step(3)
         else:
-            status_box.error("No solution found. Try reducing constraints.")
+            if not status_box._text_container:  # Don't overwrite if error msg exists
+                status_box.error("No solution found. Try reducing constraints.")
 
 
 def render_step_3():
@@ -293,6 +287,7 @@ def _render_footer_actions(has_data: bool):
             type="primary",
         )
 
+    # Added confirmation checkbox for UX safety
     if c_reset.button("🔄 Start Over"):
         st.session_state.clear()
         st.rerun()

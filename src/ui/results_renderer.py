@@ -8,6 +8,7 @@ statistics for each group in a grid layout.
 import streamlit as st
 import pandas as pd
 from src.core import config
+from src.utils import group_helpers
 
 
 def render_group_cards(df: pd.DataFrame) -> None:
@@ -21,33 +22,10 @@ def render_group_cards(df: pd.DataFrame) -> None:
         st.warning("No groups to display.")
         return
 
-    groups = []
-    unique_groups = sorted(df[config.COL_GROUP].unique())
-
-    for g_id in unique_groups:
-        members = df[df[config.COL_GROUP] == g_id].to_dict("records")
-        scores = []
-        for m in members:
-            try:
-                scores.append(float(m[config.COL_SCORE]))
-            except (ValueError, TypeError):
-                scores.append(0.0)
-
-        stars = 0
-        for m in members:
-            val = str(m[config.COL_NAME])
-            if val.endswith(config.ADVANTAGE_CHAR):
-                stars += 1
-
-        groups.append(
-            {
-                "id": g_id,
-                "members": members,
-                "count": len(members),
-                "avg": sum(scores) / len(scores) if scores else 0,
-                "stars": stars,
-            }
-        )
+    # Use shared helper to get structured data
+    groups = group_helpers.aggregate_groups(
+        df, config.COL_GROUP, config.COL_SCORE, config.COL_NAME
+    )
 
     for i in range(0, len(groups), 2):
         g1 = groups[i]

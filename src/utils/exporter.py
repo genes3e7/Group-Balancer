@@ -8,6 +8,7 @@ and includes summary statistics in the generated Excel file.
 import pandas as pd
 import numpy as np
 import io
+from src.utils import group_helpers
 
 
 def generate_excel_bytes(
@@ -31,26 +32,8 @@ def generate_excel_bytes(
     """
     output = io.BytesIO()
 
-    groups = []
-    if not df_results.empty:
-        unique_groups = sorted(df_results[col_group].unique())
-        for g_id in unique_groups:
-            members = df_results[df_results[col_group] == g_id].to_dict("records")
-            if members:
-                scores = []
-                for m in members:
-                    try:
-                        scores.append(float(m[col_score]))
-                    except (ValueError, TypeError):
-                        scores.append(0.0)
-
-                groups.append(
-                    {
-                        "id": g_id,
-                        "members": members,
-                        "avg": sum(scores) / len(scores) if scores else 0,
-                    }
-                )
+    # Use shared helper to get structured data
+    groups = group_helpers.aggregate_groups(df_results, col_group, col_score, col_name)
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         sheet_name = "Balanced_Groups"

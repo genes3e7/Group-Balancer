@@ -42,11 +42,7 @@ def generate_tree(startpath: str) -> str:
 
         subindent = "│   " * (level + 1)
         for i, f in enumerate(files):
-            # Use '└──' if it's the last file and there are no subdirectories in this folder
-            # Note: os.walk logic visits subdirs after files usually, so we stick to '├──'
-            # for consistency unless we fully implement a recursive printer.
-            # However, standard trees often use '└──' for the last element.
-            # Simplified approach:
+            # Use '└──' if it's the last file for aesthetics
             connector = "└──" if i == len(files) - 1 and not dirs else "├──"
             tree_lines.append(f"{subindent}{connector} {f}")
 
@@ -67,7 +63,12 @@ def update_readme():
         with open(readme_path, "r", encoding="utf-8") as f:
             content = f.read()
 
-        if start_marker in content and end_marker in content:
+        if (
+            start_marker
+            and end_marker
+            and start_marker in content
+            and end_marker in content
+        ):
             pre = content.split(start_marker)[0]
             post = content.split(end_marker)[1]
             new_content = f"{pre}{start_marker}\n{tree}\n{end_marker}{post}"

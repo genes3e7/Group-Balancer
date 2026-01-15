@@ -46,7 +46,10 @@ def main():
     if success:
         print("\n=== Optimal Grouping Found ===")
         for g in result:
-            print(f"\nGroup {g['id']} (Avg: {g['avg']:.2f}, Sum: {g['current_sum']}):")
+            # Formatted current_sum to 2 decimal places for cleaner output
+            print(
+                f"\nGroup {g['id']} (Avg: {g['avg']:.2f}, Sum: {g['current_sum']:.2f}):"
+            )
             for m in g["members"]:
                 print(f" - {m[config.COL_NAME]} ({m[config.COL_SCORE]})")
     else:
