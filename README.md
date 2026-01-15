@@ -112,6 +112,7 @@ python group_balancer.py
 
 The project has been refactored into a modular `src/` architecture:
 
+<!-- PROJECT_TREE_START -->
 ```text
 .
 ├── app.py                  # Main Entry Point (Streamlit)
@@ -131,6 +132,7 @@ The project has been refactored into a modular `src/` architecture:
 │   └── utils/              # Helpers
 │       └── exporter.py     # Excel Generation Logic
 ```
+<!-- PROJECT_TREE_END -->
 
 ## 🛠 Configuration
 You can adjust solver settings in `src/core/config.py`:
