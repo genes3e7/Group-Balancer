@@ -2,7 +2,7 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10 - 3.14](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 A powerful, mathematical team generation tool built with **Streamlit** and **Google OR-Tools**.
 
@@ -76,7 +76,7 @@ sequenceDiagram
 ## 🚀 Quick Start
 
 ### 1. Prerequisites
-- Python 3.10+
+- Python 3.10 - 3.14
 - [Optional] Virtual Environment (Recommended)
 
 ### 2. Installation
