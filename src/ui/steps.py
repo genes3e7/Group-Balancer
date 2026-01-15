@@ -88,6 +88,8 @@ def render_step_1():
                     )
 
                 st.session_state.participants_df = clean_df
+                # Sync manual_df so the editor reflects cleaned data if user goes back
+                st.session_state.manual_df = clean_df.copy()
                 session_manager.go_to_step(2)
         else:
             st.warning("Please add at least one participant.")
@@ -227,7 +229,7 @@ def _render_table_view():
             key="results_editor",
         )
 
-        # 2. CHECK FOR CHANGES & RERUN [Cite: Duty-Planner Reference]
+        # 2. CHECK FOR CHANGES & RERUN
         # This "Update & Rerun" pattern ensures the stats update immediately (Live)
         # AND the state persists correctly (No Revert).
         if not edited_df.equals(st.session_state.interactive_df):
@@ -244,7 +246,13 @@ def _render_table_view():
             .reset_index()
         )
         gdf.columns = ["Group", "Count", "Avg", "Sum"]
-        st.metric("Std Dev", f"{gdf['Avg'].std():.4f}")
+
+        # Calculate Std Dev with NaN Guard (e.g., if only 1 group exists)
+        std_val = gdf["Avg"].std()
+        if pd.isna(std_val):
+            std_val = 0.0
+
+        st.metric("Std Dev", f"{std_val:.4f}")
         st.dataframe(gdf.style.format({"Avg": "{:.2f}"}), hide_index=True)
 
 

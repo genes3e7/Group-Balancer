@@ -28,5 +28,9 @@ def init_session():
 
 def go_to_step(step):
     """Updates the step state and reruns the app."""
+    # Validate step before switching
+    if step not in (1, 2, 3):
+        step = 1
+
     st.session_state.step = step
     st.rerun()
