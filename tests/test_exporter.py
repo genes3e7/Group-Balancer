@@ -9,7 +9,7 @@ from src.core import config
 
 
 def test_generate_excel_bytes():
-    """Test that Excel generation returns bytes and includes Assignments sheet."""
+    """Test that Excel generation returns bytes and contains the expected sheet."""
     df = pd.DataFrame(
         {
             config.COL_NAME: ["A", "B"],
@@ -26,13 +26,13 @@ def test_generate_excel_bytes():
     assert len(output) > 0
 
     with io.BytesIO(output) as f:
-        df_out = pd.read_excel(f, sheet_name="Assignments")
-        assert len(df_out) == 2
-        assert config.COL_GROUP in df_out.columns
+        # Read the file to ensure it's valid Excel
+        xl = pd.ExcelFile(f)
+        assert "Balanced_Groups" in xl.sheet_names
 
 
-def test_generate_excel_matrix_view():
-    """Test that the Matrix_View sheet is created and contains data."""
+def test_generate_excel_matrix_content():
+    """Test that the sheet contains the Matrix View structure."""
     df = pd.DataFrame(
         {
             config.COL_NAME: ["A", "B"],
@@ -46,12 +46,16 @@ def test_generate_excel_matrix_view():
     )
 
     with io.BytesIO(output) as f:
-        # Read Matrix_View without headers to check raw content
-        df_matrix = pd.read_excel(f, sheet_name="Matrix_View", header=None)
-        # Should contain strings like "GROUP 1" and "GROUP 2"
-        content = df_matrix.to_string()
+        # Read without headers to check raw strings
+        df_out = pd.read_excel(f, sheet_name="Balanced_Groups", header=None)
+        content = df_out.to_string()
+
+        # Verify Matrix headers exist
         assert "GROUP 1" in content
         assert "GROUP 2" in content
+        # Verify names exist
+        assert "A" in content
+        assert "B" in content
 
 
 def test_generate_excel_odd_groups():
@@ -69,8 +73,8 @@ def test_generate_excel_odd_groups():
     )
 
     with io.BytesIO(output) as f:
-        df_matrix = pd.read_excel(f, sheet_name="Matrix_View", header=None)
-        content = df_matrix.to_string()
+        df_out = pd.read_excel(f, sheet_name="Balanced_Groups", header=None)
+        content = df_out.to_string()
         assert "GROUP 1" in content
         assert "GROUP 2" in content
         assert "GROUP 3" in content
@@ -85,6 +89,8 @@ def test_generate_excel_empty():
     )
 
     with io.BytesIO(output) as f:
-        # Assignments sheet should exist but be empty
-        df_out = pd.read_excel(f, sheet_name="Assignments")
+        # Should contain the sheet but it should be largely empty
+        xl = pd.ExcelFile(f)
+        assert "Balanced_Groups" in xl.sheet_names
+        df_out = pd.read_excel(f, sheet_name="Balanced_Groups")
         assert df_out.empty

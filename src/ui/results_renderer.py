@@ -73,7 +73,7 @@ def _render_single_card(group):
             st.dataframe(
                 disp_df[[config.COL_NAME, config.COL_SCORE]],
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",  # <--- UPDATED (Line 76)
                 column_config={
                     config.COL_SCORE: st.column_config.NumberColumn(format="%.0f")
                 },

@@ -98,3 +98,19 @@ def test_solver_empty_input():
     # Case: 0 participants, 0 groups -> Invalid
     with pytest.raises(ValueError):
         solver.solve_with_ortools([], num_groups=0, respect_stars=True)
+
+
+def test_solver_zero_participants_positive_groups():
+    """Test behavior with 0 participants but valid group count."""
+    # Should result in empty groups, not an error
+    groups, success = solver.solve_with_ortools([], num_groups=2, respect_stars=True)
+    assert success is True
+    assert len(groups) == 2
+    assert len(groups[0]["members"]) == 0
+
+
+def test_solver_positive_participants_zero_groups():
+    """Test error when participants exist but zero groups requested."""
+    participants = make_participants(5)
+    with pytest.raises(ValueError):
+        solver.solve_with_ortools(participants, num_groups=0, respect_stars=True)

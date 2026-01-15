@@ -17,7 +17,7 @@ This application solves the "fair partition" problem by ensuring:
 
 This application is designed to be **stateless and secure**:
 * **No Persistent Storage:** When using the Web UI, uploaded files and generated results exist **only in memory (RAM)** during your active session. They are *not* saved to the server's hard drive or a database.
-* **Session Isolation:** Each user's data is processed in an isolated thread. Concurrent users cannot see or access each other's data.
+* **Session Isolation:** Each user's data is isolated via Streamlit's session state mechanism. Concurrent users cannot see or access each other's data.
 * **Local Execution:** The solver runs entirely on the host machine. No data is sent to external cloud APIs for processing.
 
 ---
@@ -52,7 +52,7 @@ sequenceDiagram
     Browser->>Solver: inputs = {Participants, GroupCount}
     
     rect rgb(240, 248, 255)
-    note right of Solver: Optimization Loop (Max 300s)
+    note right of Solver: Optimization Loop (Default 300s)
     Solver->>Solver: Define Variables & Constraints
     Solver->>Solver: Minimize StdDev
     end
@@ -121,6 +121,7 @@ The project has been refactored into a modular `src/` architecture:
 │   ├── core/               # Business Logic
 │   │   ├── config.py       # Constants (Column names, Solver settings)
 │   │   ├── solver.py       # Raw OR-Tools Logic
+│   │   ├── solver_interface.py # Adapter for Solver API & Threading
 │   │   └── data_loader.py  # File I/O
 │   ├── ui/                 # Frontend Components
 │   │   ├── components.py   # Page setup, Progress bars
@@ -132,4 +133,4 @@ The project has been refactored into a modular `src/` architecture:
 ## 🛠 Configuration
 You can adjust solver settings in `src/core/config.py`:
 - `SOLVER_TIMEOUT`: Maximum time (seconds) to search for a solution.
-- `SCALE_FACTOR`: Precision multiplier for floating point scores.
+- `SCALE_FACTOR`: Precision multiplier for floating-point scores.

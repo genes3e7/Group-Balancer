@@ -103,9 +103,16 @@ def load_data(filepath: str) -> list[dict] | None:
         df[config.COL_NAME] = df[config.COL_NAME].astype(str).str.strip()
 
         # Clean Data: Enforce numeric type for scores, handling coercion
-        df[config.COL_SCORE] = pd.to_numeric(
-            df[config.COL_SCORE], errors="coerce"
-        ).fillna(0)
+        original_scores = df[config.COL_SCORE]
+        df[config.COL_SCORE] = pd.to_numeric(original_scores, errors="coerce")
+
+        # Check for values that became NaN (were not numeric)
+        coerced_mask = df[config.COL_SCORE].isna() & original_scores.notna()
+        if coerced_mask.any():
+            invalid_names = df.loc[coerced_mask, config.COL_NAME].tolist()
+            print(f"Warning: Non-numeric scores for {invalid_names} were set to 0.")
+
+        df[config.COL_SCORE] = df[config.COL_SCORE].fillna(0)
 
         records = df.to_dict("records")
         if not records:

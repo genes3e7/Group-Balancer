@@ -80,7 +80,7 @@ if st.session_state.step == 1:
     edited_df = st.data_editor(
         st.session_state.manual_df,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",  # <--- UPDATED (Line 100)
         key="editor_input",  # Unique key to prevent state conflicts
     )
 
@@ -175,8 +175,13 @@ elif st.session_state.step == 3:
     with col_top_title:
         st.header("Step 3: Results")
 
+    # Guard against missing state if user navigates directly
     if "interactive_df" not in st.session_state:
-        st.session_state.interactive_df = st.session_state.results_df.copy()
+        st.session_state.interactive_df = (
+            st.session_state.results_df.copy()
+            if st.session_state.results_df is not None
+            else None
+        )
 
     # View Toggle
     view_mode = st.radio(
@@ -188,7 +193,12 @@ elif st.session_state.step == 3:
     st.divider()
 
     # --- Main Content ---
-    if st.session_state.interactive_df is None or st.session_state.interactive_df.empty:
+    has_data = (
+        st.session_state.interactive_df is not None
+        and not st.session_state.interactive_df.empty
+    )
+
+    if not has_data:
         st.error("No results to display. Please go back and regenerate.")
     else:
         if view_mode == "📝 Editor (Table)":
@@ -209,7 +219,7 @@ elif st.session_state.step == 3:
                         config.COL_NAME: st.column_config.TextColumn(disabled=True),
                     },
                     hide_index=True,
-                    use_container_width=True,
+                    width="stretch",  # <--- UPDATED (Line 245)
                 )
                 st.session_state.interactive_df = edited_df
 
@@ -233,19 +243,21 @@ elif st.session_state.step == 3:
     # --- Footer Actions ---
     c_dl, c_reset = st.columns([1, 1])
 
-    excel_data = exporter.generate_excel_bytes(
-        st.session_state.interactive_df,
-        config.COL_GROUP,
-        config.COL_SCORE,
-        config.COL_NAME,
-    )
-    c_dl.download_button(
-        "📥 Download Excel",
-        excel_data,
-        "balanced_groups.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        type="primary",
-    )
+    # Guarded Download Button
+    if has_data:
+        excel_data = exporter.generate_excel_bytes(
+            st.session_state.interactive_df,
+            config.COL_GROUP,
+            config.COL_SCORE,
+            config.COL_NAME,
+        )
+        c_dl.download_button(
+            "📥 Download Excel",
+            excel_data,
+            "balanced_groups.xlsx",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+        )
 
     if c_reset.button("🔄 Start Over"):
         st.session_state.clear()

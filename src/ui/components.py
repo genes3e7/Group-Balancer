@@ -6,7 +6,7 @@ def setup_page():
     st.set_page_config(page_title="Group Balancer", page_icon="⚖️", layout="wide")
 
 
-def render_page_header(step):
+def render_page_header(step: int) -> None:
     """
     Renders the progress bar and the app description.
     """
