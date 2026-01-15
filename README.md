@@ -125,7 +125,9 @@ The project has been refactored into a modular `src/` architecture:
 │   │   └── data_loader.py  # File I/O
 │   ├── ui/                 # Frontend Components
 │   │   ├── components.py   # Page setup, Progress bars
-│   │   └── results_renderer.py # "Card View" visualization
+│   │   ├── results_renderer.py # "Card View" visualization
+│   │   ├── session_manager.py  # Session state initialization and step navigation
+│   │   └── steps.py        # Step-specific UI rendering (Data Entry, Configuration, Results)
 │   └── utils/              # Helpers
 │       └── exporter.py     # Excel Generation Logic
 ```

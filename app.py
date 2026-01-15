@@ -17,3 +17,8 @@ elif st.session_state.step == 2:
 
 elif st.session_state.step == 3:
     steps.render_step_3()
+
+else:
+    # Fallback for invalid states
+    st.error("Invalid step. Resetting...")
+    session_manager.go_to_step(1)

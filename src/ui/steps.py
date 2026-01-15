@@ -32,15 +32,6 @@ def _load_uploaded_file():
             st.error(f"Error reading file: {e}")
 
 
-def _update_results_state():
-    """
-    Callback for Step 3.
-    Updates interactive_df from the unique 'results_editor' key.
-    """
-    if "results_editor" in st.session_state:
-        st.session_state.interactive_df = st.session_state["results_editor"]
-
-
 # ==========================================
 # STEP 1: IMPORT & EDIT DATA
 # ==========================================
@@ -175,10 +166,12 @@ def render_step_3():
             else None
         )
 
-    # [CRITICAL FIX] Data Corruption Guard
-    # If interactive_df became a dict (due to key collision bug), repair it immediately.
-    if not isinstance(st.session_state.interactive_df, pd.DataFrame):
-        st.session_state.interactive_df = st.session_state.results_df.copy()
+    # Data Corruption Guard
+    if not isinstance(st.session_state.get("interactive_df"), pd.DataFrame):
+        if isinstance(st.session_state.get("results_df"), pd.DataFrame):
+            st.session_state.interactive_df = st.session_state.results_df.copy()
+        else:
+            st.session_state.interactive_df = pd.DataFrame()
 
     # View Toggle
     view_mode = st.radio(
@@ -189,9 +182,11 @@ def render_step_3():
     st.divider()
 
     # Main Content
+    interactive_df = st.session_state.interactive_df
     has_data = (
-        st.session_state.interactive_df is not None
-        and not st.session_state.interactive_df.empty
+        interactive_df is not None
+        and isinstance(interactive_df, pd.DataFrame)
+        and not interactive_df.empty
     )
 
     if not has_data:
@@ -211,14 +206,17 @@ def _render_table_view():
     with editor_col:
         st.subheader("Edit Assignments")
 
-        # FIX: Use a unique key ("results_editor") to prevent conflict with Step 1
-        st.data_editor(
+        # Get safe max value for group ID
+        max_groups = st.session_state.get("num_groups_target", 10)
+
+        # 1. RENDER EDITOR & CAPTURE RETURN
+        edited_df = st.data_editor(
             st.session_state.interactive_df,
             column_config={
                 config.COL_GROUP: st.column_config.NumberColumn(
                     "Group ID",
                     min_value=1,
-                    max_value=st.session_state.num_groups_target,
+                    max_value=max_groups,
                     format="%d",
                 ),
                 config.COL_SCORE: st.column_config.NumberColumn(disabled=True),
@@ -226,13 +224,20 @@ def _render_table_view():
             },
             hide_index=True,
             width="stretch",
-            key="results_editor",  # <--- UNIQUE KEY
-            on_change=_update_results_state,  # <--- SYNC CALLBACK
+            key="results_editor",
         )
+
+        # 2. CHECK FOR CHANGES & RERUN [Cite: Duty-Planner Reference]
+        # This "Update & Rerun" pattern ensures the stats update immediately (Live)
+        # AND the state persists correctly (No Revert).
+        if not edited_df.equals(st.session_state.interactive_df):
+            st.session_state.interactive_df = edited_df
+            st.rerun()
 
     with stats_col:
         st.subheader("Live Stats")
-        # Use session_state directly to reflect instant updates
+        # 3. LIVE STATS
+        # Since we rerun immediately on change, this always runs with the FRESH data
         gdf = (
             st.session_state.interactive_df.groupby(config.COL_GROUP)[config.COL_SCORE]
             .agg(["count", "mean", "sum"])

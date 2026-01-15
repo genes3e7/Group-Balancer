@@ -5,10 +5,16 @@ from src.core import config
 
 def init_session():
     """Initializes all necessary session state variables."""
-    if "step" not in st.session_state:
-        st.session_state.update(
-            {"step": 1, "participants_df": None, "results_df": None}
-        )
+    # Ensure all keys exist independently to prevent partial state corruption
+    defaults = {
+        "step": 1,
+        "participants_df": None,
+        "results_df": None,
+    }
+
+    for key, value in defaults.items():
+        if key not in st.session_state:
+            st.session_state[key] = value
 
     # Initialize the 'working' dataframe for the editor if it doesn't exist
     if "manual_df" not in st.session_state:
