@@ -74,8 +74,8 @@ def update_readme():
     tree = generate_tree(".")
     readme_path = "README.md"
     # Concrete markers defined to prevent logic errors during split
-    start_marker = ""
-    end_marker = ""
+    start_marker = "<!-- PROJECT_TREE_START -->"
+    end_marker = "<!-- PROJECT_TREE_END -->"
 
     if os.path.exists(readme_path):
         with open(readme_path, "r", encoding="utf-8") as f:
