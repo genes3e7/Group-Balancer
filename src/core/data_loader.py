@@ -10,7 +10,7 @@ This module is responsible for:
 
 import os
 import pandas as pd
-from modules import config
+from src.core import config
 
 
 def get_file_path_from_user() -> str:

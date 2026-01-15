@@ -11,26 +11,86 @@ Usage:
 
 import multiprocessing
 import time
+import pandas as pd
 import numpy as np
-from modules import config, data_loader, output_manager, solver
+
+# Updated Imports for src/ structure
+from src.core import config, data_loader, solver
+from src.utils import exporter
+
+
+def _convert_to_df(groups: list) -> pd.DataFrame:
+    """Converts list-of-dicts group structure to a flat DataFrame."""
+    rows = []
+    for g in groups:
+        for m in g["members"]:
+            rows.append(
+                {
+                    config.COL_NAME: m[config.COL_NAME],
+                    config.COL_SCORE: m[config.COL_SCORE],
+                    config.COL_GROUP: g["id"],
+                }
+            )
+    return pd.DataFrame(rows)
+
+
+def print_cli_summary(groups: list, label: str):
+    """Prints a statistical summary to the console."""
+    print(f"\n--- {label} ---")
+    scores = [g["avg"] for g in groups]
+    for g in sorted(groups, key=lambda x: x["id"]):
+        star_count = sum(
+            1
+            for m in g["members"]
+            if str(m[config.COL_NAME]).endswith(config.ADVANTAGE_CHAR)
+        )
+        print(
+            f"Grp {g['id']} | Count: {len(g['members'])} | Stars: {star_count} | Avg: {g['avg']:.2f}"
+        )
+
+    if scores:
+        print(f"StdDev: {np.std(scores):.4f}")
+
+
+def save_results_to_disk(results: dict):
+    """Saves the results dictionary to an Excel file using the new Exporter."""
+    print(f"\nSaving to {config.OUTPUT_FILENAME}...")
+
+    champion_groups = results.get(config.SHEET_WITHOUT_CONSTRAINT) or results.get(
+        config.SHEET_WITH_CONSTRAINT
+    )
+
+    if not champion_groups:
+        print("No results to save.")
+        return
+
+    # Convert to DataFrame for the Exporter
+    df_results = _convert_to_df(champion_groups)
+
+    # Generate Bytes
+    excel_bytes = exporter.generate_excel_bytes(
+        df_results, config.COL_GROUP, config.COL_SCORE, config.COL_NAME
+    )
+
+    # Write to Disk
+    try:
+        with open(config.OUTPUT_FILENAME, "wb") as f:
+            f.write(excel_bytes)
+        print("✅ Success! File saved.")
+    except PermissionError:
+        print(
+            f"❌ Error: Permission denied. Close '{config.OUTPUT_FILENAME}' and try again."
+        )
+    except Exception as e:
+        print(f"❌ Error saving file: {e}")
 
 
 def run_solver_interface(participants: list[dict], n_groups: int):
-    """
-    Runs the solver for both 'Constrained' and 'Unconstrained' scenarios.
-    Compares the results and saves the optimal outcomes.
-
-    Args:
-        participants (list[dict]): List of participant data.
-        n_groups (int): The target number of groups.
-    """
     print("--- Advanced Group Balancer (OR-Tools Engine) ---")
-    print("NOTE: Using Constraint Programming for exact mathematical optimization.")
-
     results = {}
 
     # --- Scenario 1: With Star Constraints ---
-    print(f"\nSolving Scenario: {config.SHEET_WITH_CONSTRAINT}...")
+    print("\nSolving Scenario: With Constraints...")
     t0 = time.time()
     groups_c, found_c = solver.solve_with_ortools(
         participants, n_groups, respect_stars=True
@@ -39,15 +99,15 @@ def run_solver_interface(participants: list[dict], n_groups: int):
 
     std_c = 99999.0
     if found_c:
-        avgs_c = [g["avg"] for g in groups_c]
-        std_c = np.std(avgs_c)
-        print(f"  > Finished in {dt_c:.2f}s. StdDev: {std_c:.4f}")
+        print(f"  > Finished in {dt_c:.2f}s")
+        print_cli_summary(groups_c, "Constrained Results")
+        std_c = np.std([g["avg"] for g in groups_c])
         results[config.SHEET_WITH_CONSTRAINT] = groups_c
     else:
-        print("  > No solution found within time limit.")
+        print(f"  > No solution found (Time: {dt_c:.2f}s).")
 
     # --- Scenario 2: No Constraints ---
-    print(f"\nSolving Scenario: {config.SHEET_WITHOUT_CONSTRAINT}...")
+    print("\nSolving Scenario: No Constraints...")
     t0 = time.time()
     groups_u, found_u = solver.solve_with_ortools(
         participants, n_groups, respect_stars=False
@@ -55,60 +115,44 @@ def run_solver_interface(participants: list[dict], n_groups: int):
     dt_u = time.time() - t0
 
     if found_u:
-        avgs_u = [g["avg"] for g in groups_u]
-        std_u = np.std(avgs_u)
-        print(f"  > Finished in {dt_u:.2f}s. StdDev: {std_u:.4f}")
+        print(f"  > Finished in {dt_u:.2f}s")
+        std_u = np.std([g["avg"] for g in groups_u])
 
-        # Champion Logic:
-        # Sometimes the 'Constrained' logic inadvertently finds a better
-        # mathematical topology for size distribution than the 'Unconstrained'
-        # search path within the time limit. If Constrained is strictly better, use it.
+        # Champion Logic
         if found_c and (std_c < std_u - 0.0001):
-            print(
-                "  > Champion Wins! (Constrained result promoted to Unconstrained slot)"
-            )
+            print("\n🏆 Champion Wins! (Constrained result is mathematically superior)")
             results[config.SHEET_WITHOUT_CONSTRAINT] = groups_c
+            print_cli_summary(groups_c, "Final Selection")
         else:
+            print_cli_summary(groups_u, "Final Selection")
             results[config.SHEET_WITHOUT_CONSTRAINT] = groups_u
     else:
-        print("  > No solution found within time limit.")
+        print(f"  > No solution found (Time: {dt_u:.2f}s).")
 
-    # --- Output ---
-    output_manager.save_results(results)
+    save_results_to_disk(results)
 
 
 def main():
-    """Main execution function."""
-    # Good practice for cross-platform multiprocessing compatibility
     multiprocessing.freeze_support()
 
-    # 1. Load Data
     filepath = data_loader.get_file_path_from_user()
     participants = data_loader.load_data(filepath)
     if not participants:
         return
 
-    # 2. Get User Input
     try:
-        n_groups_str = input("Enter number of groups: ").strip()
-        if not n_groups_str.isdigit():
-            print("Error: Please enter a valid integer.")
+        n_str = input("Enter number of groups: ").strip()
+        if not n_str.isdigit() or int(n_str) < 1:
+            print("Invalid number.")
             return
-
-        n_groups = int(n_groups_str)
-
-        if n_groups <= 0:
-            print("Error: Number of groups must be positive.")
-            return
+        n_groups = int(n_str)
         if n_groups > len(participants):
-            print("Error: Cannot have more groups than participants.")
+            print("Error: More groups than participants.")
             return
-
     except Exception as e:
-        print(f"Error reading input: {e}")
+        print(f"Input Error: {e}")
         return
 
-    # 3. Run Logic
     run_solver_interface(participants, n_groups)
 
 

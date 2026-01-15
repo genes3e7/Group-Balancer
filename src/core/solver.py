@@ -10,7 +10,7 @@ import math
 import sys
 import time
 from ortools.sat.python import cp_model
-from modules import config
+from src.core import config
 
 
 class SolutionPrinter(cp_model.CpSolverSolutionCallback):
