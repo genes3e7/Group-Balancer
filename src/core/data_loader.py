@@ -1,28 +1,27 @@
 """
-Data Loader Module.
+Data loading and sanitization utilities.
 
-This module is responsible for:
-1. interacting with the user to get file paths.
-2. sanitizing drag-and-drop input strings.
-3. loading data from Excel or CSV files.
-4. validating the structure and content of the loaded data.
+This module handles the import of participant data from CSV and Excel files,
+ensuring that column names are normalized and data types are coerced correctly.
 """
 
 import os
 import pandas as pd
-from modules import config
+from src.core import config
 
 
 def get_file_path_from_user() -> str:
     """
-    Prompts the user to input a file path via standard input.
+    Prompts the user to input a file path via the command line.
 
-    Handles common artifacts introduced by drag-and-dropping files into
-    terminal windows, such as surrounding quotes or leading '& ' symbols
-    often seen in PowerShell.
+    Handles common artifacts from drag-and-drop operations, such as removing
+    surrounding quotes or PowerShell's '& ' prefix.
 
     Returns:
-        str: The sanitized, absolute file path entered by the user.
+        str: The absolute path to the file.
+
+    Raises:
+        SystemExit: If the user cancels the operation via KeyboardInterrupt.
     """
     print("\n[INPUT REQUIRED]")
     print("Please drag and drop your Excel/CSV file here and press Enter:")
@@ -31,13 +30,11 @@ def get_file_path_from_user() -> str:
         try:
             user_input = input(">> ").strip()
 
-            # Remove leading '& ' often added by PowerShell drag-and-drop
             if user_input.startswith("& "):
                 user_input = user_input[2:]
             elif user_input.startswith("&"):
                 user_input = user_input[1:]
 
-            # Remove surrounding quotes (common in Windows/macOS paths)
             user_input = user_input.strip('"').strip("'").strip()
 
             if not user_input:
@@ -57,16 +54,14 @@ def get_file_path_from_user() -> str:
 
 def load_data(filepath: str) -> list[dict] | None:
     """
-    Loads data from an Excel or CSV file into a list of dictionaries.
-
-    Performs validation to ensure required columns exist and cleans up data types.
+    Loads participant data from a CSV or Excel file.
 
     Args:
-        filepath (str): The absolute path to the source file.
+        filepath (str): Path to the source file.
 
     Returns:
         list[dict] | None: A list of participant records if successful,
-                           or None if an error occurred.
+        or None if validation fails.
     """
     if not filepath:
         return None
@@ -80,10 +75,8 @@ def load_data(filepath: str) -> list[dict] | None:
             print("Error: Unsupported file format. Please use .csv or .xlsx")
             return None
 
-        # Normalize column names (strip whitespace)
         df.columns = df.columns.str.strip()
 
-        # Validate required columns
         if config.COL_NAME not in df.columns or config.COL_SCORE not in df.columns:
             print(
                 f"Error: Input file must contain columns '{config.COL_NAME}' and '{config.COL_SCORE}'."
@@ -91,14 +84,17 @@ def load_data(filepath: str) -> list[dict] | None:
             print(f"Found columns: {list(df.columns)}")
             return None
 
-        # Clean Data
-        # Ensure names are strings and strip whitespace
         df[config.COL_NAME] = df[config.COL_NAME].astype(str).str.strip()
 
-        # Ensure scores are numeric, coercing errors to NaN then filling with 0
-        df[config.COL_SCORE] = pd.to_numeric(
-            df[config.COL_SCORE], errors="coerce"
-        ).fillna(0)
+        original_scores = df[config.COL_SCORE]
+        df[config.COL_SCORE] = pd.to_numeric(original_scores, errors="coerce")
+
+        coerced_mask = df[config.COL_SCORE].isna() & original_scores.notna()
+        if coerced_mask.any():
+            invalid_names = df.loc[coerced_mask, config.COL_NAME].tolist()
+            print(f"Warning: Non-numeric scores for {invalid_names} were set to 0.")
+
+        df[config.COL_SCORE] = df[config.COL_SCORE].fillna(0)
 
         records = df.to_dict("records")
         if not records:
