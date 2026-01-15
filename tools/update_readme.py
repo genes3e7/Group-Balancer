@@ -1,44 +1,94 @@
-import sys
-import re
+"""
+Utility script to update the Project Structure section in README.md.
+
+This script scans the project directory and generates a tree-like text
+structure, then injects it into the README file between designated markers.
+"""
+
 import os
 
 
-def update_readme(min_version, max_version):
+def generate_tree(startpath: str) -> str:
+    """
+    Generates a string representation of the file tree.
+
+    Args:
+        startpath (str): Root directory to scan.
+
+    Returns:
+        str: Formatted file tree string.
+    """
+    tree_lines = ["```text", "."]
+
+    # Walk the tree
+    for root, dirs, files in os.walk(startpath):
+        # Sort for consistent output
+        dirs.sort()
+        files.sort()
+
+        # Filter hidden directories
+        dirs[:] = [
+            d
+            for d in dirs
+            if not d.startswith(".") and d != "venv" and d != "__pycache__"
+        ]
+        files = [f for f in files if not f.startswith(".")]
+
+        level = root.replace(startpath, "").count(os.sep)
+        indent = "│   " * level
+
+        if root != startpath:
+            tree_lines.append(f"{indent}├── {os.path.basename(root)}/")
+
+        subindent = "│   " * (level + 1)
+        for i, f in enumerate(files):
+            # Use '└──' if it's the last file for aesthetics
+            connector = "└──" if i == len(files) - 1 and not dirs else "├──"
+            tree_lines.append(f"{subindent}{connector} {f}")
+
+    tree_lines.append("```")
+    return "\n".join(tree_lines)
+
+
+def update_readme():
+    """
+    Updates the README.md file with the generated project structure.
+    """
+    tree = generate_tree(".")
     readme_path = "README.md"
-    if not os.path.exists(readme_path):
-        print(f"Error: {readme_path} not found.")
-        sys.exit(1)
+    start_marker = "<!-- PROJECT_TREE_START -->"
+    end_marker = "<!-- PROJECT_TREE_END -->"
 
-    with open(readme_path, "r") as f:
-        content = f.read()
+    if os.path.exists(readme_path):
+        with open(readme_path, "r", encoding="utf-8") as f:
+            content = f.read()
 
-    version_string = f"{min_version} - {max_version}"
-    print(f"Updating README to support Python: {version_string}")
+        if (
+            start_marker
+            and end_marker
+            and start_marker in content
+            and end_marker in content
+        ):
+            pre = content.split(start_marker)[0]
+            post = content.split(end_marker)[1]
+            new_content = f"{pre}{start_marker}\n{tree}\n{end_marker}{post}"
 
-    # Regex for "* Python ..." line
-    pattern = r"(\* Python ).*"
-
-    if not re.search(pattern, content):
-        # Fallback regex
-        pattern = r"(Python )[\d\.]+(?: - [\d\.]+)?(?:\+)?"
-        if not re.search(pattern, content):
-            print("Critical: Could not find Python version definition in README.")
-            sys.exit(1)
-
-    # Use lambda to avoid backslash escaping issues in replacement string
-    new_content = re.sub(pattern, lambda m: f"{m.group(1)}{version_string}", content)
-
-    if new_content != content:
-        with open(readme_path, "w") as f:
-            f.write(new_content)
-        print("README.md updated successfully.")
+            with open(readme_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            print("Successfully updated README.md with new project structure.")
+        else:
+            print("Markers not found. Appending tree to end of file.")
+            with open(readme_path, "a", encoding="utf-8") as f:
+                f.write(
+                    f"\n## Project Structure\n\n{start_marker}\n{tree}\n{end_marker}\n"
+                )
     else:
-        print("README.md already up to date.")
+        print("README.md not found. Creating new file.")
+        with open(readme_path, "w", encoding="utf-8") as f:
+            f.write(
+                f"# Project\n\n## Project Structure\n\n{start_marker}\n{tree}\n{end_marker}\n"
+            )
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python update_readme.py <min_version> <max_version>")
-        sys.exit(1)
-
-    update_readme(sys.argv[1], sys.argv[2])
+    update_readme()
