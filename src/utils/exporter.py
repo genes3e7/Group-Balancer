@@ -37,7 +37,13 @@ def generate_excel_bytes(
         for g_id in unique_groups:
             members = df_results[df_results[col_group] == g_id].to_dict("records")
             if members:
-                scores = [float(m[col_score]) for m in members]
+                scores = []
+                for m in members:
+                    try:
+                        scores.append(float(m[col_score]))
+                    except (ValueError, TypeError):
+                        scores.append(0.0)
+
                 groups.append(
                     {
                         "id": g_id,

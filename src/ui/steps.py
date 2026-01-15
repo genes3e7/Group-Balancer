@@ -90,6 +90,14 @@ def render_step_1():
             else:
                 clean_df = edited_df.copy()
                 clean_df[config.COL_NAME] = clean_df[config.COL_NAME].astype(str)
+
+                # Check for empty names
+                empty_names = clean_df[config.COL_NAME].str.strip().eq("").sum()
+                if empty_names > 0:
+                    st.warning(
+                        f"⚠️ {empty_names} row(s) with empty names will be included."
+                    )
+
                 clean_df[config.COL_SCORE] = pd.to_numeric(
                     clean_df[config.COL_SCORE], errors="coerce"
                 )

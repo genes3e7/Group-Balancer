@@ -79,6 +79,9 @@ def run_optimization(
     Returns:
         pd.DataFrame | None: A DataFrame with assigned groups, or None if no solution.
     """
+    if num_groups < 1:
+        raise ValueError("num_groups must be >= 1")
+
     model = cp_model.CpModel()
 
     col_score = config.COL_SCORE

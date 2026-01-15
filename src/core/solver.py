@@ -105,8 +105,10 @@ def solve_with_ortools(
 
     if respect_stars and stars:
         max_stars_per_group = math.ceil(len(stars) / num_groups)
+        min_stars_per_group = len(stars) // num_groups
         for g in range(num_groups):
             model.Add(sum(x[(i, g)] for i in stars) <= max_stars_per_group)
+            model.Add(sum(x[(i, g)] for i in stars) >= min_stars_per_group)
 
     abs_diffs = []
     max_domain_val = total_score * num_people
@@ -136,7 +138,7 @@ def solve_with_ortools(
     printer = SolutionPrinter(time.time())
     status = solver.Solve(model, printer)
 
-    print("")
+    print("")  # Ensure newline after solution printing
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result_groups = []

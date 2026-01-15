@@ -34,6 +34,9 @@ def main():
             print("Please enter a positive integer.")
         except ValueError:
             print("Invalid number.")
+        except KeyboardInterrupt:
+            print("\nOperation cancelled.")
+            return
 
     print("\nSolving...")
     result, success = solver.solve_with_ortools(

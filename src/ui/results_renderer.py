@@ -26,7 +26,12 @@ def render_group_cards(df: pd.DataFrame) -> None:
 
     for g_id in unique_groups:
         members = df[df[config.COL_GROUP] == g_id].to_dict("records")
-        scores = [float(m[config.COL_SCORE]) for m in members]
+        scores = []
+        for m in members:
+            try:
+                scores.append(float(m[config.COL_SCORE]))
+            except (ValueError, TypeError):
+                scores.append(0.0)
 
         stars = 0
         for m in members:

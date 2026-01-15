@@ -18,11 +18,13 @@ def generate_tree(startpath: str) -> str:
     Returns:
         str: Formatted file tree string.
     """
-    tree_str = "```text\n.\n"
+    tree_lines = ["```text", "."]
+
+    # Walk the tree
     for root, dirs, files in os.walk(startpath):
-        level = root.replace(startpath, "").count(os.sep)
-        indent = "│   " * (level)
-        subindent = "│   " * (level + 1)
+        # Sort for consistent output
+        dirs.sort()
+        files.sort()
 
         # Filter hidden directories
         dirs[:] = [
@@ -30,16 +32,26 @@ def generate_tree(startpath: str) -> str:
             for d in dirs
             if not d.startswith(".") and d != "venv" and d != "__pycache__"
         ]
+        files = [f for f in files if not f.startswith(".")]
+
+        level = root.replace(startpath, "").count(os.sep)
+        indent = "│   " * level
 
         if root != startpath:
-            tree_str += f"{indent}├── {os.path.basename(root)}/\n"
+            tree_lines.append(f"{indent}├── {os.path.basename(root)}/")
 
-        for f in files:
-            if not f.startswith("."):
-                tree_str += f"{subindent}├── {f}\n"
+        subindent = "│   " * (level + 1)
+        for i, f in enumerate(files):
+            # Use '└──' if it's the last file and there are no subdirectories in this folder
+            # Note: os.walk logic visits subdirs after files usually, so we stick to '├──'
+            # for consistency unless we fully implement a recursive printer.
+            # However, standard trees often use '└──' for the last element.
+            # Simplified approach:
+            connector = "└──" if i == len(files) - 1 and not dirs else "├──"
+            tree_lines.append(f"{subindent}{connector} {f}")
 
-    tree_str += "```"
-    return tree_str
+    tree_lines.append("```")
+    return "\n".join(tree_lines)
 
 
 def update_readme():
@@ -48,14 +60,33 @@ def update_readme():
     """
     tree = generate_tree(".")
     readme_path = "README.md"
+    start_marker = ""
+    end_marker = ""
 
     if os.path.exists(readme_path):
-        # In a real implementation, we would read the file here and replace
-        # the section between markers. For now, we just print the tree.
-        print("Generated Tree Structure:")
-        print(tree)
+        with open(readme_path, "r", encoding="utf-8") as f:
+            content = f.read()
+
+        if start_marker in content and end_marker in content:
+            pre = content.split(start_marker)[0]
+            post = content.split(end_marker)[1]
+            new_content = f"{pre}{start_marker}\n{tree}\n{end_marker}{post}"
+
+            with open(readme_path, "w", encoding="utf-8") as f:
+                f.write(new_content)
+            print("Successfully updated README.md with new project structure.")
+        else:
+            print("Markers not found. Appending tree to end of file.")
+            with open(readme_path, "a", encoding="utf-8") as f:
+                f.write(
+                    f"\n## Project Structure\n\n{start_marker}\n{tree}\n{end_marker}\n"
+                )
     else:
-        print("README.md not found.")
+        print("README.md not found. Creating new file.")
+        with open(readme_path, "w", encoding="utf-8") as f:
+            f.write(
+                f"# Project\n\n## Project Structure\n\n{start_marker}\n{tree}\n{end_marker}\n"
+            )
 
 
 if __name__ == "__main__":
