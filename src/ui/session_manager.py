@@ -1,0 +1,26 @@
+import streamlit as st
+import pandas as pd
+from src.core import config
+
+
+def init_session():
+    """Initializes all necessary session state variables."""
+    if "step" not in st.session_state:
+        st.session_state.update(
+            {"step": 1, "participants_df": None, "results_df": None}
+        )
+
+    # Initialize the 'working' dataframe for the editor if it doesn't exist
+    if "manual_df" not in st.session_state:
+        st.session_state.manual_df = pd.DataFrame(
+            {
+                config.COL_NAME: ["Player 1", "Player 2*", "Player 3"],
+                config.COL_SCORE: [80, 95, 60],
+            }
+        )
+
+
+def go_to_step(step):
+    """Updates the step state and reruns the app."""
+    st.session_state.step = step
+    st.rerun()

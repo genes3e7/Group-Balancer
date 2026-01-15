@@ -92,5 +92,6 @@ def test_generate_excel_empty():
         # Should contain the sheet but it should be largely empty
         xl = pd.ExcelFile(f)
         assert "Balanced_Groups" in xl.sheet_names
-        df_out = pd.read_excel(f, sheet_name="Balanced_Groups")
+        # Re-use xl object to parse, avoiding EOF error
+        df_out = xl.parse("Balanced_Groups")
         assert df_out.empty

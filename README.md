@@ -54,7 +54,7 @@ sequenceDiagram
     rect rgb(240, 248, 255)
     note right of Solver: Optimization Loop (Default 300s)
     Solver->>Solver: Define Variables & Constraints
-    Solver->>Solver: Minimize StdDev
+    Solver->>Solver: Minimize Sum of Abs Deviations
     end
     
     Solver-->>Browser: Returns Optimal Grouping

@@ -3,7 +3,9 @@ import numpy as np
 import io
 
 
-def generate_excel_bytes(df_results, col_group, col_score, col_name):
+def generate_excel_bytes(
+    df_results: pd.DataFrame, col_group: str, col_score: str, col_name: str
+) -> bytes:
     """
     Generates an Excel file in-memory matching the 'Main Branch' format:
     - Side-by-side Group Matrix (Columns A-E)
