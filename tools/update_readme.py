@@ -43,7 +43,7 @@ def should_ignore(name: str, is_dir: bool, patterns: list[str]) -> bool:
 
     Note:
         This implementation primarily matches against the file/directory basename.
-        Complex path-based patterns (e.g. 'foo/bar' or '**/*.log') are not 
+        Complex path-based patterns (e.g. 'foo/bar' or '**/*.log') are not
         fully supported by simple fnmatch on the basename.
 
     Args:
@@ -133,7 +133,7 @@ def update_readme():
     """
     tree = generate_tree(".")
     readme_path = "README.md"
-    
+
     # Concrete markers defined to prevent logic errors during split
     start_marker = "<!-- PROJECT_TREE_START -->"
     end_marker = "<!-- PROJECT_TREE_END -->"
@@ -147,24 +147,28 @@ def update_readme():
 
         # Check for duplicate markers
         if content.count(start_marker) > 1 or content.count(end_marker) > 1:
-            print(f"Error: Multiple occurrences of markers found in {readme_path}. Please resolve manually.")
+            print(
+                f"Error: Multiple occurrences of markers found in {readme_path}. Please resolve manually."
+            )
             return
 
         # Validate existence and correct order
         if start_idx != -1 and end_idx != -1 and start_idx < end_idx:
             # Safe slicing using validated indices
             pre = content[:start_idx]
-            post = content[end_idx + len(end_marker):]
-            
+            post = content[end_idx + len(end_marker) :]
+
             new_content = f"{pre}{start_marker}\n{tree}\n{end_marker}{post}"
 
             with open(readme_path, "w", encoding="utf-8") as f:
                 f.write(new_content)
             print("Successfully updated README.md with new project structure.")
-        
+
         else:
             if start_idx != -1 and end_idx != -1 and start_idx > end_idx:
-                print(f"Error: Markers found but in wrong order (END before START) in {readme_path}.")
+                print(
+                    f"Error: Markers found but in wrong order (END before START) in {readme_path}."
+                )
                 return
 
             print("Markers not found or invalid. Appending tree to end of file.")
