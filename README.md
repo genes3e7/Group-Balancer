@@ -115,7 +115,7 @@ The project has been refactored into a modular `src/` architecture:
 <!-- PROJECT_TREE_START -->
 ```text
 .
-│   ├── GroupBalancer.spec
+│   ├── .gitignore
 │   ├── LICENSE
 │   ├── README.md
 │   ├── all_versions.txt
@@ -128,12 +128,10 @@ The project has been refactored into a modular `src/` architecture:
 │   ├── requirements.in
 │   ├── requirements.txt
 │   ├── sorted_versions.txt
-│   ├── artifacts/
-│   │   ├── python_version_3.10.txt
-│   │   ├── python_version_3.11.txt
-│   │   ├── python_version_3.12.txt
-│   │   ├── python_version_3.13.txt
-│   │   └── python_version_3.14.txt
+│   ├── .github/
+│   │   ├── dependabot.yml
+│   │   ├── workflows/
+│   │   │   └── ci.yml
 │   ├── src/
 │   │   ├── __init__.py
 │   │   ├── core/
