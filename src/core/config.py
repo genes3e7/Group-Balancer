@@ -1,33 +1,22 @@
 """
-Configuration module for the Group Balancer application.
+Configuration constants for the Group Balancer application.
 
-This module centralizes all constant values used across the application,
-including file names, column headers, solver settings, and formatting options.
+This module stores all hardcoded constants, column names, and solver settings
+to ensure a single source of truth for configuration.
 """
 
-# Output Settings
-OUTPUT_FILENAME = "balanced_groups.xlsx"
-
-# Input Data Column Headers (Must match the input Excel/CSV file)
+# Column Headers
 COL_NAME = "Name"
 COL_SCORE = "Score"
-COL_GROUP = "Group"  # <--- Added this missing line
-
-# Excel Sheet Names for the Output File
-SHEET_WITH_CONSTRAINT = "With_Star_Constraint"
-SHEET_WITHOUT_CONSTRAINT = "No_Constraints"
-
-# Symbol used to identify "Star" or "Advantaged" participants in their name
-ADVANTAGE_CHAR = "*"
+COL_GROUP = "Group"
 
 # Solver Settings
-# Time limit for the Google OR-Tools CP-SAT solver in seconds.
-# 300 seconds (5 minutes) is a conservative upper bound.
-SOLVER_TIMEOUT = 60 * 5
+SOLVER_TIMEOUT = 300  # seconds
+SOLVER_NUM_WORKERS = 8  # Parallel search workers
 
-# Scaling factor to convert floating point scores to integers for the solver.
-# 100,000 allows for 5 decimal places of precision.
-SCALE_FACTOR = 10**5
+# Data Processing
+SCALE_FACTOR = 10**5  # Multiplier to convert float scores to integers for the solver
+ADVANTAGE_CHAR = "*"  # Suffix to identify "Star" participants
 
-# Number of workers for the solver to use in parallel search
-SOLVER_NUM_WORKERS = 8
+# Output
+OUTPUT_FILENAME = "balanced_groups.xlsx"

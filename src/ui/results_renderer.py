@@ -1,17 +1,26 @@
+"""
+Visualization logic for displaying results.
+
+This module handles the 'Card View' rendering of groups, showing detailed
+statistics for each group in a grid layout.
+"""
+
 import streamlit as st
 import pandas as pd
 from src.core import config
 
 
-def render_group_cards(df):
+def render_group_cards(df: pd.DataFrame) -> None:
     """
     Renders groups in a grid layout (cards).
+
+    Args:
+        df (pd.DataFrame): The DataFrame containing group assignments.
     """
     if df is None or df.empty:
         st.warning("No groups to display.")
         return
 
-    # 1. Prepare Data
     groups = []
     unique_groups = sorted(df[config.COL_GROUP].unique())
 
@@ -19,7 +28,6 @@ def render_group_cards(df):
         members = df[df[config.COL_GROUP] == g_id].to_dict("records")
         scores = [float(m[config.COL_SCORE]) for m in members]
 
-        # Safely count stars
         stars = 0
         for m in members:
             val = str(m[config.COL_NAME])
@@ -36,18 +44,15 @@ def render_group_cards(df):
             }
         )
 
-    # 2. Render Grid (2 Groups per Row)
     for i in range(0, len(groups), 2):
         g1 = groups[i]
         g2 = groups[i + 1] if (i + 1) < len(groups) else None
 
         c1, c2 = st.columns(2)
 
-        # Render Left Group
         with c1:
             _render_single_card(g1)
 
-        # Render Right Group (if exists)
         with c2:
             if g2:
                 _render_single_card(g2)
@@ -55,10 +60,14 @@ def render_group_cards(df):
         st.markdown("---")
 
 
-def _render_single_card(group):
-    """Helper to render one group card."""
+def _render_single_card(group: dict) -> None:
+    """
+    Helper to render a single group card.
+
+    Args:
+        group (dict): Dictionary containing group metadata and members.
+    """
     with st.container(border=True):
-        # Header Stats
         st.markdown(f"### Group {group['id']}")
         cols = st.columns([1, 1, 1])
         cols[0].metric("Count", group["count"])
@@ -67,13 +76,12 @@ def _render_single_card(group):
 
         st.divider()
 
-        # Members List
         disp_df = pd.DataFrame(group["members"])
         if not disp_df.empty:
             st.dataframe(
                 disp_df[[config.COL_NAME, config.COL_SCORE]],
                 hide_index=True,
-                width="stretch",  # <--- UPDATED (Line 76)
+                width="stretch",
                 column_config={
                     config.COL_SCORE: st.column_config.NumberColumn(format="%.0f")
                 },

@@ -1,23 +1,34 @@
+"""
+Reusable UI components for the Streamlit application.
+
+This module contains layout elements such as page configuration
+and the progress/status header.
+"""
+
 import streamlit as st
 
 
 def setup_page():
-    """Configures the Streamlit page settings."""
+    """
+    Configures the global Streamlit page settings.
+    Sets the title, icon, and layout mode.
+    """
     st.set_page_config(page_title="Group Balancer", page_icon="⚖️", layout="wide")
 
 
 def render_page_header(step: int) -> None:
     """
-    Renders the progress bar and the app description.
+    Renders the application header, description, and the progress steps bar.
+
+    Args:
+        step (int): The current step number (1, 2, or 3) to highlight.
     """
-    # --- Site Description (Restored) ---
     st.markdown("""
     ### ⚖️ Group Balancer Tool
     **Optimizes team allocations based on individual scores and constraints.** Upload your participant data, configure the desired number of groups, and let the 
     Constraint Programming solver mathematically minimize the difference in group averages.
     """)
 
-    # --- Instructions (Collapsible) ---
     with st.expander("ℹ️ How to use this tool", expanded=False):
         st.markdown("""
         **Goal:** Create balanced groups from a list of participants.
@@ -30,7 +41,6 @@ def render_page_header(step: int) -> None:
 
     st.markdown("---")
 
-    # --- Progress Bar ---
     st.markdown(
         f"""
     <style>

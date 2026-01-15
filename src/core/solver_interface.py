@@ -1,3 +1,10 @@
+"""
+Interface for running the solver within a Streamlit environment.
+
+This module provides thread-safe context handling to ensure that solver
+updates can be rendered to the Streamlit UI during execution.
+"""
+
 import threading
 import time
 import math
@@ -5,10 +12,10 @@ import pandas as pd
 from ortools.sat.python import cp_model
 from src.core import config
 
-# Robust import for Streamlit Context
 try:
     from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 except ImportError:
+    # Fallback for older Streamlit versions or non-Streamlit environments
     try:
         from streamlit.scriptrunner import add_script_run_ctx, get_script_run_ctx
     except ImportError:
@@ -21,18 +28,25 @@ except ImportError:
 
 
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
-    """Updates Streamlit UI in real-time during solving."""
+    """
+    A custom OR-Tools callback that updates a Streamlit UI element.
+    """
 
     def __init__(self, status_placeholder):
+        """
+        Args:
+            status_placeholder: A Streamlit placeholder element to render updates.
+        """
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.status_placeholder = status_placeholder
         self.solution_count = 0
         self.start_time = time.time()
-        # Capture the context of the main Streamlit thread
         self.ctx = get_script_run_ctx()
 
     def on_solution_callback(self):
-        # Attach the captured context to the current thread (OR-Tools worker)
+        """
+        Executed whenever a solution is found. Updates the UI with progress.
+        """
         if self.ctx:
             add_script_run_ctx(threading.current_thread(), self.ctx)
 
@@ -41,7 +55,6 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         obj = self.ObjectiveValue()
         elapsed = current_time - self.start_time
 
-        # Update the UI placeholder
         self.status_placeholder.markdown(
             f"""
             **Solver Status:** 🏃 Running...  
@@ -52,53 +65,54 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         )
 
 
-def run_optimization(participants, num_groups, status_box):
+def run_optimization(
+    participants: list[dict], num_groups: int, status_box
+) -> pd.DataFrame | None:
     """
-    Executes the solver with the Streamlit callback.
+    Runs the optimization process and returns the result as a DataFrame.
+
+    Args:
+        participants (list[dict]): List of participant dictionaries.
+        num_groups (int): Target number of groups.
+        status_box: Streamlit placeholder for status updates.
+
+    Returns:
+        pd.DataFrame | None: A DataFrame with assigned groups, or None if no solution.
     """
     model = cp_model.CpModel()
 
-    # --- Data Prep ---
     col_score = config.COL_SCORE
     col_name = config.COL_NAME
     scale_factor = config.SCALE_FACTOR
     col_group = config.COL_GROUP
 
     num_people = len(participants)
-    # Convert scores to integers for CP-SAT
     scores = [int(round(float(p[col_score]) * scale_factor)) for p in participants]
     total_score = sum(scores)
 
-    # Identify Stars
     stars = [
         i
         for i, p in enumerate(participants)
         if str(p[col_name]).endswith(config.ADVANTAGE_CHAR)
     ]
 
-    # --- Group Sizes ---
     base_size = num_people // num_groups
     remainder = num_people % num_groups
     group_sizes = {
         g: (base_size + 1 if g < remainder else base_size) for g in range(num_groups)
     }
 
-    # --- Variables ---
     x = {}
     for i in range(num_people):
         for g in range(num_groups):
             x[(i, g)] = model.NewBoolVar(f"x_{i}_{g}")
 
-    # --- Constraints ---
-    # 1. Every person in exactly one group
     for i in range(num_people):
         model.Add(sum(x[(i, g)] for g in range(num_groups)) == 1)
 
-    # 2. Group sizes match targets
     for g in range(num_groups):
         model.Add(sum(x[(i, g)] for i in range(num_people)) == group_sizes[g])
 
-    # 3. Star Separation
     if stars:
         max_stars = math.ceil(len(stars) / num_groups)
         min_stars = len(stars) // num_groups
@@ -106,7 +120,6 @@ def run_optimization(participants, num_groups, status_box):
             model.Add(sum(x[(i, g)] for i in stars) <= max_stars)
             model.Add(sum(x[(i, g)] for i in stars) >= min_stars)
 
-    # --- Objective ---
     abs_diffs = []
     max_domain = total_score * num_people
     for g in range(num_groups):
@@ -126,7 +139,6 @@ def run_optimization(participants, num_groups, status_box):
 
     model.Minimize(sum(abs_diffs))
 
-    # --- Solve ---
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = config.SOLVER_TIMEOUT
     solver_inst.parameters.num_search_workers = config.SOLVER_NUM_WORKERS
@@ -134,7 +146,6 @@ def run_optimization(participants, num_groups, status_box):
     cb = StreamlitSolverCallback(status_box)
     status = solver_inst.Solve(model, cb)
 
-    # --- Reconstruct ---
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         df = pd.DataFrame(participants)
         df[col_group] = 0

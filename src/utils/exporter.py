@@ -1,3 +1,10 @@
+"""
+Excel export utility.
+
+This module formats the results into a side-by-side 'Matrix View' structure
+and includes summary statistics in the generated Excel file.
+"""
+
 import pandas as pd
 import numpy as np
 import io
@@ -7,8 +14,10 @@ def generate_excel_bytes(
     df_results: pd.DataFrame, col_group: str, col_score: str, col_name: str
 ) -> bytes:
     """
-    Generates an Excel file in-memory matching the 'Main Branch' format:
-    - Side-by-side Group Matrix (Columns A-E)
+    Generates an Excel file in-memory matching the 'Main Branch' format.
+
+    Structure:
+    - Side-by-side Group Matrix (Columns A-E for pairs)
     - Statistics Table (Starts at Column G)
 
     Args:
@@ -18,16 +27,14 @@ def generate_excel_bytes(
         col_name (str): Column name for Participant Name.
 
     Returns:
-        bytes: The Excel file content.
+        bytes: The Excel file content as bytes.
     """
     output = io.BytesIO()
 
-    # 1. Reconstruct group structure from DataFrame
     groups = []
     if not df_results.empty:
         unique_groups = sorted(df_results[col_group].unique())
         for g_id in unique_groups:
-            # Get members for this group
             members = df_results[df_results[col_group] == g_id].to_dict("records")
             if members:
                 scores = [float(m[col_score]) for m in members]
@@ -43,27 +50,22 @@ def generate_excel_bytes(
         sheet_name = "Balanced_Groups"
 
         if not groups:
-            # Handle empty case
             pd.DataFrame().to_excel(writer, sheet_name=sheet_name)
         else:
-            # --- 2. Prepare Main Grid Data (Side-by-Side) ---
             rows = []
             for i in range(0, len(groups), 2):
                 g1 = groups[i]
-                # Check if a right-side pair exists
                 g2 = groups[i + 1] if (i + 1) < len(groups) else None
 
-                # Header Row
                 row_header = {
                     "A": f"GROUP {g1['id']}",
                     "B": f"AVG: {g1['avg']:.2f}",
-                    "C": "",  # Spacer column
+                    "C": "",
                     "D": f"GROUP {g2['id']}" if g2 else "",
                     "E": f"AVG: {g2['avg']:.2f}" if g2 else "",
                 }
                 rows.append(row_header)
 
-                # Sub-header Row
                 row_sub = {
                     "A": "Name",
                     "B": "Score",
@@ -73,7 +75,6 @@ def generate_excel_bytes(
                 }
                 rows.append(row_sub)
 
-                # Member Rows
                 len1 = len(g1["members"])
                 len2 = len(g2["members"]) if g2 else 0
                 max_len = max(len1, len2)
@@ -92,15 +93,12 @@ def generate_excel_bytes(
                         }
                     )
 
-                # Empty row between group blocks
                 rows.append({})
 
-            # Write Main Grid to Excel (starting at col A / index 0)
             pd.DataFrame(rows).to_excel(
                 writer, sheet_name=sheet_name, index=False, header=False, startcol=0
             )
 
-            # --- 3. Calculate & Write Statistics (Column G) ---
             avgs = [g["avg"] for g in groups]
             if avgs:
                 stats = [
@@ -109,7 +107,6 @@ def generate_excel_bytes(
                     {"Stat": "Global Avg", "Val": f"{np.mean(avgs):.3f}"},
                     {"Stat": "StdDev", "Val": f"{np.std(avgs):.4f}"},
                 ]
-                # Write stats table starting at column G (index 6)
                 pd.DataFrame(stats).to_excel(
                     writer, sheet_name=sheet_name, index=False, startcol=6
                 )

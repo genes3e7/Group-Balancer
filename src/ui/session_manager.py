@@ -1,11 +1,20 @@
+"""
+Session State Management.
+
+This module initializes the Streamlit session state and provides
+navigation functions to move between steps.
+"""
+
 import streamlit as st
 import pandas as pd
 from src.core import config
 
 
-def init_session():
-    """Initializes all necessary session state variables."""
-    # Ensure all keys exist independently to prevent partial state corruption
+def init_session() -> None:
+    """
+    Initializes all necessary session state variables.
+    Checks each key independently to prevent partial state corruption.
+    """
     defaults = {
         "step": 1,
         "participants_df": None,
@@ -16,7 +25,6 @@ def init_session():
         if key not in st.session_state:
             st.session_state[key] = value
 
-    # Initialize the 'working' dataframe for the editor if it doesn't exist
     if "manual_df" not in st.session_state:
         st.session_state.manual_df = pd.DataFrame(
             {
@@ -26,9 +34,13 @@ def init_session():
         )
 
 
-def go_to_step(step):
-    """Updates the step state and reruns the app."""
-    # Validate step before switching
+def go_to_step(step: int) -> None:
+    """
+    Updates the step state and reruns the app.
+
+    Args:
+        step (int): The step number to navigate to (1-3).
+    """
     if step not in (1, 2, 3):
         step = 1
 
