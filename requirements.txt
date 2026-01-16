@@ -44,7 +44,7 @@ markupsafe==3.0.3
     # via jinja2
 narwhals==2.15.0
     # via altair
-numpy==2.2.6
+numpy==2.4.1
     # via
     #   -r requirements.in
     #   ortools
@@ -53,7 +53,7 @@ numpy==2.2.6
     #   streamlit
 openpyxl==3.1.5
     # via -r requirements.in
-ortools==9.14.6206
+ortools==9.15.6755
     # via -r requirements.in
 packaging==25.0
     # via
@@ -66,7 +66,7 @@ pandas==2.3.3
     #   streamlit
 pillow==12.1.0
     # via streamlit
-protobuf==6.31.1
+protobuf==6.33.4
     # via
     #   ortools
     #   streamlit
@@ -92,7 +92,7 @@ six==1.17.0
     # via python-dateutil
 smmap==5.0.2
     # via gitdb
-streamlit==1.52.2
+streamlit==1.53.0
     # via -r requirements.in
 tenacity==9.1.2
     # via streamlit
@@ -104,7 +104,6 @@ typing-extensions==4.15.0
     # via
     #   altair
     #   ortools
-    #   referencing
     #   streamlit
 tzdata==2025.3
     # via pandas
