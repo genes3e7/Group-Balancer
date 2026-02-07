@@ -80,7 +80,7 @@ narwhals==2.15.0
     # via
     #   -c requirements.txt
     #   altair
-numpy==2.4.1
+numpy==2.2.6
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -114,7 +114,7 @@ pillow==12.1.0
     #   streamlit
 pluggy==1.6.0
     # via pytest
-protobuf==6.33.4
+protobuf==6.33.5
     # via
     #   -c requirements.txt
     #   ortools
