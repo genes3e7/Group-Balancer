@@ -64,7 +64,7 @@ pandas==2.3.3
     #   -r requirements.in
     #   ortools
     #   streamlit
-pillow==12.1.0
+pillow==12.1.1
     # via streamlit
 protobuf==6.33.5
     # via
