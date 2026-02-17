@@ -80,7 +80,7 @@ narwhals==2.15.0
     # via
     #   -c requirements.txt
     #   altair
-numpy==2.2.6
+numpy==2.4.2
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -153,7 +153,7 @@ rpds-py==0.30.0
     #   -c requirements.txt
     #   jsonschema
     #   referencing
-ruff==0.14.14
+ruff==0.15.1
     # via -r requirements-dev.in
 six==1.17.0
     # via
@@ -163,7 +163,7 @@ smmap==5.0.2
     # via
     #   -c requirements.txt
     #   gitdb
-streamlit==1.53.1
+streamlit==1.54.0
     # via
     #   -c requirements.txt
     #   -r requirements.in
