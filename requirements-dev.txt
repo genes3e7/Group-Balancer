@@ -80,7 +80,7 @@ narwhals==2.15.0
     # via
     #   -c requirements.txt
     #   altair
-numpy==2.4.2
+numpy==2.2.6
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -175,7 +175,7 @@ toml==0.10.2
     # via
     #   -c requirements.txt
     #   streamlit
-tornado==6.5.4
+tornado==6.5.5
     # via
     #   -c requirements.txt
     #   streamlit
