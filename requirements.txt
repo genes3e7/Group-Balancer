@@ -104,6 +104,7 @@ typing-extensions==4.15.0
     # via
     #   altair
     #   ortools
+    #   referencing
     #   streamlit
 tzdata==2025.3
     # via pandas
