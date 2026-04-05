@@ -80,7 +80,7 @@ narwhals==2.15.0
     # via
     #   -c requirements.txt
     #   altair
-numpy==2.4.4
+numpy==2.2.6
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -127,7 +127,7 @@ pydeck==0.9.1
     # via
     #   -c requirements.txt
     #   streamlit
-pygments==2.19.2
+pygments==2.20.0
     # via pytest
 pytest==9.0.2
     # via -r requirements-dev.in
