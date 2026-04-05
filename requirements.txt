@@ -92,7 +92,7 @@ six==1.17.0
     # via python-dateutil
 smmap==5.0.2
     # via gitdb
-streamlit==1.55.0
+streamlit==1.56.0
     # via -r requirements.in
 tenacity==9.1.2
     # via streamlit
