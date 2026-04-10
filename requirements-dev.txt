@@ -129,7 +129,7 @@ pydeck==0.9.1
     #   streamlit
 pygments==2.20.0
     # via pytest
-pytest==9.0.2
+pytest==9.0.3
     # via -r requirements-dev.in
 python-dateutil==2.9.0.post0
     # via
@@ -149,7 +149,7 @@ rpds-py==0.30.0
     #   -c requirements.txt
     #   jsonschema
     #   referencing
-ruff==0.15.9
+ruff==0.15.10
     # via -r requirements-dev.in
 six==1.17.0
     # via
