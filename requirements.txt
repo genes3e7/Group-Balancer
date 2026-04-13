@@ -64,7 +64,7 @@ pandas==2.3.3
     #   -r requirements.in
     #   ortools
     #   streamlit
-pillow==12.1.1
+pillow==12.2.0
     # via streamlit
 protobuf==6.33.5
     # via
@@ -104,7 +104,6 @@ typing-extensions==4.15.0
     # via
     #   altair
     #   ortools
-    #   referencing
     #   streamlit
 tzdata==2026.1
     # via pandas
