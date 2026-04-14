@@ -80,7 +80,7 @@ narwhals==2.15.0
     # via
     #   -c requirements.txt
     #   altair
-numpy==2.4.4
+numpy==2.2.6
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -102,13 +102,13 @@ packaging==25.0
     #   altair
     #   pytest
     #   streamlit
-pandas==3.0.2
+pandas==2.3.3
     # via
     #   -c requirements.txt
     #   -r requirements.in
     #   ortools
     #   streamlit
-pillow==12.1.1
+pillow==12.2.0
     # via
     #   -c requirements.txt
     #   streamlit
@@ -132,6 +132,10 @@ pygments==2.20.0
 pytest==9.0.3
     # via -r requirements-dev.in
 python-dateutil==2.9.0.post0
+    # via
+    #   -c requirements.txt
+    #   pandas
+pytz==2026.1.post1
     # via
     #   -c requirements.txt
     #   pandas
@@ -181,6 +185,10 @@ typing-extensions==4.15.0
     #   altair
     #   ortools
     #   streamlit
+tzdata==2026.1
+    # via
+    #   -c requirements.txt
+    #   pandas
 urllib3==2.6.3
     # via
     #   -c requirements.txt
