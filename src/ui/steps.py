@@ -127,7 +127,10 @@ def render_step_2():
     c1, c2 = st.columns(2)
     with c1:
         num_groups = st.number_input(
-            "Number of Groups", min_value=1, max_value=max(1, total_participants), value=2
+            "Number of Groups",
+            min_value=1,
+            max_value=max(1, total_participants),
+            value=2,
         )
     with c2:
         st.info(f"Total Participants: {total_participants}")
@@ -136,8 +139,10 @@ def render_step_2():
         )
 
     st.subheader("Group Capacities")
-    st.caption("Adjust the size of each group. The total must equal the participant count.")
-    
+    st.caption(
+        "Adjust the size of each group. The total must equal the participant count."
+    )
+
     # Cleanup stale capacity keys if num_groups was reduced
     for key in list(st.session_state.keys()):
         if key.startswith("cap_"):
@@ -150,7 +155,7 @@ def render_step_2():
 
     capacity_cols = st.columns(num_groups)
     group_capacities = []
-    
+
     base_size = total_participants // num_groups
     remainder = total_participants % num_groups
 
@@ -158,11 +163,11 @@ def render_step_2():
         default_cap = base_size + 1 if i < remainder else base_size
         with capacity_cols[i]:
             cap = st.number_input(
-                f"Group {i+1}", 
-                min_value=0, 
-                max_value=total_participants, 
-                value=default_cap, 
-                key=f"cap_{i}"
+                f"Group {i + 1}",
+                min_value=0,
+                max_value=total_participants,
+                value=default_cap,
+                key=f"cap_{i}",
             )
             group_capacities.append(cap)
 
@@ -170,7 +175,9 @@ def render_step_2():
     cap_valid = total_cap == total_participants
 
     if not cap_valid:
-        st.error(f"Validation Error: Total capacity ({total_cap}) does not match participants ({total_participants}).")
+        st.error(
+            f"Validation Error: Total capacity ({total_cap}) does not match participants ({total_participants})."
+        )
     else:
         st.success("Validation Success: Capacities match total participants.")
 

@@ -65,7 +65,9 @@ def solve_with_ortools(
         and a success boolean.
     """
     if not group_capacities:
-        raise ValueError("group_capacities must contain at least one capacity requirement.")
+        raise ValueError(
+            "group_capacities must contain at least one capacity requirement."
+        )
 
     model = cp_model.CpModel()
 
@@ -73,7 +75,9 @@ def solve_with_ortools(
     num_groups = len(group_capacities)
 
     if sum(group_capacities) != num_people:
-        raise ValueError("Sum of group capacities must equal the total number of participants.")
+        raise ValueError(
+            "Sum of group capacities must equal the total number of participants."
+        )
 
     scores = [
         int(round(float(p[config.COL_SCORE]) * config.SCALE_FACTOR))

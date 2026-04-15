@@ -80,7 +80,9 @@ def run_optimization(
         pd.DataFrame | None: A DataFrame with assigned groups, or None if no solution.
     """
     if not group_capacities:
-        raise ValueError("group_capacities must contain at least one capacity requirement.")
+        raise ValueError(
+            "group_capacities must contain at least one capacity requirement."
+        )
 
     model = cp_model.CpModel()
 
@@ -91,7 +93,7 @@ def run_optimization(
 
     num_people = len(participants)
     num_groups = len(group_capacities)
-    
+
     if sum(group_capacities) != num_people:
         raise ValueError("Sum of group capacities must equal total participants.")
 

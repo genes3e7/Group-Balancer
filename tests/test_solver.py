@@ -96,13 +96,18 @@ def test_solver_single_group():
 
 def test_solver_empty_input():
     # Case: 0 participants, 0 capacities -> Invalid
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError,
+        match="group_capacities must contain at least one capacity requirement.",
+    ):
         solver.solve_with_ortools([], group_capacities=[], respect_stars=True)
 
 
 def test_solver_zero_participants_positive_groups():
     """Test behavior with 0 participants but valid capacities matching 0 sum."""
-    groups, success = solver.solve_with_ortools([], group_capacities=[0, 0], respect_stars=True)
+    groups, success = solver.solve_with_ortools(
+        [], group_capacities=[0, 0], respect_stars=True
+    )
     assert success is True
     assert len(groups) == 2
     assert len(groups[0]["members"]) == 0
@@ -111,5 +116,8 @@ def test_solver_zero_participants_positive_groups():
 def test_solver_positive_participants_zero_groups():
     """Test error when participants exist but no capacities provided."""
     participants = make_participants(5)
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ValueError,
+        match="group_capacities must contain at least one capacity requirement.",
+    ):
         solver.solve_with_ortools(participants, group_capacities=[], respect_stars=True)
