@@ -1,3 +1,4 @@
+# src/core/solver_interface.py
 """
 Interface for running the solver within a Streamlit environment.
 
@@ -15,7 +16,6 @@ from src.core import config
 try:
     from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 except ImportError:
-    # Fallback for older Streamlit versions or non-Streamlit environments
     try:
         from streamlit.scriptrunner import add_script_run_ctx, get_script_run_ctx
     except ImportError:
@@ -66,21 +66,21 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
 
 
 def run_optimization(
-    participants: list[dict], num_groups: int, status_box
+    participants: list[dict], group_capacities: list[int], status_box
 ) -> pd.DataFrame | None:
     """
     Runs the optimization process and returns the result as a DataFrame.
 
     Args:
         participants (list[dict]): List of participant dictionaries.
-        num_groups (int): Target number of groups.
+        group_capacities (list[int]): Exact capacity requirements for each group.
         status_box: Streamlit placeholder for status updates.
 
     Returns:
         pd.DataFrame | None: A DataFrame with assigned groups, or None if no solution.
     """
-    if num_groups < 1:
-        raise ValueError("num_groups must be >= 1")
+    if not group_capacities:
+        raise ValueError("group_capacities must contain at least one capacity requirement.")
 
     model = cp_model.CpModel()
 
@@ -90,6 +90,11 @@ def run_optimization(
     col_group = config.COL_GROUP
 
     num_people = len(participants)
+    num_groups = len(group_capacities)
+    
+    if sum(group_capacities) != num_people:
+        raise ValueError("Sum of group capacities must equal total participants.")
+
     scores = [int(round(float(p[col_score]) * scale_factor)) for p in participants]
     total_score = sum(scores)
 
@@ -98,12 +103,6 @@ def run_optimization(
         for i, p in enumerate(participants)
         if str(p[col_name]).endswith(config.ADVANTAGE_CHAR)
     ]
-
-    base_size = num_people // num_groups
-    remainder = num_people % num_groups
-    group_sizes = {
-        g: (base_size + 1 if g < remainder else base_size) for g in range(num_groups)
-    }
 
     x = {}
     for i in range(num_people):
@@ -114,7 +113,7 @@ def run_optimization(
         model.Add(sum(x[(i, g)] for g in range(num_groups)) == 1)
 
     for g in range(num_groups):
-        model.Add(sum(x[(i, g)] for i in range(num_people)) == group_sizes[g])
+        model.Add(sum(x[(i, g)] for i in range(num_people)) == group_capacities[g])
 
     if stars:
         max_stars = math.ceil(len(stars) / num_groups)
@@ -129,7 +128,7 @@ def run_optimization(
         g_sum = model.NewIntVar(0, total_score, f"g_sum_{g}")
         model.Add(g_sum == sum(x[(i, g)] * scores[i] for i in range(num_people)))
 
-        target = total_score * group_sizes[g]
+        target = total_score * group_capacities[g]
         actual = model.NewIntVar(0, max_domain, f"act_{g}")
         model.Add(actual == g_sum * num_people)
 

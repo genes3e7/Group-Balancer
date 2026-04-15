@@ -1,3 +1,4 @@
+# src/core/solver.py
 """
 Core optimization logic using Google OR-Tools.
 
@@ -46,30 +47,34 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
 
 
 def solve_with_ortools(
-    participants: list[dict], num_groups: int, respect_stars: bool
+    participants: list[dict], group_capacities: list[int], respect_stars: bool
 ) -> tuple[list[dict], bool]:
     """
     Solves the group partitioning problem.
 
     Minimizes the sum of absolute deviations of group scores from the global average.
-    Ensures group sizes are balanced (diff <= 1) and optionally distributes
-    'star' players evenly.
+    Enforces exact group capacities and optionally distributes 'star' players evenly.
 
     Args:
         participants (list[dict]): List of participant data.
-        num_groups (int): Number of groups to create.
+        group_capacities (list[int]): Exact capacity requirements for each group.
         respect_stars (bool): Whether to enforce even distribution of 'star' players.
 
     Returns:
         tuple[list[dict], bool]: A tuple containing the resulting group structure
         and a success boolean.
     """
-    if num_groups < 1:
-        raise ValueError("num_groups must be at least 1")
+    if not group_capacities:
+        raise ValueError("group_capacities must contain at least one capacity requirement.")
 
     model = cp_model.CpModel()
 
     num_people = len(participants)
+    num_groups = len(group_capacities)
+
+    if sum(group_capacities) != num_people:
+        raise ValueError("Sum of group capacities must equal the total number of participants.")
+
     scores = [
         int(round(float(p[config.COL_SCORE]) * config.SCALE_FACTOR))
         for p in participants
@@ -82,16 +87,6 @@ def solve_with_ortools(
         if str(p[config.COL_NAME]).endswith(config.ADVANTAGE_CHAR)
     ]
 
-    base_size = num_people // num_groups
-    remainder = num_people % num_groups
-
-    group_sizes_map = {}
-    for g in range(num_groups):
-        if g < remainder:
-            group_sizes_map[g] = base_size + 1
-        else:
-            group_sizes_map[g] = base_size
-
     x = {}
     for i in range(num_people):
         for g in range(num_groups):
@@ -101,7 +96,7 @@ def solve_with_ortools(
         model.Add(sum(x[(i, g)] for g in range(num_groups)) == 1)
 
     for g in range(num_groups):
-        model.Add(sum(x[(i, g)] for i in range(num_people)) == group_sizes_map[g])
+        model.Add(sum(x[(i, g)] for i in range(num_people)) == group_capacities[g])
 
     if respect_stars and stars:
         max_stars_per_group = math.ceil(len(stars) / num_groups)
@@ -117,7 +112,7 @@ def solve_with_ortools(
         g_sum = model.NewIntVar(0, total_score, f"sum_group_{g}")
         model.Add(g_sum == sum(x[(i, g)] * scores[i] for i in range(num_people)))
 
-        target_val = total_score * group_sizes_map[g]
+        target_val = total_score * group_capacities[g]
         actual_val = model.NewIntVar(0, max_domain_val, f"actual_val_{g}")
         model.Add(actual_val == g_sum * num_people)
 
@@ -138,7 +133,7 @@ def solve_with_ortools(
     printer = SolutionPrinter(time.time())
     status = solver.Solve(model, printer)
 
-    print("")  # Ensure newline after solution printing
+    print("")
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result_groups = []

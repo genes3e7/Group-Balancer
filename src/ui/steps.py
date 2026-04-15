@@ -1,3 +1,4 @@
+# src/ui/steps.py
 """
 UI Rendering Logic for individual steps.
 
@@ -80,7 +81,6 @@ def render_step_1():
                 clean_df = edited_df.copy()
                 clean_df[config.COL_NAME] = clean_df[config.COL_NAME].astype(str)
 
-                # Check for empty names
                 empty_names = clean_df[config.COL_NAME].str.strip().eq("").sum()
                 if empty_names > 0:
                     st.warning(
@@ -109,7 +109,7 @@ def render_step_1():
 def render_step_2():
     """
     Renders the Configuration step (Step 2).
-    Allows user to select the number of groups and launch the solver.
+    Allows user to select the number of groups, define custom capacities, and launch the solver.
     """
     st.header("Step 2: Configuration")
 
@@ -123,24 +123,56 @@ def render_step_2():
         st.stop()
 
     df = st.session_state.participants_df
+    total_participants = len(df)
 
     c1, c2 = st.columns(2)
     with c1:
         num_groups = st.number_input(
-            "Groups", min_value=1, max_value=max(1, len(df)), value=2
+            "Number of Groups", min_value=1, max_value=max(1, total_participants), value=2
         )
     with c2:
-        st.info(f"Participants: {len(df)}")
+        st.info(f"Total Participants: {total_participants}")
         st.caption(
             f"Note: Names ending in '{config.ADVANTAGE_CHAR}' are treated as Star players."
         )
 
+    st.subheader("Group Capacities")
+    st.caption("Adjust the size of each group. The total must equal the participant count.")
+    
+    capacity_cols = st.columns(num_groups)
+    group_capacities = []
+    
+    base_size = total_participants // num_groups
+    remainder = total_participants % num_groups
+
+    for i in range(num_groups):
+        default_cap = base_size + 1 if i < remainder else base_size
+        with capacity_cols[i % len(capacity_cols)]:
+            cap = st.number_input(
+                f"Group {i+1}", 
+                min_value=0, 
+                max_value=total_participants, 
+                value=default_cap, 
+                key=f"cap_{i}"
+            )
+            group_capacities.append(cap)
+
+    total_cap = sum(group_capacities)
+    cap_valid = total_cap == total_participants
+
+    if not cap_valid:
+        st.error(f"Validation Error: Total capacity ({total_cap}) does not match participants ({total_participants}).")
+    else:
+        st.success("Validation Success: Capacities match total participants.")
+
+    st.divider()
     c_back, c_go = st.columns([1, 5])
     if c_back.button("⬅ Back"):
         session_manager.go_to_step(1)
 
-    if c_go.button("🚀 Generate Groupings", type="primary"):
+    if c_go.button("🚀 Generate Groupings", type="primary", disabled=not cap_valid):
         st.session_state.num_groups_target = num_groups
+        st.session_state.group_capacities = group_capacities
         status_box = st.empty()
         solver_error = False
 
@@ -148,7 +180,7 @@ def render_step_2():
             try:
                 result_df = solver_interface.run_optimization(
                     st.session_state.participants_df.to_dict("records"),
-                    st.session_state.num_groups_target,
+                    st.session_state.group_capacities,
                     status_box,
                 )
             except Exception as e:
@@ -163,7 +195,6 @@ def render_step_2():
             time.sleep(0.5)
             session_manager.go_to_step(3)
         else:
-            # Use explicit flag instead of relying on private attributes
             if not solver_error:
                 status_box.error("No solution found. Try reducing constraints.")
 
@@ -290,7 +321,6 @@ def _render_footer_actions(has_data: bool):
             type="primary",
         )
 
-    # Confirmation flow for UX safety
     with c_reset:
         if st.button("🔄 Start Over"):
             st.session_state.confirm_reset = True
