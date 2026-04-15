@@ -1,13 +1,9 @@
 # .coderabbit.yaml
 reviews:
-  # Enable for all target branches
-  target_branches: 
-    - "**" 
-  # OR leave it empty to default to all
-  # target_branches: []
-
   # Ensure auto-review is on
   auto_review:
     enabled: true
+    # Target all base branches
+    base_branches: [".*"]
     # To ignore bot PRs (e.g., Dependabot), use this:
-    ignore_bot_prs: true
+    ignore_usernames: ["dependabot[bot]"]
