@@ -1,4 +1,3 @@
-# src/ui/steps.py
 """
 UI Rendering Logic for individual steps.
 
@@ -139,6 +138,16 @@ def render_step_2():
     st.subheader("Group Capacities")
     st.caption("Adjust the size of each group. The total must equal the participant count.")
     
+    # Cleanup stale capacity keys if num_groups was reduced
+    for key in list(st.session_state.keys()):
+        if key.startswith("cap_"):
+            try:
+                idx = int(key.split("_")[1])
+                if idx >= num_groups:
+                    del st.session_state[key]
+            except ValueError:
+                pass
+
     capacity_cols = st.columns(num_groups)
     group_capacities = []
     
@@ -147,7 +156,7 @@ def render_step_2():
 
     for i in range(num_groups):
         default_cap = base_size + 1 if i < remainder else base_size
-        with capacity_cols[i % len(capacity_cols)]:
+        with capacity_cols[i]:
             cap = st.number_input(
                 f"Group {i+1}", 
                 min_value=0, 
