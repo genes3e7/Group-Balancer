@@ -115,6 +115,7 @@ The project has been refactored into a modular `src/` architecture:
 <!-- PROJECT_TREE_START -->
 ```text
 .
+│   ├── .coderabbit.yaml
 │   ├── .gitignore
 │   ├── LICENSE
 │   ├── README.md
