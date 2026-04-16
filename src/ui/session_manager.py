@@ -26,10 +26,12 @@ def init_session() -> None:
             st.session_state[key] = value
 
     if "manual_df" not in st.session_state:
+        # Initialize with the dynamic SCORE_PREFIX schema
+        default_score_col = f"{config.SCORE_PREFIX}1"
         st.session_state.manual_df = pd.DataFrame(
             {
                 config.COL_NAME: ["Player 1", "Player 2*", "Player 3"],
-                config.COL_SCORE: [80, 95, 60],
+                default_score_col: [80.0, 95.0, 60.0],
             }
         )
 
