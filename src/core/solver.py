@@ -27,7 +27,7 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.__start_time = start_time
         self.__solution_count = 0
-        self.__last_print_time = 0
+        self.__last_print_time = 0.0
 
     def on_solution_callback(self) -> None:
         """
@@ -94,7 +94,7 @@ def build_partition_model(
     stars = [
         i
         for i, p in enumerate(participants)
-        if str(p[config.COL_NAME]).endswith(config.ADVANTAGE_CHAR)
+        if str(p.get(config.COL_NAME, "")).endswith(config.ADVANTAGE_CHAR)
     ]
 
     x = {}
@@ -125,22 +125,23 @@ def build_partition_model(
         ]
         total_score = sum(scores)
 
-        max_domain_val = total_score * num_people if num_people > 0 else 0
-        if max_domain_val == 0:
-            continue
+        # Calculate robust bounds that natively support negative and zero-sum dimensions
+        min_sum = sum(s for s in scores if s < 0)
+        max_sum = sum(s for s in scores if s > 0)
 
         g_sums = [
-            model.NewIntVar(0, total_score, f"g_sum_{col}_{g}")
+            model.NewIntVar(min_sum, max_sum, f"g_sum_{col}_{g}")
             for g in range(num_groups)
         ]
 
         # --- SYMMETRY BREAKING ---
-        # Apply symmetry break to the first valid dimension to prune redundant branches
         if col_idx == 0:
             for g1 in range(num_groups):
                 for g2 in range(g1 + 1, num_groups):
                     if group_capacities[g1] == group_capacities[g2]:
                         model.Add(g_sums[g1] <= g_sums[g2])
+
+        diff_bound = max(1, (max_sum - min_sum) * num_people * 2)
 
         for g in range(num_groups):
             model.Add(
@@ -148,17 +149,19 @@ def build_partition_model(
             )
 
             target_val = total_score * group_capacities[g]
-            actual_val = model.NewIntVar(0, max_domain_val, f"actual_val_{col}_{g}")
+            actual_val = model.NewIntVar(
+                min_sum * num_people, max_sum * num_people, f"actual_val_{col}_{g}"
+            )
             model.Add(actual_val == g_sums[g] * num_people)
 
-            diff = model.NewIntVar(-max_domain_val, max_domain_val, f"diff_{col}_{g}")
+            diff = model.NewIntVar(-diff_bound, diff_bound, f"diff_{col}_{g}")
             model.Add(diff == actual_val - target_val)
 
-            abs_diff = model.NewIntVar(0, max_domain_val, f"abs_diff_{col}_{g}")
+            abs_diff = model.NewIntVar(0, diff_bound, f"abs_diff_{col}_{g}")
             model.AddAbsEquality(abs_diff, diff)
 
             weighted_diff = model.NewIntVar(
-                0, max_domain_val * 10000, f"weighted_diff_{col}_{g}"
+                0, diff_bound * 10000, f"weighted_diff_{col}_{g}"
             )
             model.Add(weighted_diff == abs_diff * weight_multiplier)
 

@@ -68,7 +68,7 @@ def test_solver_star_constraints():
         stars = sum(
             1
             for m in g["members"]
-            if str(m[config.COL_NAME]).endswith(config.ADVANTAGE_CHAR)
+            if str(m.get(config.COL_NAME, "")).endswith(config.ADVANTAGE_CHAR)
         )
         assert stars == 2
 
@@ -93,7 +93,7 @@ def test_solver_impossible_stars():
             sum(
                 1
                 for m in g["members"]
-                if str(m[config.COL_NAME]).endswith(config.ADVANTAGE_CHAR)
+                if str(m.get(config.COL_NAME, "")).endswith(config.ADVANTAGE_CHAR)
             )
             for g in groups
         ]
@@ -160,3 +160,33 @@ def test_solver_positive_participants_zero_groups():
             score_columns=[SCORE_COL],
             score_weights={SCORE_COL: 1.0},
         )
+
+
+def test_solver_multi_dimensional_weighted():
+    """Test that the solver respects score weighting across multiple dimensions."""
+    second_col = f"{config.SCORE_PREFIX}2"
+    participants = [
+        {config.COL_NAME: "P1", SCORE_COL: 100, second_col: 10},
+        {config.COL_NAME: "P2", SCORE_COL: 10, second_col: 100},
+        {config.COL_NAME: "P3", SCORE_COL: 100, second_col: 10},
+        {config.COL_NAME: "P4", SCORE_COL: 10, second_col: 100},
+    ]
+    score_cols = [SCORE_COL, second_col]
+
+    # Priority on Score1: Result should balance Score1 effectively
+    score_weights = {SCORE_COL: 1.0, second_col: 0.0}
+
+    groups, success = solver.solve_with_ortools(
+        participants,
+        group_capacities=[2, 2],
+        respect_stars=False,
+        score_columns=score_cols,
+        score_weights=score_weights,
+    )
+
+    assert success is True
+    for g in groups:
+        sum_score1 = sum(m[SCORE_COL] for m in g["members"])
+        # Both groups should receive exactly 1 high Score1 (100) and 1 low Score1 (10)
+        # to mathematically balance the dimension prioritized by weight 1.0
+        assert sum_score1 == 110

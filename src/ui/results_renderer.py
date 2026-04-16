@@ -70,7 +70,7 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
         if not disp_df.empty:
             display_columns = [config.COL_NAME] + score_cols
             col_configs = {
-                col: st.column_config.NumberColumn(format="%.0f") for col in score_cols
+                col: st.column_config.NumberColumn(format="%.2f") for col in score_cols
             }
 
             st.dataframe(

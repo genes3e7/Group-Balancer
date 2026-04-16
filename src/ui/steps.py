@@ -189,12 +189,15 @@ def render_step_2() -> None:
     st.caption("Adjust the relative importance of balancing each score dimension.")
 
     score_weights = {}
-    weight_cols = st.columns(len(score_cols))
-    for i, col in enumerate(score_cols):
-        with weight_cols[i]:
-            score_weights[col] = st.number_input(
-                f"Weight: {col}", min_value=0.0, max_value=10.0, value=1.0, step=0.1
-            )
+    if not score_cols:
+        st.warning("No score columns detected. Please verify your data entry.")
+    else:
+        weight_cols = st.columns(len(score_cols))
+        for i, col in enumerate(score_cols):
+            with weight_cols[i]:
+                score_weights[col] = st.number_input(
+                    f"Weight: {col}", min_value=0.0, max_value=10.0, value=1.0, step=0.1
+                )
 
     st.subheader("Solver Configuration")
     timeout_limit = st.slider(

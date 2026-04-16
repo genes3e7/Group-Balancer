@@ -6,9 +6,25 @@ and includes summary statistics in the generated Excel file for multiple dimensi
 """
 
 import pandas as pd
-import numpy as np
 import io
 from src.utils import group_helpers
+
+
+def _get_excel_column_name(n: int) -> str:
+    """
+    Converts a 0-indexed column number to an Excel column name (A, B, C...Z, AA, AB...).
+
+    Args:
+        n (int): The 0-indexed column position.
+
+    Returns:
+        str: The corresponding Excel column label.
+    """
+    res = ""
+    while n >= 0:
+        res = chr(n % 26 + 65) + res
+        n = n // 26 - 1
+    return res
 
 
 def generate_excel_bytes(
@@ -40,25 +56,14 @@ def generate_excel_bytes(
         else:
             rows = []
 
-            headers = [
-                "A",
-                "B",
-                "C",
-                "D",
-                "E",
-                "F",
-                "G",
-                "H",
-                "I",
-                "J",
-                "K",
-                "L",
-                "M",
-                "N",
-                "O",
-            ]
+            # Dynamically compute enough header columns for 2 groups + gaps + stats
+            num_cols_per_group = 1 + len(score_cols)
+            required_count = max(
+                50, (num_cols_per_group * 2) + 5 + (len(score_cols) * 3)
+            )
+            headers = [_get_excel_column_name(i) for i in range(required_count)]
 
-            g1_cols = [headers[i] for i in range(1 + len(score_cols))]
+            g1_cols = [headers[i] for i in range(num_cols_per_group)]
             gap_col = headers[len(g1_cols)]
             g2_cols = [
                 headers[i] for i in range(len(g1_cols) + 1, len(g1_cols) * 2 + 1)
@@ -132,23 +137,30 @@ def generate_excel_bytes(
                 writer, sheet_name=sheet_name, index=False, header=False, startcol=0
             )
 
-            # Global statistics for each dimension appended side by side
+            # Accurate dataset-wide global statistics for each dimension
             stats_start_col = len(g1_cols) * 2 + 2
 
             for col_idx, col in enumerate(score_cols):
-                avgs = [g["averages"][col] for g in groups]
-                if avgs:
-                    stats = [
-                        {f"{col} Stat": "Lowest", "Val": f"{min(avgs):.3f}"},
-                        {f"{col} Stat": "Highest", "Val": f"{max(avgs):.3f}"},
-                        {f"{col} Stat": "Global Avg", "Val": f"{np.mean(avgs):.3f}"},
-                        {f"{col} Stat": "StdDev", "Val": f"{np.std(avgs):.4f}"},
-                    ]
-                    pd.DataFrame(stats).to_excel(
-                        writer,
-                        sheet_name=sheet_name,
-                        index=False,
-                        startcol=stats_start_col + (col_idx * 3),
-                    )
+                if col in df_results.columns:
+                    col_data = pd.to_numeric(df_results[col], errors="coerce").dropna()
+                    if not col_data.empty:
+                        stats = [
+                            {f"{col} Stat": "Lowest", "Val": f"{col_data.min():.3f}"},
+                            {f"{col} Stat": "Highest", "Val": f"{col_data.max():.3f}"},
+                            {
+                                f"{col} Stat": "Global Avg",
+                                "Val": f"{col_data.mean():.3f}",
+                            },
+                            {
+                                f"{col} Stat": "StdDev",
+                                "Val": f"{col_data.std(ddof=0):.4f}",
+                            },
+                        ]
+                        pd.DataFrame(stats).to_excel(
+                            writer,
+                            sheet_name=sheet_name,
+                            index=False,
+                            startcol=stats_start_col + (col_idx * 3),
+                        )
 
     return output.getvalue()

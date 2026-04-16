@@ -26,9 +26,13 @@ def main() -> None:
     num_people = len(participants)
     print(f"Loaded {num_people} participants.")
 
-    score_cols = [
-        k for k in participants[0].keys() if str(k).startswith(config.SCORE_PREFIX)
-    ]
+    score_cols_set = set()
+    for p in participants:
+        for k in p.keys():
+            if str(k).startswith(config.SCORE_PREFIX):
+                score_cols_set.add(k)
+
+    score_cols = sorted(list(score_cols_set))
     if not score_cols:
         print("Fatal Error: No score columns detected by parser.")
         return
@@ -66,8 +70,10 @@ def main() -> None:
         for g in result:
             print(f"\nGroup {g['id']}:")
             for m in g["members"]:
-                scores_str = ", ".join([f"{col}: {m[col]}" for col in score_cols])
-                print(f" - {m[config.COL_NAME]} ({scores_str})")
+                scores_str = ", ".join(
+                    [f"{col}: {m.get(col, 0)}" for col in score_cols]
+                )
+                print(f" - {m.get(config.COL_NAME, 'Unknown')} ({scores_str})")
     else:
         print("\nFailed to find a feasible solution.")
 
