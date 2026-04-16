@@ -21,7 +21,7 @@ def make_participants(count, score=100, star_indices=None):
 def test_solver_basic_split():
     participants = make_participants(10, score=100)
     groups, success = solver.solve_with_ortools(
-        participants, num_groups=2, respect_stars=False
+        participants, group_capacities=[5, 5], respect_stars=False
     )
     assert success is True
     assert len(groups) == 2
@@ -32,7 +32,7 @@ def test_solver_unequal_sizes():
     """Test splitting 10 people into 3 groups (4, 3, 3)."""
     participants = make_participants(10, score=10)
     groups, success = solver.solve_with_ortools(
-        participants, num_groups=3, respect_stars=False
+        participants, group_capacities=[4, 3, 3], respect_stars=False
     )
 
     assert success is True
@@ -45,7 +45,7 @@ def test_solver_star_constraints():
     # 4 stars, 6 normals -> 2 groups. Should be 2 stars per group.
     participants = make_participants(10, score=50, star_indices=[0, 1, 2, 3])
     groups, success = solver.solve_with_ortools(
-        participants, num_groups=2, respect_stars=True
+        participants, group_capacities=[5, 5], respect_stars=True
     )
 
     assert success is True
@@ -65,7 +65,7 @@ def test_solver_impossible_stars():
     """
     participants = make_participants(5, score=10, star_indices=[0, 1, 2])  # 3 stars
     groups, success = solver.solve_with_ortools(
-        participants, num_groups=2, respect_stars=True
+        participants, group_capacities=[3, 2], respect_stars=True
     )
 
     assert success is True
@@ -86,7 +86,7 @@ def test_solver_single_group():
     """Test trivial case of 1 group."""
     participants = make_participants(5)
     groups, success = solver.solve_with_ortools(
-        participants, num_groups=1, respect_stars=True
+        participants, group_capacities=[5], respect_stars=True
     )
 
     assert success is True
@@ -95,22 +95,29 @@ def test_solver_single_group():
 
 
 def test_solver_empty_input():
-    # Case: 0 participants, 0 groups -> Invalid
-    with pytest.raises(ValueError):
-        solver.solve_with_ortools([], num_groups=0, respect_stars=True)
+    # Case: 0 participants, 0 capacities -> Invalid
+    with pytest.raises(
+        ValueError,
+        match="group_capacities must contain at least one capacity requirement.",
+    ):
+        solver.solve_with_ortools([], group_capacities=[], respect_stars=True)
 
 
 def test_solver_zero_participants_positive_groups():
-    """Test behavior with 0 participants but valid group count."""
-    # Should result in empty groups, not an error
-    groups, success = solver.solve_with_ortools([], num_groups=2, respect_stars=True)
+    """Test behavior with 0 participants but valid capacities matching 0 sum."""
+    groups, success = solver.solve_with_ortools(
+        [], group_capacities=[0, 0], respect_stars=True
+    )
     assert success is True
     assert len(groups) == 2
     assert len(groups[0]["members"]) == 0
 
 
 def test_solver_positive_participants_zero_groups():
-    """Test error when participants exist but zero groups requested."""
+    """Test error when participants exist but no capacities provided."""
     participants = make_participants(5)
-    with pytest.raises(ValueError):
-        solver.solve_with_ortools(participants, num_groups=0, respect_stars=True)
+    with pytest.raises(
+        ValueError,
+        match="group_capacities must contain at least one capacity requirement.",
+    ):
+        solver.solve_with_ortools(participants, group_capacities=[], respect_stars=True)

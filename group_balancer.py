@@ -23,7 +23,8 @@ def main():
     if not participants:
         return
 
-    print(f"Loaded {len(participants)} participants.")
+    num_people = len(participants)
+    print(f"Loaded {num_people} participants.")
 
     while True:
         try:
@@ -38,9 +39,16 @@ def main():
             print("\nOperation cancelled.")
             return
 
+    # Construct the group capacities array based on the CLI input
+    base_size = num_people // num_groups
+    remainder = num_people % num_groups
+    group_capacities = [
+        base_size + 1 if i < remainder else base_size for i in range(num_groups)
+    ]
+
     print("\nSolving...")
     result, success = solver.solve_with_ortools(
-        participants, num_groups, respect_stars=True
+        participants, group_capacities, respect_stars=True
     )
 
     if success:

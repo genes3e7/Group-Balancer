@@ -10,6 +10,7 @@ This module contains the specific layout and interaction logic for:
 import streamlit as st
 import pandas as pd
 import time
+from ortools.sat.python import cp_model
 from src.core import config, solver_interface
 from src.ui import results_renderer, session_manager
 from src.utils import exporter
@@ -80,7 +81,6 @@ def render_step_1():
                 clean_df = edited_df.copy()
                 clean_df[config.COL_NAME] = clean_df[config.COL_NAME].astype(str)
 
-                # Check for empty names
                 empty_names = clean_df[config.COL_NAME].str.strip().eq("").sum()
                 if empty_names > 0:
                     st.warning(
@@ -109,7 +109,7 @@ def render_step_1():
 def render_step_2():
     """
     Renders the Configuration step (Step 2).
-    Allows user to select the number of groups and launch the solver.
+    Allows user to select the number of groups, define custom capacities, and launch the solver.
     """
     st.header("Step 2: Configuration")
 
@@ -123,49 +123,112 @@ def render_step_2():
         st.stop()
 
     df = st.session_state.participants_df
+    total_participants = len(df)
 
     c1, c2 = st.columns(2)
     with c1:
         num_groups = st.number_input(
-            "Groups", min_value=1, max_value=max(1, len(df)), value=2
+            "Number of Groups",
+            min_value=1,
+            max_value=max(1, total_participants),
+            value=2,
         )
     with c2:
-        st.info(f"Participants: {len(df)}")
+        st.info(f"Total Participants: {total_participants}")
         st.caption(
             f"Note: Names ending in '{config.ADVANTAGE_CHAR}' are treated as Star players."
         )
 
+    st.subheader("Group Capacities")
+    st.caption(
+        "Adjust the size of each group. The total must equal the participant count."
+    )
+
+    for key in list(st.session_state.keys()):
+        if key.startswith("cap_"):
+            try:
+                idx = int(key.split("_")[1])
+                if idx >= num_groups:
+                    del st.session_state[key]
+            except ValueError:
+                pass
+
+    capacity_cols = st.columns(num_groups)
+    group_capacities = []
+
+    base_size = total_participants // num_groups
+    remainder = total_participants % num_groups
+
+    for i in range(num_groups):
+        default_cap = base_size + 1 if i < remainder else base_size
+        with capacity_cols[i]:
+            cap = st.number_input(
+                f"Group {i + 1}",
+                min_value=0,
+                max_value=total_participants,
+                value=default_cap,
+                key=f"cap_{i}",
+            )
+            group_capacities.append(cap)
+
+    total_cap = sum(group_capacities)
+    cap_valid = total_cap == total_participants
+
+    if not cap_valid:
+        st.error(
+            f"Validation Error: Total capacity ({total_cap}) does not match participants ({total_participants})."
+        )
+    else:
+        st.success("Validation Success: Capacities match total participants.")
+
+    st.subheader("Solver Configuration")
+    timeout_limit = st.slider(
+        "Max Calculation Time (Seconds)",
+        min_value=config.UI_TIMEOUT_MIN,
+        max_value=config.UI_TIMEOUT_MAX,
+        value=config.UI_TIMEOUT_DEFAULT,
+        help=f"Higher limits allow finding better groupings but take longer. A hard cap is enforced at {config.SOLVER_TIMEOUT}s to prevent server overload.",
+    )
+
+    st.divider()
     c_back, c_go = st.columns([1, 5])
     if c_back.button("⬅ Back"):
         session_manager.go_to_step(1)
 
-    if c_go.button("🚀 Generate Groupings", type="primary"):
+    if c_go.button("🚀 Generate Groupings", type="primary", disabled=not cap_valid):
         st.session_state.num_groups_target = num_groups
+        st.session_state.group_capacities = group_capacities
         status_box = st.empty()
         solver_error = False
 
         with st.spinner("Initializing solver engine..."):
             try:
-                result_df = solver_interface.run_optimization(
-                    st.session_state.participants_df.to_dict("records"),
-                    st.session_state.num_groups_target,
-                    status_box,
+                result_df, solver_status, elapsed_time = (
+                    solver_interface.run_optimization(
+                        st.session_state.participants_df.to_dict("records"),
+                        st.session_state.group_capacities,
+                        status_box,
+                        timeout_limit,
+                    )
                 )
             except Exception as e:
                 status_box.error(f"Solver encountered an error: {e}")
                 result_df = None
+                solver_status = None
                 solver_error = True
 
         if result_df is not None:
             st.session_state.results_df = result_df
             st.session_state.interactive_df = result_df.copy()
-            status_box.success("Optimization Complete!")
+            st.session_state.solver_status = solver_status
+            st.session_state.solver_elapsed = elapsed_time
             time.sleep(0.5)
             session_manager.go_to_step(3)
         else:
-            # Use explicit flag instead of relying on private attributes
             if not solver_error:
-                status_box.error("No solution found. Try reducing constraints.")
+                status_box.error(
+                    "No valid solution could be found. Try adjusting constraints."
+                )
 
 
 def render_step_3():
@@ -178,6 +241,20 @@ def render_step_3():
         session_manager.go_to_step(2)
     with col_top_title:
         st.header("Step 3: Results")
+
+    solver_status = st.session_state.get("solver_status")
+    elapsed = st.session_state.get("solver_elapsed", 0.0)
+
+    if solver_status == cp_model.FEASIBLE:
+        st.warning(
+            f"⏱️ **Timeout Reached:** Displaying the best grouping found within the {elapsed:.2f}s limit. A mathematically optimal solution could not be proven in time.",
+            icon="⏳",
+        )
+    elif solver_status == cp_model.OPTIMAL:
+        st.success(
+            f"🎯 **Optimal Solution Proven:** This grouping has the lowest possible mathematical deviation for the given constraints. (Proven in {elapsed:.2f}s)",
+            icon="✅",
+        )
 
     if "interactive_df" not in st.session_state:
         st.session_state.interactive_df = (
@@ -290,7 +367,6 @@ def _render_footer_actions(has_data: bool):
             type="primary",
         )
 
-    # Confirmation flow for UX safety
     with c_reset:
         if st.button("🔄 Start Over"):
             st.session_state.confirm_reset = True
