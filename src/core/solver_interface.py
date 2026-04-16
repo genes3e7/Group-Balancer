@@ -120,8 +120,15 @@ def run_optimization(
         model.Add(sum(x[(i, g)] for i in range(num_people)) == group_capacities[g])
 
     if stars:
-        max_stars = math.ceil(len(stars) / num_groups)
-        min_stars = len(stars) // num_groups
+        active_groups = sum(1 for c in group_capacities if c > 0)
+
+        if active_groups > 0:
+            max_stars = math.ceil(len(stars) / active_groups)
+            min_stars = len(stars) // active_groups
+        else:
+            max_stars = 0
+            min_stars = 0
+
         for g in range(num_groups):
             upper_g = min(max_stars, group_capacities[g])
             lower_g = min(min_stars, group_capacities[g])
