@@ -1,4 +1,3 @@
-# src/core/solver.py
 """
 Core optimization logic using Google OR-Tools.
 
@@ -28,22 +27,26 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.__start_time = start_time
         self.__solution_count = 0
+        self.__last_print_time = 0
 
     def on_solution_callback(self):
         """
         Called by the solver when a new valid solution is found.
         Prints the objective value and elapsed time.
         """
-        current_time = time.time()
-        obj = self.ObjectiveValue()
         self.__solution_count += 1
-        elapsed = current_time - self.__start_time
+        current_time = time.time()
 
-        sys.stdout.write(
-            f"\r  > Found solution #{self.__solution_count} | "
-            f"Objective (Deviation): {obj} | Time: {elapsed:.2f}s\033[K"
-        )
-        sys.stdout.flush()
+        # Throttle CLI prints
+        if current_time - self.__last_print_time >= 0.1:
+            obj = self.ObjectiveValue()
+            elapsed = current_time - self.__start_time
+            sys.stdout.write(
+                f"\r  > Solutions Evaluated: {self.__solution_count} | "
+                f"Objective (Deviation): {obj} | Time: {elapsed:.2f}s\033[K"
+            )
+            sys.stdout.flush()
+            self.__last_print_time = current_time
 
 
 def solve_with_ortools(
@@ -68,6 +71,9 @@ def solve_with_ortools(
         raise ValueError(
             "group_capacities must contain at least one capacity requirement."
         )
+
+    if any(cap < 0 for cap in group_capacities):
+        raise ValueError("group_capacities must not contain negative values.")
 
     model = cp_model.CpModel()
 
@@ -97,28 +103,36 @@ def solve_with_ortools(
             x[(i, g)] = model.NewBoolVar(f"assign_p{i}_g{g}")
 
     for i in range(num_people):
-        model.Add(sum(x[(i, g)] for g in range(num_groups)) == 1)
+        model.AddExactlyOne([x[(i, g)] for g in range(num_groups)])
 
     for g in range(num_groups):
         model.Add(sum(x[(i, g)] for i in range(num_people)) == group_capacities[g])
 
-    if respect_stars and stars:
-        max_stars_per_group = math.ceil(len(stars) / num_groups)
-        min_stars_per_group = len(stars) // num_groups
+    if respect_stars and stars and num_people > 0:
         for g in range(num_groups):
-            model.Add(sum(x[(i, g)] for i in stars) <= max_stars_per_group)
-            model.Add(sum(x[(i, g)] for i in stars) >= min_stars_per_group)
+            expected = len(stars) * group_capacities[g] / num_people
+            upper_g = min(group_capacities[g], math.ceil(expected))
+            lower_g = min(group_capacities[g], math.floor(expected))
+            model.Add(sum(x[(i, g)] for i in stars) <= upper_g)
+            model.Add(sum(x[(i, g)] for i in stars) >= lower_g)
 
     abs_diffs = []
     max_domain_val = total_score * num_people
 
+    g_sums = [model.NewIntVar(0, total_score, f"g_sum_{g}") for g in range(num_groups)]
+
+    # --- SYMMETRY BREAKING ---
+    for g1 in range(num_groups):
+        for g2 in range(g1 + 1, num_groups):
+            if group_capacities[g1] == group_capacities[g2]:
+                model.Add(g_sums[g1] <= g_sums[g2])
+
     for g in range(num_groups):
-        g_sum = model.NewIntVar(0, total_score, f"sum_group_{g}")
-        model.Add(g_sum == sum(x[(i, g)] * scores[i] for i in range(num_people)))
+        model.Add(g_sums[g] == sum(x[(i, g)] * scores[i] for i in range(num_people)))
 
         target_val = total_score * group_capacities[g]
         actual_val = model.NewIntVar(0, max_domain_val, f"actual_val_{g}")
-        model.Add(actual_val == g_sum * num_people)
+        model.Add(actual_val == g_sums[g] * num_people)
 
         diff = model.NewIntVar(-max_domain_val, max_domain_val, f"diff_{g}")
         model.Add(diff == actual_val - target_val)

@@ -40,28 +40,33 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         self.status_placeholder = status_placeholder
         self.solution_count = 0
         self.start_time = time.time()
+        self.last_update_time = 0
         self.ctx = get_script_run_ctx()
 
     def on_solution_callback(self):
         """
         Executed whenever a solution is found. Updates the UI with progress.
         """
-        if self.ctx:
-            add_script_run_ctx(threading.current_thread(), self.ctx)
-
         self.solution_count += 1
         current_time = time.time()
-        obj = self.ObjectiveValue()
-        elapsed = current_time - self.start_time
 
-        self.status_placeholder.markdown(
-            f"""
-            **Solver Status:** 🏃 Running...  
-            Solutions Found: `{self.solution_count}`  
-            Current Deviation Score: `{obj}`  
-            Time Elapsed: `{elapsed:.2f}s`
-            """
-        )
+        # Throttle UI renders to max ~4 updates per second
+        if current_time - self.last_update_time >= 0.25:
+            if self.ctx:
+                add_script_run_ctx(threading.current_thread(), self.ctx)
+
+            obj = self.ObjectiveValue()
+            elapsed = current_time - self.start_time
+
+            self.status_placeholder.markdown(
+                f"""
+                **Solver Status:** 🏃 Running (Optimizing & Proving)...  
+                Solutions Found: `{self.solution_count}`  
+                Current Deviation Score: `{obj}`  
+                Time Elapsed: `{elapsed:.2f}s`
+                """
+            )
+            self.last_update_time = current_time
 
 
 def run_optimization(
@@ -114,36 +119,39 @@ def run_optimization(
             x[(i, g)] = model.NewBoolVar(f"x_{i}_{g}")
 
     for i in range(num_people):
-        model.Add(sum(x[(i, g)] for g in range(num_groups)) == 1)
+        model.AddExactlyOne([x[(i, g)] for g in range(num_groups)])
 
     for g in range(num_groups):
         model.Add(sum(x[(i, g)] for i in range(num_people)) == group_capacities[g])
 
-    if stars:
-        active_groups = sum(1 for c in group_capacities if c > 0)
-
-        if active_groups > 0:
-            max_stars = math.ceil(len(stars) / active_groups)
-            min_stars = len(stars) // active_groups
-        else:
-            max_stars = 0
-            min_stars = 0
-
+    if stars and num_people > 0:
         for g in range(num_groups):
-            upper_g = min(max_stars, group_capacities[g])
-            lower_g = min(min_stars, group_capacities[g])
+            expected = len(stars) * group_capacities[g] / num_people
+            upper_g = min(group_capacities[g], math.ceil(expected))
+            lower_g = min(group_capacities[g], math.floor(expected))
             model.Add(sum(x[(i, g)] for i in stars) <= upper_g)
             model.Add(sum(x[(i, g)] for i in stars) >= lower_g)
 
     abs_diffs = []
     max_domain = total_score * num_people
+
+    # Define g_sums upfront so they can be used for symmetry breaking
+    g_sums = [model.NewIntVar(0, total_score, f"g_sum_{g}") for g in range(num_groups)]
+
+    # --- SYMMETRY BREAKING ---
+    # Force identically sized groups to be ordered by their score sum.
+    # This prevents the solver from redundantly evaluating mirrored configurations.
+    for g1 in range(num_groups):
+        for g2 in range(g1 + 1, num_groups):
+            if group_capacities[g1] == group_capacities[g2]:
+                model.Add(g_sums[g1] <= g_sums[g2])
+
     for g in range(num_groups):
-        g_sum = model.NewIntVar(0, total_score, f"g_sum_{g}")
-        model.Add(g_sum == sum(x[(i, g)] * scores[i] for i in range(num_people)))
+        model.Add(g_sums[g] == sum(x[(i, g)] * scores[i] for i in range(num_people)))
 
         target = total_score * group_capacities[g]
         actual = model.NewIntVar(0, max_domain, f"act_{g}")
-        model.Add(actual == g_sum * num_people)
+        model.Add(actual == g_sums[g] * num_people)
 
         diff = model.NewIntVar(-max_domain, max_domain, f"diff_{g}")
         model.Add(diff == actual - target)
@@ -160,6 +168,19 @@ def run_optimization(
 
     cb = StreamlitSolverCallback(status_box)
     status = solver_inst.Solve(model, cb)
+
+    # Force final render
+    if cb.ctx:
+        add_script_run_ctx(threading.current_thread(), cb.ctx)
+    elapsed = time.time() - cb.start_time
+    status_box.markdown(
+        f"""
+        **Solver Status:** ✅ Complete  
+        Solutions Evaluated: `{cb.solution_count}`  
+        Final Deviation Score: `{solver_inst.ObjectiveValue()}`  
+        Total Time: `{elapsed:.2f}s`
+        """
+    )
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         df = pd.DataFrame(participants)
