@@ -1,4 +1,3 @@
-# src/core/solver_interface.py
 """
 Interface for running the solver within a Streamlit environment.
 
@@ -84,6 +83,9 @@ def run_optimization(
             "group_capacities must contain at least one capacity requirement."
         )
 
+    if any(cap < 0 for cap in group_capacities):
+        raise ValueError("group_capacities must not contain negative values.")
+
     model = cp_model.CpModel()
 
     col_score = config.COL_SCORE
@@ -121,8 +123,10 @@ def run_optimization(
         max_stars = math.ceil(len(stars) / num_groups)
         min_stars = len(stars) // num_groups
         for g in range(num_groups):
-            model.Add(sum(x[(i, g)] for i in stars) <= max_stars)
-            model.Add(sum(x[(i, g)] for i in stars) >= min_stars)
+            upper_g = min(max_stars, group_capacities[g])
+            lower_g = min(min_stars, group_capacities[g])
+            model.Add(sum(x[(i, g)] for i in stars) <= upper_g)
+            model.Add(sum(x[(i, g)] for i in stars) >= lower_g)
 
     abs_diffs = []
     max_domain = total_score * num_people
