@@ -1,24 +1,25 @@
 """
-Configuration constants for the Group Balancer application.
-
-This module stores all hardcoded constants, column names, and solver settings
-to ensure a single source of truth for configuration.
+Global configuration and constants for the Group Balancer.
+Centralized point for developer maintenance.
 """
 
 import os
 
-# Column Headers
+# --- Data Schema ---
 COL_NAME = "Name"
 COL_SCORE = "Score"
 COL_GROUP = "Group"
+ADVANTAGE_CHAR = "*"
 
-# Solver Settings
-SOLVER_TIMEOUT = 300  # seconds
-SOLVER_NUM_WORKERS = os.cpu_count() or 4  # Parallel search workers
+# --- Solver Core Limits ---
+SCALE_FACTOR = 100000  # Scale float scores to integers for CP-SAT
+SOLVER_TIMEOUT = 300  # Absolute server hard-cap (seconds)
+SOLVER_NUM_WORKERS = os.cpu_count() or 4
 
-# Data Processing
-SCALE_FACTOR = 10**5  # Multiplier to convert float scores to integers for the solver
-ADVANTAGE_CHAR = "*"  # Suffix to identify "Star" participants
+# --- UI Constraints ---
+UI_TIMEOUT_MIN = 5
+UI_TIMEOUT_MAX = SOLVER_TIMEOUT
+UI_TIMEOUT_DEFAULT = min(60, SOLVER_TIMEOUT)
 
-# Output
+# --- I/O ---
 OUTPUT_FILENAME = "balanced_groups.xlsx"

@@ -10,6 +10,7 @@ This module contains the specific layout and interaction logic for:
 import streamlit as st
 import pandas as pd
 import time
+from ortools.sat.python import cp_model
 from src.core import config, solver_interface
 from src.ui import results_renderer, session_manager
 from src.utils import exporter
@@ -143,7 +144,6 @@ def render_step_2():
         "Adjust the size of each group. The total must equal the participant count."
     )
 
-    # Cleanup stale capacity keys if num_groups was reduced
     for key in list(st.session_state.keys()):
         if key.startswith("cap_"):
             try:
@@ -181,6 +181,15 @@ def render_step_2():
     else:
         st.success("Validation Success: Capacities match total participants.")
 
+    st.subheader("Solver Configuration")
+    timeout_limit = st.slider(
+        "Max Calculation Time (Seconds)",
+        min_value=config.UI_TIMEOUT_MIN,
+        max_value=config.UI_TIMEOUT_MAX,
+        value=config.UI_TIMEOUT_DEFAULT,
+        help=f"Higher limits allow finding better groupings but take longer. A hard cap is enforced at {config.SOLVER_TIMEOUT}s to prevent server overload.",
+    )
+
     st.divider()
     c_back, c_go = st.columns([1, 5])
     if c_back.button("⬅ Back"):
@@ -194,25 +203,32 @@ def render_step_2():
 
         with st.spinner("Initializing solver engine..."):
             try:
-                result_df = solver_interface.run_optimization(
-                    st.session_state.participants_df.to_dict("records"),
-                    st.session_state.group_capacities,
-                    status_box,
+                result_df, solver_status, elapsed_time = (
+                    solver_interface.run_optimization(
+                        st.session_state.participants_df.to_dict("records"),
+                        st.session_state.group_capacities,
+                        status_box,
+                        timeout_limit,
+                    )
                 )
             except Exception as e:
                 status_box.error(f"Solver encountered an error: {e}")
                 result_df = None
+                solver_status = None
                 solver_error = True
 
         if result_df is not None:
             st.session_state.results_df = result_df
             st.session_state.interactive_df = result_df.copy()
-            status_box.success("Optimization Complete!")
+            st.session_state.solver_status = solver_status
+            st.session_state.solver_elapsed = elapsed_time
             time.sleep(0.5)
             session_manager.go_to_step(3)
         else:
             if not solver_error:
-                status_box.error("No solution found. Try reducing constraints.")
+                status_box.error(
+                    "No valid solution could be found. Try adjusting constraints."
+                )
 
 
 def render_step_3():
@@ -225,6 +241,20 @@ def render_step_3():
         session_manager.go_to_step(2)
     with col_top_title:
         st.header("Step 3: Results")
+
+    solver_status = st.session_state.get("solver_status")
+    elapsed = st.session_state.get("solver_elapsed", 0.0)
+
+    if solver_status == cp_model.FEASIBLE:
+        st.warning(
+            f"⏱️ **Timeout Reached:** Displaying the best grouping found within the {elapsed:.2f}s limit. A mathematically optimal solution could not be proven in time.",
+            icon="⏳",
+        )
+    elif solver_status == cp_model.OPTIMAL:
+        st.success(
+            f"🎯 **Optimal Solution Proven:** This grouping has the lowest possible mathematical deviation for the given constraints. (Proven in {elapsed:.2f}s)",
+            icon="✅",
+        )
 
     if "interactive_df" not in st.session_state:
         st.session_state.interactive_df = (

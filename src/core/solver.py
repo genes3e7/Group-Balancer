@@ -49,14 +49,11 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
             self.__last_print_time = current_time
 
 
-def solve_with_ortools(
+def build_partition_model(
     participants: list[dict], group_capacities: list[int], respect_stars: bool
-) -> tuple[list[dict], bool]:
+) -> tuple[cp_model.CpModel, dict, int, int]:
     """
-    Solves the group partitioning problem.
-
-    Minimizes the sum of absolute deviations of group scores from the global average.
-    Enforces exact group capacities and optionally distributes 'star' players evenly.
+    Constructs the Constraint Programming model for the group balancer.
 
     Args:
         participants (list[dict]): List of participant data.
@@ -64,8 +61,7 @@ def solve_with_ortools(
         respect_stars (bool): Whether to enforce even distribution of 'star' players.
 
     Returns:
-        tuple[list[dict], bool]: A tuple containing the resulting group structure
-        and a success boolean.
+        tuple: (model, x_vars, num_people, num_groups)
     """
     if not group_capacities:
         raise ValueError(
@@ -143,6 +139,19 @@ def solve_with_ortools(
         abs_diffs.append(abs_diff)
 
     model.Minimize(sum(abs_diffs))
+
+    return model, x, num_people, num_groups
+
+
+def solve_with_ortools(
+    participants: list[dict], group_capacities: list[int], respect_stars: bool
+) -> tuple[list[dict], bool]:
+    """
+    Solves the group partitioning problem and formats the result.
+    """
+    model, x, num_people, num_groups = build_partition_model(
+        participants, group_capacities, respect_stars
+    )
 
     solver = cp_model.CpSolver()
     solver.parameters.max_time_in_seconds = config.SOLVER_TIMEOUT
