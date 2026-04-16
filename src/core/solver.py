@@ -2,7 +2,7 @@
 Core optimization logic using Google OR-Tools.
 
 This module defines the Constraint Programming (CP) model used to partition
-participants into balanced groups based on their scores and 'star' status.
+participants into balanced groups based on multi-dimensional scores and 'star' status.
 """
 
 import math
@@ -17,7 +17,7 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
     Callback to print intermediate solutions found by the solver.
     """
 
-    def __init__(self, start_time):
+    def __init__(self, start_time: float):
         """
         Initializes the printer.
 
@@ -29,7 +29,7 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
         self.__solution_count = 0
         self.__last_print_time = 0
 
-    def on_solution_callback(self):
+    def on_solution_callback(self) -> None:
         """
         Called by the solver when a new valid solution is found.
         Prints the objective value and elapsed time.
@@ -37,31 +37,41 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
         self.__solution_count += 1
         current_time = time.time()
 
-        # Throttle CLI prints
         if current_time - self.__last_print_time >= 0.1:
             obj = self.ObjectiveValue()
             elapsed = current_time - self.__start_time
             sys.stdout.write(
                 f"\r  > Solutions Evaluated: {self.__solution_count} | "
-                f"Objective (Deviation): {obj} | Time: {elapsed:.2f}s\033[K"
+                f"Objective (Weighted Deviation): {obj} | Time: {elapsed:.2f}s\033[K"
             )
             sys.stdout.flush()
             self.__last_print_time = current_time
 
 
 def build_partition_model(
-    participants: list[dict], group_capacities: list[int], respect_stars: bool
+    participants: list[dict],
+    group_capacities: list[int],
+    respect_stars: bool,
+    score_columns: list[str],
+    score_weights: dict[str, float],
 ) -> tuple[cp_model.CpModel, dict, int, int]:
     """
     Constructs the Constraint Programming model for the group balancer.
+
+    Calculates a weighted sum of absolute deviations across all provided score dimensions.
 
     Args:
         participants (list[dict]): List of participant data.
         group_capacities (list[int]): Exact capacity requirements for each group.
         respect_stars (bool): Whether to enforce even distribution of 'star' players.
+        score_columns (list[str]): The continuous score dimensions to balance.
+        score_weights (dict[str, float]): Scalar multipliers for each score dimension.
 
     Returns:
         tuple: (model, x_vars, num_people, num_groups)
+
+    Raises:
+        ValueError: If capacities are invalid or mathematically contradictory.
     """
     if not group_capacities:
         raise ValueError(
@@ -80,12 +90,6 @@ def build_partition_model(
         raise ValueError(
             "Sum of group capacities must equal the total number of participants."
         )
-
-    scores = [
-        int(round(float(p[config.COL_SCORE]) * config.SCALE_FACTOR))
-        for p in participants
-    ]
-    total_score = sum(scores)
 
     stars = [
         i
@@ -113,30 +117,52 @@ def build_partition_model(
             model.Add(sum(x[(i, g)] for i in stars) >= lower_g)
 
     abs_diffs = []
-    max_domain_val = total_score * num_people
 
-    g_sums = [model.NewIntVar(0, total_score, f"g_sum_{g}") for g in range(num_groups)]
+    for col_idx, col in enumerate(score_columns):
+        weight_multiplier = int(round(score_weights.get(col, 1.0) * 100))
+        scores = [
+            int(round(float(p.get(col, 0)) * config.SCALE_FACTOR)) for p in participants
+        ]
+        total_score = sum(scores)
 
-    # --- SYMMETRY BREAKING ---
-    for g1 in range(num_groups):
-        for g2 in range(g1 + 1, num_groups):
-            if group_capacities[g1] == group_capacities[g2]:
-                model.Add(g_sums[g1] <= g_sums[g2])
+        max_domain_val = total_score * num_people if num_people > 0 else 0
+        if max_domain_val == 0:
+            continue
 
-    for g in range(num_groups):
-        model.Add(g_sums[g] == sum(x[(i, g)] * scores[i] for i in range(num_people)))
+        g_sums = [
+            model.NewIntVar(0, total_score, f"g_sum_{col}_{g}")
+            for g in range(num_groups)
+        ]
 
-        target_val = total_score * group_capacities[g]
-        actual_val = model.NewIntVar(0, max_domain_val, f"actual_val_{g}")
-        model.Add(actual_val == g_sums[g] * num_people)
+        # --- SYMMETRY BREAKING ---
+        # Apply symmetry break to the first valid dimension to prune redundant branches
+        if col_idx == 0:
+            for g1 in range(num_groups):
+                for g2 in range(g1 + 1, num_groups):
+                    if group_capacities[g1] == group_capacities[g2]:
+                        model.Add(g_sums[g1] <= g_sums[g2])
 
-        diff = model.NewIntVar(-max_domain_val, max_domain_val, f"diff_{g}")
-        model.Add(diff == actual_val - target_val)
+        for g in range(num_groups):
+            model.Add(
+                g_sums[g] == sum(x[(i, g)] * scores[i] for i in range(num_people))
+            )
 
-        abs_diff = model.NewIntVar(0, max_domain_val, f"abs_diff_{g}")
-        model.AddAbsEquality(abs_diff, diff)
+            target_val = total_score * group_capacities[g]
+            actual_val = model.NewIntVar(0, max_domain_val, f"actual_val_{col}_{g}")
+            model.Add(actual_val == g_sums[g] * num_people)
 
-        abs_diffs.append(abs_diff)
+            diff = model.NewIntVar(-max_domain_val, max_domain_val, f"diff_{col}_{g}")
+            model.Add(diff == actual_val - target_val)
+
+            abs_diff = model.NewIntVar(0, max_domain_val, f"abs_diff_{col}_{g}")
+            model.AddAbsEquality(abs_diff, diff)
+
+            weighted_diff = model.NewIntVar(
+                0, max_domain_val * 10000, f"weighted_diff_{col}_{g}"
+            )
+            model.Add(weighted_diff == abs_diff * weight_multiplier)
+
+            abs_diffs.append(weighted_diff)
 
     model.Minimize(sum(abs_diffs))
 
@@ -144,13 +170,28 @@ def build_partition_model(
 
 
 def solve_with_ortools(
-    participants: list[dict], group_capacities: list[int], respect_stars: bool
+    participants: list[dict],
+    group_capacities: list[int],
+    respect_stars: bool,
+    score_columns: list[str],
+    score_weights: dict[str, float],
 ) -> tuple[list[dict], bool]:
     """
     Solves the group partitioning problem and formats the result.
+
+    Args:
+        participants (list[dict]): List of participant data.
+        group_capacities (list[int]): Exact capacity requirements for each group.
+        respect_stars (bool): Whether to enforce even distribution of 'star' players.
+        score_columns (list[str]): Dimensions to balance against.
+        score_weights (dict[str, float]): Impact weight of each dimension.
+
+    Returns:
+        tuple[list[dict], bool]: A tuple containing the resulting group structure
+        and a success boolean.
     """
     model, x, num_people, num_groups = build_partition_model(
-        participants, group_capacities, respect_stars
+        participants, group_capacities, respect_stars, score_columns, score_weights
     )
 
     solver = cp_model.CpSolver()
@@ -165,19 +206,13 @@ def solve_with_ortools(
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result_groups = []
         for g in range(num_groups):
-            group_data = {"id": g + 1, "members": [], "current_sum": 0.0, "avg": 0.0}
+            group_data = {"id": g + 1, "members": []}
             result_groups.append(group_data)
 
         for i in range(num_people):
             for g in range(num_groups):
                 if solver.Value(x[(i, g)]) == 1:
                     result_groups[g]["members"].append(participants[i])
-
-        for g in result_groups:
-            g_sum = sum(float(m[config.COL_SCORE]) for m in g["members"])
-            count = len(g["members"])
-            g["current_sum"] = g_sum
-            g["avg"] = g_sum / count if count > 0 else 0.0
 
         return result_groups, True
     else:

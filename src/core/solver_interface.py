@@ -7,6 +7,7 @@ updates can be rendered to the Streamlit UI during execution.
 
 import threading
 import time
+from typing import Any
 import pandas as pd
 from ortools.sat.python import cp_model
 from src.core import config, solver
@@ -18,10 +19,10 @@ except ImportError:
         from streamlit.scriptrunner import add_script_run_ctx, get_script_run_ctx
     except ImportError:
 
-        def add_script_run_ctx(t, c=None):
+        def add_script_run_ctx(t: Any, c: Any = None) -> None:
             pass
 
-        def get_script_run_ctx():
+        def get_script_run_ctx() -> Any:
             return None
 
 
@@ -30,7 +31,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
     A custom OR-Tools callback that updates a Streamlit UI element.
     """
 
-    def __init__(self, status_placeholder):
+    def __init__(self, status_placeholder: Any):
         """
         Args:
             status_placeholder: A Streamlit placeholder element to render updates.
@@ -39,17 +40,16 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         self.status_placeholder = status_placeholder
         self.solution_count = 0
         self.start_time = time.time()
-        self.last_update_time = 0
+        self.last_update_time = 0.0
         self.ctx = get_script_run_ctx()
 
-    def on_solution_callback(self):
+    def on_solution_callback(self) -> None:
         """
         Executed whenever a solution is found. Updates the UI with progress.
         """
         self.solution_count += 1
         current_time = time.time()
 
-        # Throttle UI renders to max ~4 updates per second
         if current_time - self.last_update_time >= 0.25:
             if self.ctx:
                 add_script_run_ctx(threading.current_thread(), self.ctx)
@@ -61,7 +61,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
                 f"""
                 **Solver Status:** 🏃 Running (Optimizing & Proving)...  
                 Solutions Found: `{self.solution_count}`  
-                Current Deviation Score: `{obj}`  
+                Current Weighted Deviation: `{obj}`  
                 Time Elapsed: `{elapsed:.2f}s`
                 """
             )
@@ -71,8 +71,10 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
 def run_optimization(
     participants: list[dict],
     group_capacities: list[int],
-    status_box,
+    status_box: Any,
     timeout_limit: int,
+    score_columns: list[str],
+    score_weights: dict[str, float],
 ) -> tuple[pd.DataFrame | None, int | None, float]:
     """
     Runs the optimization process and returns the result as a DataFrame along with the status and elapsed time.
@@ -82,12 +84,14 @@ def run_optimization(
         group_capacities (list[int]): Exact capacity requirements for each group.
         status_box: Streamlit placeholder for status updates.
         timeout_limit (int): Maximum solver runtime in seconds.
+        score_columns (list[str]): Dimensions to balance against.
+        score_weights (dict[str, float]): Impact weight of each dimension.
 
     Returns:
         tuple: (DataFrame of assignments or None, CP Solver Status Code, Elapsed Time in seconds)
     """
     model, x, num_people, num_groups = solver.build_partition_model(
-        participants, group_capacities, respect_stars=True
+        participants, group_capacities, True, score_columns, score_weights
     )
 
     solver_inst = cp_model.CpSolver()
@@ -97,7 +101,6 @@ def run_optimization(
     cb = StreamlitSolverCallback(status_box)
     status = solver_inst.Solve(model, cb)
 
-    # Force final render context
     if cb.ctx:
         add_script_run_ctx(threading.current_thread(), cb.ctx)
     elapsed = time.time() - cb.start_time
@@ -108,7 +111,7 @@ def run_optimization(
             f"""
             **Solver Status:** ✅ Complete ({status_label})  
             Solutions Evaluated: `{cb.solution_count}`  
-            Final Deviation Score: `{solver_inst.ObjectiveValue()}`  
+            Final Weighted Deviation: `{solver_inst.ObjectiveValue()}`  
             Total Time: `{elapsed:.2f}s`
             """
         )

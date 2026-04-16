@@ -5,6 +5,8 @@ Unit tests for the solver module.
 import pytest
 from src.core import solver, config
 
+SCORE_COL = f"{config.SCORE_PREFIX}1"
+
 
 def make_participants(count, score=100, star_indices=None):
     if star_indices is None:
@@ -14,25 +16,34 @@ def make_participants(count, score=100, star_indices=None):
         name = f"P{i}"
         if i in star_indices:
             name += config.ADVANTAGE_CHAR
-        data.append({config.COL_NAME: name, config.COL_SCORE: score})
+        data.append({config.COL_NAME: name, SCORE_COL: score})
     return data
 
 
 def test_solver_basic_split():
     participants = make_participants(10, score=100)
     groups, success = solver.solve_with_ortools(
-        participants, group_capacities=[5, 5], respect_stars=False
+        participants,
+        group_capacities=[5, 5],
+        respect_stars=False,
+        score_columns=[SCORE_COL],
+        score_weights={SCORE_COL: 1.0},
     )
     assert success is True
     assert len(groups) == 2
-    assert groups[0]["avg"] == 100.0
+    for g in groups:
+        assert len(g["members"]) == 5
 
 
 def test_solver_unequal_sizes():
     """Test splitting 10 people into 3 groups (4, 3, 3)."""
     participants = make_participants(10, score=10)
     groups, success = solver.solve_with_ortools(
-        participants, group_capacities=[4, 3, 3], respect_stars=False
+        participants,
+        group_capacities=[4, 3, 3],
+        respect_stars=False,
+        score_columns=[SCORE_COL],
+        score_weights={SCORE_COL: 1.0},
     )
 
     assert success is True
@@ -45,7 +56,11 @@ def test_solver_star_constraints():
     # 4 stars, 6 normals -> 2 groups. Should be 2 stars per group.
     participants = make_participants(10, score=50, star_indices=[0, 1, 2, 3])
     groups, success = solver.solve_with_ortools(
-        participants, group_capacities=[5, 5], respect_stars=True
+        participants,
+        group_capacities=[5, 5],
+        respect_stars=True,
+        score_columns=[SCORE_COL],
+        score_weights={SCORE_COL: 1.0},
     )
 
     assert success is True
@@ -65,7 +80,11 @@ def test_solver_impossible_stars():
     """
     participants = make_participants(5, score=10, star_indices=[0, 1, 2])  # 3 stars
     groups, success = solver.solve_with_ortools(
-        participants, group_capacities=[3, 2], respect_stars=True
+        participants,
+        group_capacities=[3, 2],
+        respect_stars=True,
+        score_columns=[SCORE_COL],
+        score_weights={SCORE_COL: 1.0},
     )
 
     assert success is True
@@ -86,7 +105,11 @@ def test_solver_single_group():
     """Test trivial case of 1 group."""
     participants = make_participants(5)
     groups, success = solver.solve_with_ortools(
-        participants, group_capacities=[5], respect_stars=True
+        participants,
+        group_capacities=[5],
+        respect_stars=True,
+        score_columns=[SCORE_COL],
+        score_weights={SCORE_COL: 1.0},
     )
 
     assert success is True
@@ -100,13 +123,23 @@ def test_solver_empty_input():
         ValueError,
         match="group_capacities must contain at least one capacity requirement.",
     ):
-        solver.solve_with_ortools([], group_capacities=[], respect_stars=True)
+        solver.solve_with_ortools(
+            [],
+            group_capacities=[],
+            respect_stars=True,
+            score_columns=[SCORE_COL],
+            score_weights={SCORE_COL: 1.0},
+        )
 
 
 def test_solver_zero_participants_positive_groups():
     """Test behavior with 0 participants but valid capacities matching 0 sum."""
     groups, success = solver.solve_with_ortools(
-        [], group_capacities=[0, 0], respect_stars=True
+        [],
+        group_capacities=[0, 0],
+        respect_stars=True,
+        score_columns=[SCORE_COL],
+        score_weights={SCORE_COL: 1.0},
     )
     assert success is True
     assert len(groups) == 2
@@ -120,4 +153,10 @@ def test_solver_positive_participants_zero_groups():
         ValueError,
         match="group_capacities must contain at least one capacity requirement.",
     ):
-        solver.solve_with_ortools(participants, group_capacities=[], respect_stars=True)
+        solver.solve_with_ortools(
+            participants,
+            group_capacities=[],
+            respect_stars=True,
+            score_columns=[SCORE_COL],
+            score_weights={SCORE_COL: 1.0},
+        )

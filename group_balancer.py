@@ -8,7 +8,7 @@ Streamlit UI. This is useful for batch processing or testing logic.
 from src.core import data_loader, solver, config
 
 
-def main():
+def main() -> None:
     """
     Main function for the CLI.
     Orchestrates data loading, solving, and printing results to the console.
@@ -26,6 +26,13 @@ def main():
     num_people = len(participants)
     print(f"Loaded {num_people} participants.")
 
+    score_cols = [
+        k for k in participants[0].keys() if str(k).startswith(config.SCORE_PREFIX)
+    ]
+    if not score_cols:
+        print("Fatal Error: No score columns detected by parser.")
+        return
+
     while True:
         try:
             num_groups_str = input("Enter number of groups: ").strip()
@@ -39,27 +46,28 @@ def main():
             print("\nOperation cancelled.")
             return
 
-    # Construct the group capacities array based on the CLI input
     base_size = num_people // num_groups
     remainder = num_people % num_groups
     group_capacities = [
         base_size + 1 if i < remainder else base_size for i in range(num_groups)
     ]
 
-    print("\nSolving...")
+    # Give uniform equal weights in the CLI by default
+    score_weights = {col: 1.0 for col in score_cols}
+
+    print(f"\nBalancing across {len(score_cols)} dimensions: {score_cols}")
+    print("Solving...")
     result, success = solver.solve_with_ortools(
-        participants, group_capacities, respect_stars=True
+        participants, group_capacities, True, score_cols, score_weights
     )
 
     if success:
         print("\n=== Optimal Grouping Found ===")
         for g in result:
-            # Formatted current_sum to 2 decimal places for cleaner output
-            print(
-                f"\nGroup {g['id']} (Avg: {g['avg']:.2f}, Sum: {g['current_sum']:.2f}):"
-            )
+            print(f"\nGroup {g['id']}:")
             for m in g["members"]:
-                print(f" - {m[config.COL_NAME]} ({m[config.COL_SCORE]})")
+                scores_str = ", ".join([f"{col}: {m[col]}" for col in score_cols])
+                print(f" - {m[config.COL_NAME]} ({scores_str})")
     else:
         print("\nFailed to find a feasible solution.")
 

@@ -16,7 +16,7 @@ from src.ui import results_renderer, session_manager
 from src.utils import exporter
 
 
-def _load_uploaded_file():
+def _load_uploaded_file() -> None:
     """
     Callback to handle file uploads.
     Reads the file and updates 'manual_df' in session state.
@@ -30,19 +30,22 @@ def _load_uploaded_file():
                 df_new = pd.read_excel(uploaded)
 
             df_new.columns = df_new.columns.str.strip()
+            score_cols = [
+                c for c in df_new.columns if str(c).startswith(config.SCORE_PREFIX)
+            ]
 
-            if config.COL_NAME in df_new.columns and config.COL_SCORE in df_new.columns:
+            if config.COL_NAME in df_new.columns and score_cols:
                 st.session_state.manual_df = df_new
                 st.toast(f"✅ Imported {len(df_new)} rows from file!", icon="📂")
             else:
                 st.error(
-                    f"File missing required columns: {config.COL_NAME}, {config.COL_SCORE}"
+                    f"File missing required columns. Requires '{config.COL_NAME}' and at least one starting with '{config.SCORE_PREFIX}'."
                 )
         except Exception as e:
             st.error(f"Error reading file: {e}")
 
 
-def render_step_1():
+def render_step_1() -> None:
     """
     Renders the Data Entry step (Step 1).
     Displays the file importer and the editable data table.
@@ -70,12 +73,13 @@ def render_step_1():
 
     if st.button("Next: Configure", type="primary"):
         if edited_df is not None and not edited_df.empty:
-            if (
-                config.COL_NAME not in edited_df.columns
-                or config.COL_SCORE not in edited_df.columns
-            ):
+            score_cols = [
+                c for c in edited_df.columns if str(c).startswith(config.SCORE_PREFIX)
+            ]
+
+            if config.COL_NAME not in edited_df.columns or not score_cols:
                 st.error(
-                    f"Table must contain columns: '{config.COL_NAME}' and '{config.COL_SCORE}'"
+                    f"Table must contain '{config.COL_NAME}' and at least one column starting with '{config.SCORE_PREFIX}'."
                 )
             else:
                 clean_df = edited_df.copy()
@@ -87,29 +91,28 @@ def render_step_1():
                         f"⚠️ {empty_names} row(s) with empty names will be included."
                     )
 
-                clean_df[config.COL_SCORE] = pd.to_numeric(
-                    clean_df[config.COL_SCORE], errors="coerce"
-                )
+                for col in score_cols:
+                    clean_df[col] = pd.to_numeric(clean_df[col], errors="coerce")
+                    coerced_count = clean_df[col].isna().sum()
+                    clean_df[col] = clean_df[col].fillna(0)
 
-                coerced_count = clean_df[config.COL_SCORE].isna().sum()
-                clean_df[config.COL_SCORE] = clean_df[config.COL_SCORE].fillna(0)
-
-                if coerced_count > 0:
-                    st.warning(
-                        f"⚠️ {coerced_count} invalid score(s) were set to 0. Please check your input."
-                    )
+                    if coerced_count > 0:
+                        st.warning(
+                            f"⚠️ {coerced_count} invalid scores in {col} were set to 0. Please check your input."
+                        )
 
                 st.session_state.participants_df = clean_df
                 st.session_state.manual_df = clean_df.copy()
+                st.session_state.score_cols = score_cols
                 session_manager.go_to_step(2)
         else:
             st.warning("Please add at least one participant.")
 
 
-def render_step_2():
+def render_step_2() -> None:
     """
     Renders the Configuration step (Step 2).
-    Allows user to select the number of groups, define custom capacities, and launch the solver.
+    Allows user to select the number of groups, define custom capacities, multi-score weights, and launch the solver.
     """
     st.header("Step 2: Configuration")
 
@@ -124,6 +127,7 @@ def render_step_2():
 
     df = st.session_state.participants_df
     total_participants = len(df)
+    score_cols = st.session_state.get("score_cols", [])
 
     c1, c2 = st.columns(2)
     with c1:
@@ -161,7 +165,7 @@ def render_step_2():
 
     for i in range(num_groups):
         default_cap = base_size + 1 if i < remainder else base_size
-        with capacity_cols[i]:
+        with capacity_cols[i % len(capacity_cols)]:
             cap = st.number_input(
                 f"Group {i + 1}",
                 min_value=0,
@@ -181,13 +185,24 @@ def render_step_2():
     else:
         st.success("Validation Success: Capacities match total participants.")
 
+    st.subheader("Score Multi-Objective Weighting")
+    st.caption("Adjust the relative importance of balancing each score dimension.")
+
+    score_weights = {}
+    weight_cols = st.columns(len(score_cols))
+    for i, col in enumerate(score_cols):
+        with weight_cols[i]:
+            score_weights[col] = st.number_input(
+                f"Weight: {col}", min_value=0.0, max_value=10.0, value=1.0, step=0.1
+            )
+
     st.subheader("Solver Configuration")
     timeout_limit = st.slider(
         "Max Calculation Time (Seconds)",
         min_value=config.UI_TIMEOUT_MIN,
         max_value=config.UI_TIMEOUT_MAX,
         value=config.UI_TIMEOUT_DEFAULT,
-        help=f"Higher limits allow finding better groupings but take longer. A hard cap is enforced at {config.SOLVER_TIMEOUT}s to prevent server overload.",
+        help=f"Higher limits allow finding better groupings but take longer. A hard cap is enforced at {config.SOLVER_TIMEOUT}s.",
     )
 
     st.divider()
@@ -209,6 +224,8 @@ def render_step_2():
                         st.session_state.group_capacities,
                         status_box,
                         timeout_limit,
+                        score_cols,
+                        score_weights,
                     )
                 )
             except Exception as e:
@@ -231,7 +248,7 @@ def render_step_2():
                 )
 
 
-def render_step_3():
+def render_step_3() -> None:
     """
     Renders the Results step (Step 3).
     Displays the result matrix, live statistics, and export buttons.
@@ -244,6 +261,7 @@ def render_step_3():
 
     solver_status = st.session_state.get("solver_status")
     elapsed = st.session_state.get("solver_elapsed", 0.0)
+    score_cols = st.session_state.get("score_cols", [])
 
     if solver_status == cp_model.FEASIBLE:
         st.warning(
@@ -287,18 +305,23 @@ def render_step_3():
         st.error("No results to display. Please go back and regenerate.")
     else:
         if view_mode == "📝 Editor (Table)":
-            _render_table_view()
+            _render_table_view(score_cols)
         else:
-            results_renderer.render_group_cards(st.session_state.interactive_df)
+            results_renderer.render_group_cards(
+                st.session_state.interactive_df, score_cols
+            )
 
     st.divider()
-    _render_footer_actions(has_data)
+    _render_footer_actions(has_data, score_cols)
 
 
-def _render_table_view():
+def _render_table_view(score_cols: list[str]) -> None:
     """
     Renders the editable table view for results.
     Handles 'Update & Rerun' logic to ensure immediate stat updates.
+
+    Args:
+        score_cols (list[str]): List of score dimensions present in the dataframe.
     """
     stats_col, editor_col = st.columns([1, 3])
     with editor_col:
@@ -306,18 +329,21 @@ def _render_table_view():
 
         max_groups = st.session_state.get("num_groups_target", 10)
 
+        editor_configs = {
+            config.COL_GROUP: st.column_config.NumberColumn(
+                "Group ID",
+                min_value=1,
+                max_value=max_groups,
+                format="%d",
+            ),
+            config.COL_NAME: st.column_config.TextColumn(disabled=True),
+        }
+        for col in score_cols:
+            editor_configs[col] = st.column_config.NumberColumn(disabled=True)
+
         edited_df = st.data_editor(
             st.session_state.interactive_df,
-            column_config={
-                config.COL_GROUP: st.column_config.NumberColumn(
-                    "Group ID",
-                    min_value=1,
-                    max_value=max_groups,
-                    format="%d",
-                ),
-                config.COL_SCORE: st.column_config.NumberColumn(disabled=True),
-                config.COL_NAME: st.column_config.TextColumn(disabled=True),
-            },
+            column_config=editor_configs,
             hide_index=True,
             width="stretch",
             key="results_editor",
@@ -329,34 +355,38 @@ def _render_table_view():
 
     with stats_col:
         st.subheader("Live Stats")
-        gdf = (
-            st.session_state.interactive_df.groupby(config.COL_GROUP)[config.COL_SCORE]
-            .agg(["count", "mean", "sum"])
-            .reset_index()
-        )
-        gdf.columns = ["Group", "Count", "Avg", "Sum"]
 
-        std_val = gdf["Avg"].std()
-        if pd.isna(std_val):
-            std_val = 0.0
+        for col in score_cols:
+            st.markdown(f"**{col} Stats**")
+            gdf = (
+                st.session_state.interactive_df.groupby(config.COL_GROUP)[col]
+                .agg(["count", "mean", "sum"])
+                .reset_index()
+            )
+            gdf.columns = ["Group", "Count", "Avg", "Sum"]
 
-        st.metric("Std Dev", f"{std_val:.4f}")
-        st.dataframe(gdf.style.format({"Avg": "{:.2f}"}), hide_index=True)
+            std_val = gdf["Avg"].std()
+            if pd.isna(std_val):
+                std_val = 0.0
+
+            st.metric(f"{col} Std Dev", f"{std_val:.4f}")
+            st.dataframe(gdf.style.format({"Avg": "{:.2f}"}), hide_index=True)
 
 
-def _render_footer_actions(has_data: bool):
+def _render_footer_actions(has_data: bool, score_cols: list[str]) -> None:
     """
     Renders the footer actions (Download Excel, Start Over).
 
     Args:
         has_data (bool): Whether data exists to allow download.
+        score_cols (list[str]): List of score dimensions to structure export.
     """
     c_dl, c_reset = st.columns([1, 1])
     if has_data:
         excel_data = exporter.generate_excel_bytes(
             st.session_state.interactive_df,
             config.COL_GROUP,
-            config.COL_SCORE,
+            score_cols,
             config.COL_NAME,
         )
         c_dl.download_button(

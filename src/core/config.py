@@ -7,7 +7,7 @@ import os
 
 # --- Data Schema ---
 COL_NAME = "Name"
-COL_SCORE = "Score"
+SCORE_PREFIX = "Score"
 COL_GROUP = "Group"
 ADVANTAGE_CHAR = "*"
 

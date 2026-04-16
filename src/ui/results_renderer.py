@@ -2,7 +2,7 @@
 Visualization logic for displaying results.
 
 This module handles the 'Card View' rendering of groups, showing detailed
-statistics for each group in a grid layout.
+statistics for each group in a grid layout across multiple score dimensions.
 """
 
 import streamlit as st
@@ -11,20 +11,20 @@ from src.core import config
 from src.utils import group_helpers
 
 
-def render_group_cards(df: pd.DataFrame) -> None:
+def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
     """
     Renders groups in a grid layout (cards).
 
     Args:
         df (pd.DataFrame): The DataFrame containing group assignments.
+        score_cols (list[str]): The dimensions of scores to be rendered in the view.
     """
     if df is None or df.empty:
         st.warning("No groups to display.")
         return
 
-    # Use shared helper to get structured data
     groups = group_helpers.aggregate_groups(
-        df, config.COL_GROUP, config.COL_SCORE, config.COL_NAME
+        df, config.COL_GROUP, score_cols, config.COL_NAME
     )
 
     for i in range(0, len(groups), 2):
@@ -34,40 +34,50 @@ def render_group_cards(df: pd.DataFrame) -> None:
         c1, c2 = st.columns(2)
 
         with c1:
-            _render_single_card(g1)
+            _render_single_card(g1, score_cols)
 
         with c2:
             if g2:
-                _render_single_card(g2)
+                _render_single_card(g2, score_cols)
 
         st.markdown("---")
 
 
-def _render_single_card(group: dict) -> None:
+def _render_single_card(group: dict, score_cols: list[str]) -> None:
     """
-    Helper to render a single group card.
+    Helper to render a single group card with metrics for all score dimensions.
 
     Args:
         group (dict): Dictionary containing group metadata and members.
+        score_cols (list[str]): List of score dimensions to show averages for.
     """
     with st.container(border=True):
         st.markdown(f"### Group {group['id']}")
-        cols = st.columns([1, 1, 1])
+
+        num_metrics = 2 + len(score_cols)
+        cols = st.columns(num_metrics)
+
         cols[0].metric("Count", group["count"])
-        cols[1].metric("Avg", f"{group['avg']:.2f}")
-        cols[2].metric("Stars", group["stars"])
+        cols[1].metric("Stars", group["stars"])
+
+        for i, col in enumerate(score_cols):
+            avg_val = group["averages"].get(col, 0.0)
+            cols[i + 2].metric(f"Avg {col}", f"{avg_val:.2f}")
 
         st.divider()
 
         disp_df = pd.DataFrame(group["members"])
         if not disp_df.empty:
+            display_columns = [config.COL_NAME] + score_cols
+            col_configs = {
+                col: st.column_config.NumberColumn(format="%.0f") for col in score_cols
+            }
+
             st.dataframe(
-                disp_df[[config.COL_NAME, config.COL_SCORE]],
+                disp_df[display_columns],
                 hide_index=True,
                 width="stretch",
-                column_config={
-                    config.COL_SCORE: st.column_config.NumberColumn(format="%.0f")
-                },
+                column_config=col_configs,
             )
         else:
             st.caption("No members assigned.")
