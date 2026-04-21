@@ -6,7 +6,7 @@
 
 **Group Balancer** is an advanced mathematical partitioning tool designed to solve the "Fair Team" problem. Whether you are organizing a classroom, a corporate workshop, or a gaming tournament, this tool ensures your groups are balanced by skill, diverse by expertise, and respectful of social dynamics.
 
-Built with **Streamlit** and powered by **Google OR-Tools (CP-SAT)**, it moves beyond random shuffling to provide mathematically proven optimal assignments.
+Built with **Streamlit** and powered by **Google OR-Tools (CP-SAT)**, it moves beyond random shuffling to provide high-quality mathematically optimized assignments.
 
 ---
 
