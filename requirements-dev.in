@@ -1,9 +1,11 @@
 # Constrain to production versions
 -c requirements.txt
 
-# Install production dependencies (so tests can run)
+# Install production dependencies
 -r requirements.in
 
 # Dev Tools
 pytest
 ruff
+pathspec
+pip-tools

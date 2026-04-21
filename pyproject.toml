@@ -1,5 +1,23 @@
+[project]
+name = "group-balancer"
+version = "6.1.0"
+description = "Optimizes team allocations based on individual scores and constraints."
+authors = [{ name = "Group Balancer Contributors" }]
+requires-python = ">=3.10"
+dependencies = [
+    "streamlit>=1.30.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "openpyxl>=3.1.0",
+    "ortools>=9.8.0",
+    "pathspec>=0.11.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [tool.ruff]
-# Exclude a variety of commonly ignored directories.
 exclude = [
     ".git",
     ".ruff_cache",
@@ -8,16 +26,17 @@ exclude = [
     "dist",
     "venv",
 ]
-
-# Same as Black.
 line-length = 88
 indent-width = 4
 
 [tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-select = ["E4", "E7", "E9", "F"]
-ignore = []
-
-# Allow fix for all enabled rules (when `--fix`) is provided.
+select = ["E", "F", "I", "N", "W", "UP", "B", "D"]
+ignore = ["D100", "D104"] # We will ensure these are present, but ignoring for now to see other issues
 fixable = ["ALL"]
-unfixable = []
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

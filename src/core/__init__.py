@@ -1,3 +1,1 @@
-"""
-Core logic and configuration for the Group Balancer solver.
-"""
+"""Core logic and configuration for the Group Balancer solver."""

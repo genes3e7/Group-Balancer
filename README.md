@@ -2,7 +2,7 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10 - 3.14](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10 - 3.15-dev](https://img.shields.io/badge/python-3.10%20-%203.15-dev-blue.svg)](https://www.python.org/downloads/)
 
 **Group Balancer** is an advanced mathematical partitioning tool designed to solve the "Fair Team" problem. Whether you are organizing a classroom, a corporate workshop, or a gaming tournament, this tool ensures your groups are balanced by skill, diverse by expertise, and respectful of social dynamics.
 
@@ -12,10 +12,20 @@ Built with **Streamlit** and powered by **Google OR-Tools (CP-SAT)**, it moves b
 
 ## 🌟 V6 Advanced Engine: What's New?
 The V6 engine introduces a sophisticated multi-objective optimization framework:
+*   **Refactored Core:** Now uses professional **Builder** and **Strategy** patterns for model construction and scoring logic.
 *   **Dynamic Schema:** Support for multiple score dimensions (`Score1`, `Score2`, etc.) with independent weighting.
-*   **Custom Capacities:** Explicitly define group sizes (e.g., "I need two teams of 5 and one team of 3").
-*   **Tag-Based Logic:** Use simple character tags to force people apart (**Separators**) or keep them together (**Groupers**).
-*   **Conflict Resolution:** Intelligent handling of overlapping constraints with user-defined priority.
+*   **Tag-Based Logic:** Use character tags to force people apart (**Separators**) or keep them together (**Groupers**), with intelligent **Conflict Resolution**.
+*   **UI Decoupling:** Business logic is now isolated in a dedicated **Service Layer**, allowing for better testability and independent evolution.
+*   **Type Safety:** Comprehensive type hinting and Pydantic-like dataclasses for robust data handling.
+
+---
+
+## 🛡️ Security & Hardening
+Group Balancer V6 is designed for enterprise-grade safety:
+*   **Path Validation:** Strict normalization and `realpath` checks for all file inputs to prevent path traversal.
+*   **Size & Scale Limits:** Hard caps on file size (10MB) and participant count (1000) to protect against DoS attacks.
+*   **Numerical Safety:** Automated **Integer Overflow Protection** for CP-SAT objective functions, ensuring solver stability with extreme weights.
+*   **Strict Sanitization:** Input data is coerced and sanitized before reaching the optimization core.
 
 ---
 
@@ -35,11 +45,15 @@ If you want to run it locally or contribute to the project:
 *   Git (to clone the repo).
 
 **2. Installation**
-```bash
-# Clone the repository
-git clone https://github.com/taneur/Group-Balancer.git
-cd Group-Balancer
 
+#### Using uv (Recommended)
+```bash
+# Install dependencies and setup environment
+uv sync
+```
+
+#### Using pip
+```bash
 # Setup virtual environment
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
@@ -105,22 +119,62 @@ The V6 Engine models the partition as a **Constraint Programming** problem:
 sequenceDiagram
     actor User
     participant UI as Streamlit UI
-    participant Core as solver.py
+    participant Service as OptimizationService
+    participant Interface as solver_interface
+    participant Builder as ConstraintBuilder
     participant SAT as Google CP-SAT
 
-    User->>UI: Uploads Data & Configures Weights
-    UI->>Core: Pre-processes & Scales Data
-    Core->>SAT: Builds CP Model (Vars, Constraints, Obj)
+    User->>UI: Uploads Data & Configures
+    UI->>Service: run(df, config)
+    Service->>Interface: run_optimization(participants, config)
+    Interface->>Builder: Build variables, constraints, objectives
+    Interface->>SAT: Solve(model, callback)
     
     rect rgb(240, 248, 255)
     note right of SAT: Search Space Exploration
-    SAT->>SAT: Branch & Bound / LNS
-    SAT-->>Core: Intermediate Feasible Solutions
-    Core-->>UI: Live Progress Updates
+    SAT->>Interface: Callback (Solution found)
+    Interface-->>UI: Live Progress Update
     end
 
-    SAT-->>UI: Final Optimal Result
+    SAT-->>Interface: status (Optimal/Feasible)
+    Interface-->>Service: results, metrics
+    Service-->>UI: DataFrame, metrics
     UI->>User: Interactive Results & Export
+```
+
+---
+
+### 🏗️ Architecture: Professional Patterns
+The V6 engine is built for extensibility and clarity, utilizing industry-standard design patterns.
+
+```mermaid
+classDiagram
+    class TagProcessor {
+        +get_tags(val: str) set[str]
+        +process_participants(participants, priority)
+    }
+    class ScoringStrategy {
+        <<abstract>>
+        +get_score_vectors(participants, cfg)*
+    }
+    class AdvancedScoring {
+        +get_score_vectors(participants, cfg)
+    }
+    class SimpleScoring {
+        +get_score_vectors(participants, cfg)
+    }
+    class ConstraintBuilder {
+        +build_variables()
+        +add_pigeonhole_constraints(separators)
+        +add_scoring_objectives(strategy)
+        +add_cohesion_penalties(groupers)
+        +get_model() cp_model.CpModel
+    }
+    
+    ScoringStrategy <|-- AdvancedScoring
+    ScoringStrategy <|-- SimpleScoring
+    ConstraintBuilder o-- ScoringStrategy
+    ConstraintBuilder o-- TagProcessor
 ```
 
 ---
@@ -131,7 +185,12 @@ sequenceDiagram
 ```text
 .
 ├── .coderabbit.yaml
+├── .github/
+│   ├── dependabot.yml
+│   └── workflows/
+│       └── ci.yml
 ├── .gitignore
+├── CHANGELOG.md
 ├── LICENSE
 ├── README.md
 ├── app.py
@@ -142,16 +201,14 @@ sequenceDiagram
 ├── requirements-dev.txt
 ├── requirements.in
 ├── requirements.txt
-├── .github/
-│   ├── dependabot.yml
-│   └── workflows/
-│       └── ci.yml
 ├── src/
 │   ├── __init__.py
 │   ├── core/
 │   │   ├── __init__.py
 │   │   ├── config.py
 │   │   ├── data_loader.py
+│   │   ├── models.py
+│   │   ├── services.py
 │   │   ├── solver.py
 │   │   └── solver_interface.py
 │   ├── ui/
@@ -167,9 +224,18 @@ sequenceDiagram
 ├── tests/
 │   ├── __init__.py
 │   ├── test_config.py
+│   ├── test_coverage_edge_cases.py
 │   ├── test_data_loader.py
+│   ├── test_edge_cases.py
 │   ├── test_exporter.py
-│   └── test_solver.py
+│   ├── test_infra.py
+│   ├── test_models_unit.py
+│   ├── test_services.py
+│   ├── test_solver.py
+│   ├── test_solver_interface.py
+│   ├── test_solver_unit.py
+│   ├── test_ui.py
+│   └── test_utils.py
 └── tools/
     ├── __init__.py
     └── update_readme.py

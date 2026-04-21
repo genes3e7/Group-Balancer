@@ -1,56 +1,58 @@
-"""
-Build Script for the Group Balancer Application.
+"""Build script to package the Group Balancer application into a standalone executable.
 
-This script uses PyInstaller to bundle the application into a single
-standalone executable for distribution. It cleans up previous build
-artifacts and handles the necessary hidden imports.
+Uses PyInstaller to bundle the Streamlit app and core logic into a single file
+or directory structure depending on the target distribution.
 """
 
-import PyInstaller.__main__
 import os
 import shutil
+import subprocess
 
 
-def build_executable() -> None:
-    """
-    Executes the PyInstaller build process.
+def build_executable():
+    """Orchestrates the build process.
 
-    Configures the build with necessary arguments to bundle dependencies
-    like OR-Tools and Pandas into a single file with a console interface.
+    1. Cleans previous build artifacts.
+    2. Executes PyInstaller with specific hooks for Streamlit.
+    3. Verifies output.
     """
     print("🚀 Starting Build Process...")
 
-    args = [
-        "group_balancer.py",
-        "--name=GroupBalancer",
-        "--onefile",
-        "--clean",
-        "--noconfirm",
-        "--hidden-import=ortools",
-        "--hidden-import=pandas",
-        # Ensure src packages are found
-        "--paths=.",
-        "--exclude-module=matplotlib",
-        "--exclude-module=tkinter",
-        "--console",
-    ]
-
-    PyInstaller.__main__.run(args)
-    print(f"\n✅ Build Complete! Check: {os.path.abspath('dist')}")
-
-
-if __name__ == "__main__":
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
-
-    # Clean previous builds and cache
-    for folder in ["build", "dist", "__pycache__"]:
-        if os.path.exists(folder):
-            shutil.rmtree(folder)
+    # Clean old artifacts
+    dirs_to_clean = ["build", "dist"]
+    for d in dirs_to_clean:
+        if os.path.exists(d):
+            shutil.rmtree(d)
 
     # Clean internal src caches
     if os.path.exists("src"):
-        for root, dirs, files in os.walk("src"):
+        for root, dirs, _ in os.walk("src"):
             if "__pycache__" in dirs:
                 shutil.rmtree(os.path.join(root, "__pycache__"))
 
+    # Define PyInstaller Command
+    # We bundle 'app.py' which launches the Streamlit UI.
+    # --noconfirm: Overwrite existing
+    # --onefile: Bundle into a single executable
+    # --additional-hooks-dir: Streamlit requires specific hooks
+    cmd = [
+        "pyinstaller",
+        "--noconfirm",
+        "--onedir",
+        "--windowed",
+        "--name",
+        "GroupBalancer",
+        "app.py",
+    ]
+
+    try:
+        subprocess.run(cmd, check=True)
+        print(f"\n✅ Build Complete! Check: {os.path.abspath('dist')}")
+    except subprocess.CalledProcessError as e:
+        print(f"\n❌ Build Failed: {e}")
+    except FileNotFoundError:
+        print("\n❌ Error: PyInstaller not found. Please install it.")
+
+
+if __name__ == "__main__":
     build_executable()

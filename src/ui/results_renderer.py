@@ -1,79 +1,72 @@
-"""
-Visualization logic for displaying results.
+"""Results Rendering Logic.
 
-This module handles the 'Card View' rendering of groups, showing detailed
+This module provides functions to display the final grouping results and
 statistics for each group in a grid layout across multiple score dimensions,
 including categorical constraint tags.
 """
 
-import streamlit as st
+from typing import Any
+
 import pandas as pd
+import streamlit as st
+
 from src.core import config
 from src.utils import group_helpers
 
 
 def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
-    """
-    Renders groups in a grid layout (cards).
+    """Renders groups in a grid layout (cards).
 
     Args:
-        df (pd.DataFrame): The DataFrame containing group assignments.
-        score_cols (list[str]): The dimensions of scores to be rendered in the view.
+        df: The DataFrame containing group assignments.
+        score_cols: The dimensions of scores to be rendered in the view.
     """
     if df is None or df.empty:
         st.warning("No groups to display.")
         return
 
     groups = group_helpers.aggregate_groups(
-        df, config.COL_GROUP, score_cols, config.COL_NAME
+        df,
+        config.COL_GROUP,
+        score_cols,
+        config.COL_NAME,
     )
 
-    for i in range(0, len(groups), 2):
-        g1 = groups[i]
-        g2 = groups[i + 1] if (i + 1) < len(groups) else None
+    # Use columns for a grid-like layout
+    num_cols = 2
+    cols = st.columns(num_cols)
 
-        c1, c2 = st.columns(2)
-
-        with c1:
-            _render_single_card(g1, score_cols)
-
-        with c2:
-            if g2:
-                _render_single_card(g2, score_cols)
-
-        st.markdown("---")
+    for i, group in enumerate(groups):
+        with cols[i % num_cols]:
+            _render_single_card(group, score_cols)
 
 
-def _render_single_card(group: dict, score_cols: list[str]) -> None:
-    """
-    Helper to render a single group card with metrics for all score dimensions
-    and a table containing members and their constraint tags.
+def _render_single_card(group: dict[str, Any], score_cols: list[str]) -> None:
+    """Helper to render a single group card.
+
+    Displays metrics for all score dimensions and a table containing members
+    and their constraint tags.
 
     Args:
-        group (dict): Dictionary containing group metadata and members.
-        score_cols (list[str]): List of score dimensions to show averages for.
+        group: Dictionary containing group metadata and members.
+        score_cols: List of score dimensions to show averages for.
     """
     with st.container(border=True):
         st.markdown(f"### Group {group['id']}")
 
-        # Header metrics: Count + dynamic average for every score column provided
-        num_metrics = 1 + len(score_cols)
-        cols = st.columns(num_metrics)
+        # Show key averages/sums as metrics
+        m_cols = st.columns(len(score_cols))
+        for j, col in enumerate(score_cols):
+            with m_cols[j]:
+                avg = group["averages"].get(col, 0)
+                st.metric(label=f"Avg {col}", value=f"{avg:.2f}")
 
-        cols[0].metric("Count", group["count"])
+        st.markdown("**Members:**")
+        if group["members"]:
+            disp_df = pd.DataFrame(group["members"])
 
-        for i, col in enumerate(score_cols):
-            avg_val = group["averages"].get(col, 0.0)
-            cols[i + 1].metric(f"Avg {col}", f"{avg_val:.2f}")
-
-        st.divider()
-
-        disp_df = pd.DataFrame(group["members"])
-        if not disp_df.empty:
-            # Dynamically build display columns based on available data
+            # Clean display for categorical tags (optional: only show if present)
             display_columns = [config.COL_NAME]
-
-            # Add constraint columns if they exist in the member data
             if config.COL_GROUPER in disp_df.columns:
                 display_columns.append(config.COL_GROUPER)
             if config.COL_SEPARATOR in disp_df.columns:
@@ -90,7 +83,7 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
             st.dataframe(
                 disp_df[display_columns],
                 hide_index=True,
-                width="stretch",
+                use_container_width=True,
                 column_config=col_configs,
             )
         else:

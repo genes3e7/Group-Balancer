@@ -1,5 +1,4 @@
-"""
-Interface for running the solver within a Streamlit environment.
+"""Interface for running the solver within a Streamlit environment.
 
 Provides thread-safe context handling to ensure solver status updates
 can render live to the UI during deep search execution.
@@ -8,9 +7,16 @@ can render live to the UI during deep search execution.
 import threading
 import time
 from typing import Any
+
 import pandas as pd
 from ortools.sat.python import cp_model
+
 from src.core import config, solver
+from src.core.models import (
+    OptimizationMode,
+    Participant,
+    SolverConfig,
+)
 
 try:
     from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
@@ -20,19 +26,30 @@ except ImportError:
     except ImportError:
 
         def add_script_run_ctx(t: Any, c: Any = None) -> None:
-            pass
+            """Fallback for add_script_run_ctx if streamlit is not installed.
+
+            Args:
+                t: Thread object.
+                c: Context object.
+            """
 
         def get_script_run_ctx() -> Any:
+            """Fallback for get_script_run_ctx if streamlit is not installed.
+
+            Returns:
+                Any: Always None.
+            """
             return None
 
 
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
     """Custom OR-Tools callback to pipe logs to Streamlit."""
 
-    def __init__(self, status_placeholder: Any):
-        """
+    def __init__(self, status_placeholder: Any) -> None:
+        """Initializes the callback with a Streamlit status placeholder.
+
         Args:
-            status_placeholder: A Streamlit placeholder element.
+            status_placeholder: A Streamlit placeholder object to update.
         """
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.status_placeholder = status_placeholder
@@ -53,91 +70,96 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
             obj = self.ObjectiveValue()
             elapsed = current_time - self.start_time
 
-            self.status_placeholder.markdown(
-                f"""
-                **Solver Status:** 🏃 Running (Optimizing & Proving)...  
-                Solutions Found: `{self.solution_count}`  
-                Current Weighted Deviation: `{obj}`  
-                Time Elapsed: `{elapsed:.2f}s`
-                """
-            )
+            if self.status_placeholder:
+                self.status_placeholder.markdown(
+                    f"**Solver Status:** 🏃 Running (Optimizing & Proving)... \n"
+                    f"Solutions Found: `{self.solution_count}` \n"
+                    f"Current Weighted Deviation: `{obj}` \n"
+                    f"Time Elapsed: `{elapsed:.2f}s`",
+                )
             self.last_update_time = current_time
 
 
 def run_optimization(
-    participants: list[dict],
-    group_capacities: list[int],
-    status_box: Any,
-    timeout_limit: int,
-    score_columns: list[str],
-    score_weights: dict[str, float],
-    opt_mode: str,
-    conflict_priority: str,
-) -> tuple[pd.DataFrame | None, int | None, float]:
-    """
-    Runs the optimization and surfaces results as a DataFrame safely.
+    participants: list[Participant],
+    cfg: SolverConfig,
+    status_box: Any = None,
+) -> tuple[pd.DataFrame | None, dict[str, Any]]:
+    """Runs the optimization using Participant models and SolverConfig.
 
     Args:
-        participants (list[dict]): Participant dictionaries.
-        group_capacities (list[int]): Exact capacity requirements.
-        status_box: Streamlit placeholder for updates.
-        timeout_limit (int): Solver max limit in seconds.
-        score_columns (list[str]): Dimensions to balance.
-        score_weights (dict[str, float]): Impact weight mapping.
-        opt_mode (str): Optimization topology mode.
-        conflict_priority (str): Tag collision strategy.
+        participants: List of participants.
+        cfg: Solver configuration.
+        status_box: Streamlit status placeholder.
 
     Returns:
-        tuple: (Assigned DataFrame or None, Status Code, Elapsed Time)
+        tuple: (Results dataframe or None, Status metrics dictionary).
     """
-    model, x, num_people, num_groups = solver.build_partition_model(
-        participants,
-        group_capacities,
-        score_columns,
-        score_weights,
-        opt_mode,
-        conflict_priority,
-    )
+    start_time = time.time()
 
+    # 1. Build Model using Builder
+    builder = solver.ConstraintBuilder(participants, cfg)
+    builder.build_variables()
+
+    groupers, separators = solver.TagProcessor.process_participants(
+        participants,
+        cfg.conflict_priority,
+    )
+    builder.add_pigeonhole_constraints(separators)
+
+    strategy = (
+        solver.AdvancedScoring()
+        if cfg.opt_mode == OptimizationMode.ADVANCED
+        else solver.SimpleScoring()
+    )
+    builder.add_scoring_objectives(strategy)
+    builder.add_cohesion_penalties(groupers)
+
+    model = builder.get_model()
+
+    # 2. Solve with Callback
     solver_inst = cp_model.CpSolver()
-    solver_inst.parameters.max_time_in_seconds = timeout_limit
-    solver_inst.parameters.num_search_workers = config.SOLVER_NUM_WORKERS
+    solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
+    solver_inst.parameters.num_search_workers = cfg.num_workers
 
     cb = StreamlitSolverCallback(status_box)
     status = solver_inst.Solve(model, cb)
 
     if cb.ctx:
         add_script_run_ctx(threading.current_thread(), cb.ctx)
-    elapsed = time.time() - cb.start_time
+    elapsed = time.time() - start_time
 
+    status_name = solver_inst.StatusName(status)
+    metrics = {"status": status_name, "elapsed": elapsed, "raw_status": status}
+
+    # 3. Results
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        status_label = "Optimal" if status == cp_model.OPTIMAL else "Feasible (Timeout)"
-        status_box.markdown(
-            f"""
-            **Solver Status:** ✅ Complete ({status_label})  
-            Solutions Evaluated: `{cb.solution_count}`  
-            Final Cost Objective: `{solver_inst.ObjectiveValue()}`  
-            Total Time: `{elapsed:.2f}s`
-            """
-        )
+        if status_box:
+            status_msg = (
+                f"**Solver Status:** ✅ Complete ({status_name}) | "
+                f"Time: `{elapsed:.2f}s`"
+            )
+            status_box.markdown(status_msg)
 
-        df = pd.DataFrame(participants)
-        df[config.COL_GROUP] = 0
-        for i in range(num_people):
-            for g in range(num_groups):
-                if solver_inst.Value(x[(i, g)]):
-                    df.at[i, config.COL_GROUP] = g + 1
-        return df, status, elapsed
+        results = []
+        for i, p in enumerate(participants):
+            assigned_group = -1
+            for g in range(cfg.num_groups):
+                if solver_inst.Value(builder.x[(i, g)]) == 1:
+                    assigned_group = g + 1
+                    break
 
-    else:
-        status_label = (
-            "Infeasible" if status == cp_model.INFEASIBLE else "Unknown/Error"
-        )
-        status_box.markdown(
-            f"""
-            **Solver Status:** ❌ Failed ({status_label})  
-            Solutions Evaluated: `{cb.solution_count}`  
-            Total Time: `{elapsed:.2f}s`
-            """
-        )
-        return None, status, elapsed
+            p_dict = {
+                config.COL_NAME: p.name,
+                config.COL_GROUP: assigned_group,
+                config.COL_GROUPER: p.groupers,
+                config.COL_SEPARATOR: p.separators,
+            }
+            p_dict.update(p.scores)
+            results.append(p_dict)
+
+        return pd.DataFrame(results), metrics
+
+    if status_box:
+        status_box.error(f"Solver Status: ❌ Failed (Status: {status_name})")
+    return None, metrics

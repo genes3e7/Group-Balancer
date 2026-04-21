@@ -1,5 +1,4 @@
-"""
-Main Entry Point for the Group Balancer Application.
+"""Main Entry Point for the Group Balancer Application.
 
 This script acts as the controller, initializing the Streamlit session state
 and routing the user to the appropriate step (1, 2, or 3) via the
@@ -7,6 +6,7 @@ session manager.
 """
 
 import streamlit as st
+
 from src.ui import components, session_manager, steps
 
 components.setup_page()

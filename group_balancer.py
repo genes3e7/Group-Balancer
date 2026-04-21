@@ -1,81 +1,71 @@
-"""
-Command-Line Interface (CLI) Entry Point.
+"""CLI Entry Point for the Group Balancer.
 
-Allows the Group Balancer to be run in "headless" mode without the
-Streamlit UI. This is useful for batch processing or testing logic.
+Provides a terminal-based interface for running the optimization.
 """
 
-from src.core import data_loader, solver, config
+import sys
+
+from src import logger
+from src.core import config, data_loader, solver
+from src.core.models import ConflictPriority, OptimizationMode, SolverConfig
 
 
-def main() -> None:
-    """
-    Main function for the CLI.
-    Orchestrates data loading, solving, and printing results to the console.
-    """
-    print("=== Group Balancer CLI ===")
+def main():
+    """Main CLI execution loop."""
+    logger.info("Starting Group Balancer CLI...")
+    print("\n=== Group Balancer CLI ===")
 
     filepath = data_loader.get_file_path_from_user()
-    if not filepath:
-        return
-
     participants = data_loader.load_data(filepath)
+
     if not participants:
-        return
+        logger.error("Failed to load data. Exiting.")
+        sys.exit(1)
 
     num_people = len(participants)
-    print(f"Loaded {num_people} participants.")
-
-    score_cols_set = set()
-    for p in participants:
-        for k in p.keys():
-            if str(k).startswith(config.SCORE_PREFIX):
-                score_cols_set.add(k)
-
-    score_cols = sorted(list(score_cols_set))
-    if not score_cols:
-        print("Fatal Error: No score columns detected by parser.")
-        return
-
-    while True:
-        try:
-            num_groups_str = input("Enter number of groups: ").strip()
-            num_groups = int(num_groups_str)
-            if num_groups > 0:
-                break
-            print("Please enter a positive integer.")
-        except ValueError:
-            print("Invalid number.")
-        except KeyboardInterrupt:
-            print("\nOperation cancelled.")
-            return
-
-    base_size = num_people // num_groups
-    remainder = num_people % num_groups
-    group_capacities = [
-        base_size + 1 if i < remainder else base_size for i in range(num_groups)
+    score_cols = [
+        c for c in participants[0].keys() if c.startswith(config.SCORE_PREFIX)
     ]
 
-    # Give uniform equal weights in the CLI by default
-    score_weights = {col: 1.0 for col in score_cols}
+    if not score_cols:
+        logger.error("No score columns detected in input data.")
+        sys.exit(1)
 
-    print(f"\nBalancing across {len(score_cols)} dimensions: {score_cols}")
-    print("Solving...")
-    result, success = solver.solve_with_ortools(
-        participants, group_capacities, score_cols, score_weights
+    print(f"\nFound {num_people} participants and {len(score_cols)} score dimensions.")
+
+    try:
+        num_groups = int(input(f"Enter number of groups (1-{num_people}) [2]: ") or "2")
+    except ValueError:
+        logger.error("Invalid number of groups. Exiting.")
+        sys.exit(1)
+
+    # Simple even capacity split for CLI
+    base, rem = divmod(num_people, num_groups)
+    capacities = [base + (1 if i < rem else 0) for i in range(num_groups)]
+
+    cfg = SolverConfig(
+        num_groups=num_groups,
+        group_capacities=capacities,
+        score_weights={c: 1.0 for c in score_cols},
+        opt_mode=OptimizationMode.ADVANCED,
+        conflict_priority=ConflictPriority.GROUPERS,
+        timeout_seconds=config.SOLVER_TIMEOUT,
     )
 
-    if success:
-        print("\n=== Optimal Grouping Found ===")
-        for g in result:
-            print(f"\nGroup {g['id']}:")
-            for m in g["members"]:
-                scores_str = ", ".join(
-                    [f"{col}: {m.get(col, 0)}" for col in score_cols]
-                )
-                print(f" - {m.get(config.COL_NAME, 'Unknown')} ({scores_str})")
+    print("\nSolving optimization model...")
+    results, status, elapsed = solver.solve_with_ortools(participants, cfg)
+
+    if results:
+        print(f"\n✅ Success! Found grouping in {elapsed:.2f}s.")
+        print("=== Results Summary ===")
+        for g_id in range(1, num_groups + 1):
+            members = [p for p in results if p[config.COL_GROUP] == g_id]
+            print(f"\nGroup {g_id} ({len(members)} members):")
+            for m in members:
+                scores_str = ", ".join([f"{k}:{m[k]}" for k in score_cols])
+                print(f" - {m[config.COL_NAME]} ({scores_str})")
     else:
-        print("\nFailed to find a feasible solution.")
+        print("\n❌ Failed to find a valid solution.")
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
-# Core Dependencies
-pandas
-openpyxl
-numpy
-ortools
 streamlit
+pandas
+numpy
+openpyxl
+ortools
+pathspec
