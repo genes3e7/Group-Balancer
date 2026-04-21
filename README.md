@@ -130,49 +130,51 @@ sequenceDiagram
 <!-- PROJECT_TREE_START -->
 ```text
 .
-├── .coderabbit.yaml
-├── .gitignore
-├── LICENSE
-├── README.md
-├── app.py
-├── build.py
-├── group_balancer.py
-├── pyproject.toml
-├── requirements-dev.in
-├── requirements-dev.txt
-├── requirements.in
-├── requirements.txt
-├── .github/
-│   ├── dependabot.yml
-│   └── workflows/
-│       └── ci.yml
-├── src/
-│   ├── __init__.py
-│   ├── core/
+│   ├── .coderabbit.yaml
+│   ├── .gitignore
+│   ├── LICENSE
+│   ├── README.md
+│   ├── all_versions.txt
+│   ├── app.py
+│   ├── build.py
+│   ├── group_balancer.py
+│   ├── pyproject.toml
+│   ├── requirements-dev.in
+│   ├── requirements-dev.txt
+│   ├── requirements.in
+│   ├── requirements.txt
+│   ├── sorted_versions.txt
+│   ├── .github/
+│   │   ├── dependabot.yml
+│   │   ├── workflows/
+│   │   │   └── ci.yml
+│   ├── src/
 │   │   ├── __init__.py
-│   │   ├── config.py
-│   │   ├── data_loader.py
-│   │   ├── solver.py
-│   │   └── solver_interface.py
-│   ├── ui/
+│   │   ├── core/
+│   │   │   ├── __init__.py
+│   │   │   ├── config.py
+│   │   │   ├── data_loader.py
+│   │   │   ├── solver.py
+│   │   │   └── solver_interface.py
+│   │   ├── ui/
+│   │   │   ├── __init__.py
+│   │   │   ├── components.py
+│   │   │   ├── results_renderer.py
+│   │   │   ├── session_manager.py
+│   │   │   └── steps.py
+│   │   ├── utils/
+│   │   │   ├── __init__.py
+│   │   │   ├── exporter.py
+│   │   │   └── group_helpers.py
+│   ├── tests/
 │   │   ├── __init__.py
-│   │   ├── components.py
-│   │   ├── results_renderer.py
-│   │   ├── session_manager.py
-│   │   └── steps.py
-│   └── utils/
-│       ├── __init__.py
-│       ├── exporter.py
-│       └── group_helpers.py
-├── tests/
-│   ├── __init__.py
-│   ├── test_config.py
-│   ├── test_data_loader.py
-│   ├── test_exporter.py
-│   └── test_solver.py
-└── tools/
-    ├── __init__.py
-    └── update_readme.py
+│   │   ├── test_config.py
+│   │   ├── test_data_loader.py
+│   │   ├── test_exporter.py
+│   │   └── test_solver.py
+│   ├── tools/
+│   │   ├── __init__.py
+│   │   └── update_readme.py
 ```
 <!-- PROJECT_TREE_END -->
 
