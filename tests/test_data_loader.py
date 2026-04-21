@@ -30,7 +30,8 @@ def test_get_file_path_sanitization(mock_exists, mock_input):
 @patch("src.core.data_loader.pd.read_csv")
 def test_load_data_valid(mock_csv, mock_excel):
     """Test loading valid data."""
-    mock_df = pd.DataFrame({config.COL_NAME: ["Alice"], config.COL_SCORE: [10]})
+    score_col = f"{config.SCORE_PREFIX}1"
+    mock_df = pd.DataFrame({config.COL_NAME: ["Alice"], score_col: [10]})
     mock_excel.return_value = mock_df
 
     data = data_loader.load_data("test.xlsx")
@@ -41,7 +42,8 @@ def test_load_data_valid(mock_csv, mock_excel):
 def test_load_data_invalid_columns():
     """Test error when Name column is missing."""
     with patch("src.core.data_loader.pd.read_csv") as mock_read:
-        mock_read.return_value = pd.DataFrame({"Wrong": ["A"], "Score": [1]})
+        score_col = f"{config.SCORE_PREFIX}1"
+        mock_read.return_value = pd.DataFrame({"Wrong": ["A"], score_col: [1]})
         data = data_loader.load_data("test.csv")
         assert data is None
 
@@ -49,6 +51,8 @@ def test_load_data_invalid_columns():
 def test_load_data_missing_score_column():
     """Test error when Score column is missing."""
     with patch("src.core.data_loader.pd.read_csv") as mock_read:
-        mock_read.return_value = pd.DataFrame({"Name": ["Alice"], "Wrong": [1]})
+        mock_read.return_value = pd.DataFrame(
+            {config.COL_NAME: ["Alice"], "Wrong": [1]}
+        )
         data = data_loader.load_data("test.csv")
         assert data is None

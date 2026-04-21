@@ -7,13 +7,16 @@ import os
 
 # --- Data Schema ---
 COL_NAME = "Name"
-COL_SCORE = "Score"
+SCORE_PREFIX = "Score"
 COL_GROUP = "Group"
-ADVANTAGE_CHAR = "*"
+
+# --- Advanced Constraints ---
+COL_GROUPER = "Groupers"
+COL_SEPARATOR = "Separators"
 
 # --- Solver Core Limits ---
 SCALE_FACTOR = 100000  # Scale float scores to integers for CP-SAT
-SOLVER_TIMEOUT = 120  # Absolute server hard-cap (seconds)
+SOLVER_TIMEOUT = 600  # Absolute server hard-cap (seconds)
 SOLVER_NUM_WORKERS = os.cpu_count() or 4
 
 # --- UI Constraints ---

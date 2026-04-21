@@ -8,7 +8,7 @@ and the progress/status header.
 import streamlit as st
 
 
-def setup_page():
+def setup_page() -> None:
     """
     Configures the global Streamlit page settings.
     Sets the title, icon, and layout mode.
@@ -33,10 +33,13 @@ def render_page_header(step: int) -> None:
         st.markdown("""
         **Goal:** Create balanced groups from a list of participants.
         
-        1. **Upload Data:** Use an Excel or CSV file with `Name` and `Score` columns.
-        2. **Star (*) Logic:** - If you want specific people to be distributed evenly across groups (e.g., senior leaders, experts), add a `*` to the end of their name in the input file.
-           - *Example:* `John Doe*` will be treated as a "Star" player.
-        3. **Generate:** The solver will mathematically minimize the score difference between groups.
+        1. **Upload Data or Edit Manually:** Use an Excel/CSV file with a `Name` column and at least one `Score` column (e.g., `Score1`, `Score2`). You can also add score columns manually via the UI.
+        2. **Groupers & Separators (Categorical Constraints):**
+           - Every **single character** in the Groupers or Separators cell is treated as an independent tag.
+           - *Example:* A tag of `GSA` creates three separate rules (`G`, `S`, and `A`). Commas and spaces are completely ignored.
+           - **Groupers:** Participants sharing a grouper character will be kept together.
+           - **Separators:** Participants sharing a separator character will be spread apart into different groups (e.g., ensuring Leaders are distributed evenly).
+        3. **Generate:** The algorithm will balance the dimensions simultaneously based on your assigned weights, prioritizing constraints based on your solver setup. For highly complex setups, increase the Max Runtime or use Simple Mode.
         """)
 
     st.markdown("---")

@@ -1,8 +1,8 @@
 """
 Session State Management.
 
-This module initializes the Streamlit session state and provides
-navigation functions to move between steps.
+Initializes the Streamlit session state and guarantees that missing keys
+(like the advanced constraints) are injected to prevent application crashes.
 """
 
 import streamlit as st
@@ -19,6 +19,13 @@ def init_session() -> None:
         "step": 1,
         "participants_df": None,
         "results_df": None,
+        "interactive_df": None,
+        "num_groups_target": 2,
+        "group_capacities": [],
+        "confirm_reset": False,
+        "score_cols": [f"{config.SCORE_PREFIX}1"],
+        "solver_status": None,
+        "solver_elapsed": 0.0,
     }
 
     for key, value in defaults.items():
@@ -26,23 +33,24 @@ def init_session() -> None:
             st.session_state[key] = value
 
     if "manual_df" not in st.session_state:
+        default_score_col = f"{config.SCORE_PREFIX}1"
         st.session_state.manual_df = pd.DataFrame(
             {
-                config.COL_NAME: ["Player 1", "Player 2*", "Player 3"],
-                config.COL_SCORE: [80, 95, 60],
+                config.COL_NAME: ["Alice", "Bob", "Charlie"],
+                default_score_col: [80.0, 95.0, 60.0],
+                config.COL_GROUPER: ["A", "A", ""],
+                config.COL_SEPARATOR: ["", "X", "X"],
             }
         )
 
 
-def go_to_step(step: int) -> None:
+def go_to_step(target_step: int) -> None:
     """
     Updates the step state and reruns the app.
+    Input validation clamps the target_step between 1 and 3.
 
     Args:
-        step (int): The step number to navigate to (1-3).
+        target_step (int): The step number to navigate to (1-3).
     """
-    if step not in (1, 2, 3):
-        step = 1
-
-    st.session_state.step = step
+    st.session_state.step = max(1, min(3, target_step))
     st.rerun()
