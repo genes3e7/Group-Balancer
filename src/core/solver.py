@@ -107,8 +107,8 @@ def build_partition_model(
         for tag in s_tags:
             separator_sets.setdefault(tag, set()).add(i)
 
-    # Conflict Resolution based on user priority
-    if conflict_priority.startswith("Groupers"):
+    # Conflict Resolution based on exact token matches
+    if conflict_priority == "Groupers":
         for s_tag, s_set in separator_sets.items():
             for g_tag, g_set in grouper_sets.items():
                 overlap = s_set.intersection(g_set)
@@ -144,9 +144,7 @@ def build_partition_model(
 
     # --- 5. Scoring Mode Evaluation ---
     abs_diffs = []
-    active_score_cols = (
-        ["_SIMPLE_TOTAL_"] if opt_mode.startswith("Simple") else score_columns
-    )
+    active_score_cols = ["_SIMPLE_TOTAL_"] if opt_mode == "Simple" else score_columns
 
     for col_idx, col in enumerate(active_score_cols):
         if col == "_SIMPLE_TOTAL_":
@@ -207,7 +205,8 @@ def build_partition_model(
             abs_diff = model.NewIntVar(0, diff_bound, f"abs_{col}_{g}")
             model.AddAbsEquality(abs_diff, diff)
 
-            w_diff = model.NewIntVar(0, diff_bound * 10000, f"w_diff_{col}_{g}")
+            w_diff_bound = max(1, diff_bound * weight_m)
+            w_diff = model.NewIntVar(0, w_diff_bound, f"w_diff_{col}_{g}")
             model.Add(w_diff == abs_diff * weight_m)
             abs_diffs.append(w_diff)
 

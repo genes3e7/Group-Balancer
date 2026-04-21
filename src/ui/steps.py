@@ -76,11 +76,17 @@ def render_step_1() -> None:
     with col1:
         if st.button("➕ Add Score Column"):
             current_score_cols = [
-                c
+                str(c)
                 for c in st.session_state.manual_df.columns
                 if str(c).startswith(config.SCORE_PREFIX)
             ]
-            new_score_name = f"{config.SCORE_PREFIX}{len(current_score_cols) + 1}"
+            max_suffix = 0
+            for col in current_score_cols:
+                suffix = col[len(config.SCORE_PREFIX) :]
+                if suffix.isdigit():
+                    max_suffix = max(max_suffix, int(suffix))
+
+            new_score_name = f"{config.SCORE_PREFIX}{max_suffix + 1}"
             st.session_state.manual_df[new_score_name] = 0.0
             st.rerun()
 
@@ -188,6 +194,7 @@ def render_step_2() -> None:
 
     total_cap = sum(group_capacities)
     cap_valid = total_cap == total_participants
+    has_scores = len(score_cols) > 0
 
     if not cap_valid:
         st.error(
@@ -204,22 +211,27 @@ def render_step_2() -> None:
         with c_mode:
             opt_mode = st.radio(
                 "Optimization Topology Mode",
-                [
-                    "Simple (Fast, Balanced Total)",
-                    "Advanced (Independent Category Balance)",
-                ],
+                options=["Simple", "Advanced"],
+                format_func=lambda x: (
+                    "Simple (Fast, Balanced Total)"
+                    if x == "Simple"
+                    else "Advanced (Independent Category Balance)"
+                ),
                 help="Simple mode computes a single weighted average first for instant solves. Advanced balances all dimensions simultaneously.",
             )
         with c_prio:
             priority = st.radio(
                 "Tag Collision Priority",
-                ["Groupers (Together)", "Separators (Apart)"],
+                options=["Groupers", "Separators"],
+                format_func=lambda x: (
+                    "Groupers (Together)" if x == "Groupers" else "Separators (Apart)"
+                ),
                 help="If a participant shares BOTH a Grouper and Separator tag, which rule wins?",
             )
 
     st.subheader("Score Multi-Objective Weighting")
     score_weights = {}
-    if not score_cols:
+    if not has_scores:
         st.warning("No score columns detected. Please verify your data entry.")
     else:
         weight_cols = st.columns(len(score_cols))
@@ -243,7 +255,11 @@ def render_step_2() -> None:
     if c_back.button("⬅ Back"):
         session_manager.go_to_step(1)
 
-    if c_go.button("🚀 Generate Groupings", type="primary", disabled=not cap_valid):
+    if c_go.button(
+        "🚀 Generate Groupings",
+        type="primary",
+        disabled=not (cap_valid and has_scores),
+    ):
         st.session_state.num_groups_target = num_groups
         st.session_state.group_capacities = group_capacities
         status_box = st.empty()

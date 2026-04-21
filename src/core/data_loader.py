@@ -58,7 +58,8 @@ def load_data(filepath: str) -> list[dict] | None:
     Loads participant data from a CSV or Excel file.
 
     Dynamically detects all columns starting with the configured SCORE_PREFIX
-    and initializes constraint columns if missing.
+    and initializes constraint columns if missing. Issues warnings for missing
+    or non-numeric data before filling with zeroes.
 
     Args:
         filepath (str): Path to the source file.
@@ -100,10 +101,18 @@ def load_data(filepath: str) -> list[dict] | None:
             df[config.COL_SEPARATOR] = ""
 
         for col in score_cols:
-            original_scores = df[col]
+            original_scores = df[col].copy()
             df[col] = pd.to_numeric(original_scores, errors="coerce")
 
+            missing_mask = original_scores.isna()
             coerced_mask = df[col].isna() & original_scores.notna()
+
+            if missing_mask.any():
+                missing_names = df.loc[missing_mask, config.COL_NAME].tolist()
+                print(
+                    f"Warning: Missing scores in {col} for {missing_names} were set to 0."
+                )
+
             if coerced_mask.any():
                 invalid_names = df.loc[coerced_mask, config.COL_NAME].tolist()
                 print(

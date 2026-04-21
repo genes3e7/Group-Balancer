@@ -47,9 +47,10 @@ def init_session() -> None:
 def go_to_step(target_step: int) -> None:
     """
     Updates the step state and reruns the app.
+    Input validation clamps the target_step between 1 and 3.
 
     Args:
         target_step (int): The step number to navigate to (1-3).
     """
-    st.session_state.step = target_step
+    st.session_state.step = max(1, min(3, target_step))
     st.rerun()

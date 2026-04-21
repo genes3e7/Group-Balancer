@@ -215,19 +215,53 @@ def test_solver_fractional_cohesion():
 
 def test_solver_conflict_resolution():
     """Test that conflicting tags are resolved based on the priority toggle."""
-    p = make_participants(2, score=10.0, groupers=["X", "X"], separators=["X", "X"])
-    # If Groupers prioritized, they stay together in the 2-capacity group
-    groups, success = solver.solve_with_ortools(
+    p = make_participants(
+        4, score=10.0, groupers=["X", "X", "", ""], separators=["X", "X", "", ""]
+    )
+
+    # Priority: Groupers -> they stay together in the same group.
+    groups_g, success_g = solver.solve_with_ortools(
         p,
-        group_capacities=[2, 0],
+        group_capacities=[2, 2],
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
         conflict_priority="Groupers",
     )
-    assert success is True
+    assert success_g is True
 
-    # Pigeonhole constraint was dropped due to priority
-    assert len(groups[0]["members"]) == 2
+    # Priority: Separators -> they are forced apart into different groups.
+    groups_s, success_s = solver.solve_with_ortools(
+        p,
+        group_capacities=[2, 2],
+        score_columns=[SCORE_COL],
+        score_weights={SCORE_COL: 1.0},
+        conflict_priority="Separators",
+    )
+    assert success_s is True
+
+    p0_g = next(
+        g["id"]
+        for g in groups_g
+        if any(m[config.COL_NAME] == "P0" for m in g["members"])
+    )
+    p1_g = next(
+        g["id"]
+        for g in groups_g
+        if any(m[config.COL_NAME] == "P1" for m in g["members"])
+    )
+    assert p0_g == p1_g
+
+    p0_s = next(
+        g["id"]
+        for g in groups_s
+        if any(m[config.COL_NAME] == "P0" for m in g["members"])
+    )
+    p1_s = next(
+        g["id"]
+        for g in groups_s
+        if any(m[config.COL_NAME] == "P1" for m in g["members"])
+    )
+    assert p0_s != p1_s
 
 
 def test_solver_character_tokenization_separator():
@@ -246,24 +280,45 @@ def test_solver_character_tokenization_separator():
 
 def test_solver_comma_illegal_handling():
     """Verify that commas in tags are ignored and do not create empty tags."""
-    p1 = make_participants(2, groupers=["A,B", "A,B"])
-    p2 = make_participants(2, groupers=["AB", "AB"])
+    p1 = make_participants(4, groupers=["A,B", "A,B", "C", "C"])
+    p2 = make_participants(4, groupers=["AB", "AB", "C", "C"])
+    p3 = make_participants(4, groupers=["A", "B", "C", "D"])
 
     groups1, _ = solver.solve_with_ortools(
         p1,
-        group_capacities=[2, 0],
+        group_capacities=[2, 2],
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
     groups2, _ = solver.solve_with_ortools(
         p2,
-        group_capacities=[2, 0],
+        group_capacities=[2, 2],
+        score_columns=[SCORE_COL],
+        score_weights={SCORE_COL: 1.0},
+    )
+    groups3, _ = solver.solve_with_ortools(
+        p3,
+        group_capacities=[2, 2],
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
 
-    assert len(groups1[0]["members"]) == 2
-    assert len(groups2[0]["members"]) == 2
+    def are_together(groups_list: list[dict], name1: str, name2: str) -> bool:
+        g1 = next(
+            g["id"]
+            for g in groups_list
+            if any(m[config.COL_NAME] == name1 for m in g["members"])
+        )
+        g2 = next(
+            g["id"]
+            for g in groups_list
+            if any(m[config.COL_NAME] == name2 for m in g["members"])
+        )
+        return g1 == g2
+
+    assert are_together(groups1, "P0", "P1")
+    assert are_together(groups2, "P0", "P1")
+    assert len(groups3) == 2
 
 
 def test_solver_character_tokenization_grouper():
