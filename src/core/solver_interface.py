@@ -1,8 +1,8 @@
 """
 Interface for running the solver within a Streamlit environment.
 
-This module provides thread-safe context handling to ensure that solver
-updates can be rendered to the Streamlit UI during execution.
+Provides thread-safe context handling to ensure solver status updates
+can render live to the UI during deep search execution.
 """
 
 import threading
@@ -27,14 +27,12 @@ except ImportError:
 
 
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
-    """
-    A custom OR-Tools callback that updates a Streamlit UI element.
-    """
+    """Custom OR-Tools callback to pipe logs to Streamlit."""
 
     def __init__(self, status_placeholder: Any):
         """
         Args:
-            status_placeholder: A Streamlit placeholder element to render updates.
+            status_placeholder: A Streamlit placeholder element.
         """
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.status_placeholder = status_placeholder
@@ -44,9 +42,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         self.ctx = get_script_run_ctx()
 
     def on_solution_callback(self) -> None:
-        """
-        Executed whenever a solution is found. Updates the UI with progress.
-        """
+        """Update UI with live progress variables."""
         self.solution_count += 1
         current_time = time.time()
 
@@ -75,23 +71,33 @@ def run_optimization(
     timeout_limit: int,
     score_columns: list[str],
     score_weights: dict[str, float],
+    opt_mode: str,
+    conflict_priority: str,
 ) -> tuple[pd.DataFrame | None, int | None, float]:
     """
-    Runs the optimization process and returns the result as a DataFrame along with the status and elapsed time.
+    Runs the optimization and surfaces results as a DataFrame safely.
 
     Args:
-        participants (list[dict]): List of participant dictionaries.
-        group_capacities (list[int]): Exact capacity requirements for each group.
-        status_box: Streamlit placeholder for status updates.
-        timeout_limit (int): Maximum solver runtime in seconds.
-        score_columns (list[str]): Dimensions to balance against.
-        score_weights (dict[str, float]): Impact weight of each dimension.
+        participants (list[dict]): Participant dictionaries.
+        group_capacities (list[int]): Exact capacity requirements.
+        status_box: Streamlit placeholder for updates.
+        timeout_limit (int): Solver max limit in seconds.
+        score_columns (list[str]): Dimensions to balance.
+        score_weights (dict[str, float]): Impact weight mapping.
+        opt_mode (str): Optimization topology mode.
+        conflict_priority (str): Tag collision strategy.
 
     Returns:
-        tuple: (DataFrame of assignments or None, CP Solver Status Code, Elapsed Time in seconds)
+        tuple: (Assigned DataFrame or None, Status Code, Elapsed Time)
     """
     model, x, num_people, num_groups = solver.build_partition_model(
-        participants, group_capacities, True, score_columns, score_weights
+        participants,
+        group_capacities,
+        True,
+        score_columns,
+        score_weights,
+        opt_mode,
+        conflict_priority,
     )
 
     solver_inst = cp_model.CpSolver()
@@ -111,7 +117,7 @@ def run_optimization(
             f"""
             **Solver Status:** ✅ Complete ({status_label})  
             Solutions Evaluated: `{cb.solution_count}`  
-            Final Weighted Deviation: `{solver_inst.ObjectiveValue()}`  
+            Final Cost Objective: `{solver_inst.ObjectiveValue()}`  
             Total Time: `{elapsed:.2f}s`
             """
         )

@@ -3,7 +3,7 @@ Data loading and sanitization utilities.
 
 This module handles the import of participant data from CSV and Excel files,
 ensuring that column names are normalized and data types are coerced correctly
-for multi-dimensional scoring.
+for multi-dimensional scoring and advanced constraints.
 """
 
 import os
@@ -58,7 +58,7 @@ def load_data(filepath: str) -> list[dict] | None:
     Loads participant data from a CSV or Excel file.
 
     Dynamically detects all columns starting with the configured SCORE_PREFIX
-    and forces them into numeric types.
+    and initializes constraint columns if missing.
 
     Args:
         filepath (str): Path to the source file.
@@ -93,6 +93,11 @@ def load_data(filepath: str) -> list[dict] | None:
             return None
 
         df[config.COL_NAME] = df[config.COL_NAME].astype(str).str.strip()
+
+        if config.COL_GROUPER not in df.columns:
+            df[config.COL_GROUPER] = ""
+        if config.COL_SEPARATOR not in df.columns:
+            df[config.COL_SEPARATOR] = ""
 
         for col in score_cols:
             original_scores = df[col]
