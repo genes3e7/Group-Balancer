@@ -9,7 +9,6 @@ import os
 COL_NAME = "Name"
 SCORE_PREFIX = "Score"
 COL_GROUP = "Group"
-ADVANTAGE_CHAR = "*"
 
 # --- Advanced Constraints ---
 COL_GROUPER = "Groupers"

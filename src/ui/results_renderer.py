@@ -54,15 +54,14 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
     with st.container(border=True):
         st.markdown(f"### Group {group['id']}")
 
-        num_metrics = 2 + len(score_cols)
+        num_metrics = 1 + len(score_cols)
         cols = st.columns(num_metrics)
 
         cols[0].metric("Count", group["count"])
-        cols[1].metric("Stars", group["stars"])
 
         for i, col in enumerate(score_cols):
             avg_val = group["averages"].get(col, 0.0)
-            cols[i + 2].metric(f"Avg {col}", f"{avg_val:.2f}")
+            cols[i + 1].metric(f"Avg {col}", f"{avg_val:.2f}")
 
         st.divider()
 

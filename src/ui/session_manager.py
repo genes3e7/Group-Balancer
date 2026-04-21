@@ -36,10 +36,10 @@ def init_session() -> None:
         default_score_col = f"{config.SCORE_PREFIX}1"
         st.session_state.manual_df = pd.DataFrame(
             {
-                config.COL_NAME: ["Alice*", "Bob", "Charlie"],
+                config.COL_NAME: ["Alice", "Bob", "Charlie"],
                 default_score_col: [80.0, 95.0, 60.0],
-                config.COL_GROUPER: ["TeamA", "TeamA", ""],
-                config.COL_SEPARATOR: ["", "SkillX", "SkillX"],
+                config.COL_GROUPER: ["A", "A", ""],
+                config.COL_SEPARATOR: ["", "X", "X"],
             }
         )
 

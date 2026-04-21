@@ -6,7 +6,6 @@ structured group dictionaries used by the UI and Exporter across multiple dimens
 """
 
 import pandas as pd
-from src.core import config
 
 
 def aggregate_groups(
@@ -23,7 +22,7 @@ def aggregate_groups(
 
     Returns:
         list[dict]: A list of dictionaries, where each dict represents a group
-        and contains keys: 'id', 'members', 'count', 'stars', 'averages', 'sums'.
+        and contains keys: 'id', 'members', 'count', 'averages', 'sums'.
     """
     groups = []
     if df is None or df.empty:
@@ -37,14 +36,8 @@ def aggregate_groups(
     for g_id in unique_groups:
         members = df[df[col_group] == g_id].to_dict("records")
         count = len(members)
-        stars = 0
         averages = {}
         sums = {}
-
-        for m in members:
-            val = str(m[col_name])
-            if val.endswith(config.ADVANTAGE_CHAR):
-                stars += 1
 
         for col in score_cols:
             col_scores = []
@@ -63,7 +56,6 @@ def aggregate_groups(
                 "id": g_id,
                 "members": members,
                 "count": count,
-                "stars": stars,
                 "averages": averages,
                 "sums": sums,
             }

@@ -72,6 +72,18 @@ def render_step_1() -> None:
     if config.COL_SEPARATOR not in st.session_state.manual_df.columns:
         st.session_state.manual_df[config.COL_SEPARATOR] = ""
 
+    col1, col2 = st.columns([1, 4])
+    with col1:
+        if st.button("➕ Add Score Column"):
+            current_score_cols = [
+                c
+                for c in st.session_state.manual_df.columns
+                if str(c).startswith(config.SCORE_PREFIX)
+            ]
+            new_score_name = f"{config.SCORE_PREFIX}{len(current_score_cols) + 1}"
+            st.session_state.manual_df[new_score_name] = 0.0
+            st.rerun()
+
     edited_df = st.data_editor(
         st.session_state.manual_df,
         num_rows="dynamic",
@@ -144,9 +156,6 @@ def render_step_2() -> None:
         )
     with c2:
         st.info(f"Total Participants: {total_participants}")
-        st.caption(
-            f"Note: Names ending in '{config.ADVANTAGE_CHAR}' are evenly distributed."
-        )
 
     st.subheader("Group Capacities")
     st.caption("Adjust the size of each group. Total must equal participant count.")

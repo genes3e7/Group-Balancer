@@ -93,7 +93,6 @@ def run_optimization(
     model, x, num_people, num_groups = solver.build_partition_model(
         participants,
         group_capacities,
-        True,
         score_columns,
         score_weights,
         opt_mode,

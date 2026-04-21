@@ -47,7 +47,6 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
 def build_partition_model(
     participants: list[dict],
     group_capacities: list[int],
-    respect_stars: bool,
     score_columns: list[str],
     score_weights: dict[str, float],
     opt_mode: str = "Advanced",
@@ -59,7 +58,6 @@ def build_partition_model(
     Args:
         participants (list[dict]): List of participant data.
         group_capacities (list[int]): Exact capacity requirements for each group.
-        respect_stars (bool): Whether to enforce even distribution of 'star' players.
         score_columns (list[str]): The continuous score dimensions to balance.
         score_weights (dict[str, float]): Scalar multipliers for each score dimension.
         opt_mode (str): 'Simple' (pre-aggregated) or 'Advanced' (multi-dimensional).
@@ -92,19 +90,7 @@ def build_partition_model(
     for g in range(num_groups):
         model.Add(sum(x[(i, g)] for i in range(num_people)) == group_capacities[g])
 
-    # --- 2. Star Constraints ---
-    stars = [
-        i
-        for i, p in enumerate(participants)
-        if str(p.get(config.COL_NAME, "")).endswith(config.ADVANTAGE_CHAR)
-    ]
-    if respect_stars and stars and num_people > 0:
-        for g in range(num_groups):
-            expected = len(stars) * group_capacities[g] / num_people
-            model.Add(sum(x[(i, g)] for i in stars) <= math.ceil(expected))
-            model.Add(sum(x[(i, g)] for i in stars) >= math.floor(expected))
-
-    # --- 3. Tag Parsing (Raw Character Iteration) ---
+    # --- 2. Tag Parsing (Raw Character Iteration) ---
     # Commas and whitespace are explicitly ignored to maintain CSV integrity.
     grouper_sets = {}
     separator_sets = {}
@@ -135,7 +121,7 @@ def build_partition_model(
                 if len(overlap) > 1:
                     g_set.difference_update(overlap)
 
-    # --- 4. Pigeonhole Spread (Separators) ---
+    # --- 3. Pigeonhole Spread (Separators) ---
     for s_tag, s_set in separator_sets.items():
         if not s_set:
             continue
@@ -143,7 +129,7 @@ def build_partition_model(
         for g in range(num_groups):
             model.Add(sum(x[(i, g)] for i in s_set) <= limit)
 
-    # --- 5. Fractional Cohesion (Groupers) ---
+    # --- 4. Fractional Cohesion (Groupers) ---
     cohesion_penalties = []
     base_cohesion_penalty = 10**9
     for g_tag, g_set in grouper_sets.items():
@@ -156,7 +142,7 @@ def build_partition_model(
             capacity_penalty = group_capacities[g] * 1000
             cohesion_penalties.append(used * (base_cohesion_penalty + capacity_penalty))
 
-    # --- 6. Scoring Mode Evaluation ---
+    # --- 5. Scoring Mode Evaluation ---
     abs_diffs = []
     active_score_cols = (
         ["_SIMPLE_TOTAL_"] if opt_mode.startswith("Simple") else score_columns
@@ -233,7 +219,6 @@ def build_partition_model(
 def solve_with_ortools(
     participants: list[dict],
     group_capacities: list[int],
-    respect_stars: bool,
     score_columns: list[str],
     score_weights: dict[str, float],
     opt_mode: str = "Advanced",
@@ -245,7 +230,6 @@ def solve_with_ortools(
     Args:
         participants (list[dict]): Participant data.
         group_capacities (list[int]): Size constraints.
-        respect_stars (bool): distribute leaders.
         score_columns (list[str]): Dimensions to balance.
         score_weights (dict[str, float]): Weights per dimension.
         opt_mode (str): Optimization topology.
@@ -257,7 +241,6 @@ def solve_with_ortools(
     model, x, num_people, num_groups = build_partition_model(
         participants,
         group_capacities,
-        respect_stars,
         score_columns,
         score_weights,
         opt_mode,

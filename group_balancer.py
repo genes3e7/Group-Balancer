@@ -62,7 +62,7 @@ def main() -> None:
     print(f"\nBalancing across {len(score_cols)} dimensions: {score_cols}")
     print("Solving...")
     result, success = solver.solve_with_ortools(
-        participants, group_capacities, True, score_cols, score_weights
+        participants, group_capacities, score_cols, score_weights
     )
 
     if success:

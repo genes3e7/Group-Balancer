@@ -14,7 +14,6 @@ SCORE_COL = f"{config.SCORE_PREFIX}1"
 def make_participants(
     count: int,
     score: float = 100.0,
-    star_indices: list[int] | None = None,
     groupers: list[str] | None = None,
     separators: list[str] | None = None,
 ) -> list[dict]:
@@ -24,15 +23,12 @@ def make_participants(
     Args:
         count (int): Number of participants to create.
         score (float): Default score for all participants.
-        star_indices (list[int] | None): Indices of participants to mark as stars.
         groupers (list[str] | None): Grouper tags for participants.
         separators (list[str] | None): Separator tags for participants.
 
     Returns:
         list[dict]: Generated participant list.
     """
-    if star_indices is None:
-        star_indices = []
     if groupers is None:
         groupers = [""] * count
     if separators is None:
@@ -40,7 +36,7 @@ def make_participants(
 
     data = []
     for i in range(count):
-        name = f"P{i}" + (config.ADVANTAGE_CHAR if i in star_indices else "")
+        name = f"P{i}"
         data.append(
             {
                 config.COL_NAME: name,
@@ -58,7 +54,6 @@ def test_solver_basic_split():
     groups, success = solver.solve_with_ortools(
         participants,
         group_capacities=[5, 5],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
@@ -74,7 +69,6 @@ def test_solver_unequal_sizes():
     groups, success = solver.solve_with_ortools(
         participants,
         group_capacities=[4, 3, 3],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
@@ -84,59 +78,12 @@ def test_solver_unequal_sizes():
     assert sizes == [3, 3, 4]
 
 
-def test_solver_star_constraints():
-    """Test that stars are distributed evenly across groups."""
-    participants = make_participants(10, score=50.0, star_indices=[0, 1, 2, 3])
-    groups, success = solver.solve_with_ortools(
-        participants,
-        group_capacities=[5, 5],
-        respect_stars=True,
-        score_columns=[SCORE_COL],
-        score_weights={SCORE_COL: 1.0},
-    )
-
-    assert success is True
-    for g in groups:
-        stars = sum(
-            1
-            for m in g["members"]
-            if str(m.get(config.COL_NAME, "")).endswith(config.ADVANTAGE_CHAR)
-        )
-        assert stars == 2
-
-
-def test_solver_impossible_stars():
-    """Test star distribution when perfect division is mathematically impossible."""
-    participants = make_participants(5, score=10.0, star_indices=[0, 1, 2])
-    groups, success = solver.solve_with_ortools(
-        participants,
-        group_capacities=[3, 2],
-        respect_stars=True,
-        score_columns=[SCORE_COL],
-        score_weights={SCORE_COL: 1.0},
-    )
-
-    assert success is True
-    star_counts = sorted(
-        [
-            sum(
-                1
-                for m in g["members"]
-                if str(m.get(config.COL_NAME, "")).endswith(config.ADVANTAGE_CHAR)
-            )
-            for g in groups
-        ]
-    )
-    assert star_counts == [1, 2]
-
-
 def test_solver_single_group():
     """Test trivial case with only one group."""
     participants = make_participants(5)
     groups, success = solver.solve_with_ortools(
         participants,
         group_capacities=[5],
-        respect_stars=True,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
@@ -155,7 +102,6 @@ def test_solver_empty_input():
         solver.solve_with_ortools(
             [],
             group_capacities=[],
-            respect_stars=True,
             score_columns=[SCORE_COL],
             score_weights={SCORE_COL: 1.0},
         )
@@ -166,7 +112,6 @@ def test_solver_zero_participants_positive_groups():
     groups, success = solver.solve_with_ortools(
         [],
         group_capacities=[0, 0],
-        respect_stars=True,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
@@ -185,7 +130,6 @@ def test_solver_positive_participants_zero_groups():
         solver.solve_with_ortools(
             participants,
             group_capacities=[],
-            respect_stars=True,
             score_columns=[SCORE_COL],
             score_weights={SCORE_COL: 1.0},
         )
@@ -208,7 +152,6 @@ def test_solver_multi_dimensional_weighted():
     groups, success = solver.solve_with_ortools(
         participants,
         group_capacities=[2, 2],
-        respect_stars=False,
         score_columns=score_cols,
         score_weights=score_weights,
     )
@@ -228,7 +171,6 @@ def test_solver_simple_mode():
     groups, success = solver.solve_with_ortools(
         p,
         group_capacities=[1, 1],
-        respect_stars=False,
         score_columns=[SCORE_COL, "Score2"],
         score_weights={SCORE_COL: 1.0, "Score2": 1.0},
         opt_mode="Simple",
@@ -244,7 +186,6 @@ def test_solver_pigeonhole_separator():
     groups, success = solver.solve_with_ortools(
         p,
         group_capacities=[2, 2],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
@@ -260,7 +201,6 @@ def test_solver_fractional_cohesion():
     groups, success = solver.solve_with_ortools(
         p,
         group_capacities=[3, 3],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
@@ -280,7 +220,6 @@ def test_solver_conflict_resolution():
     groups, success = solver.solve_with_ortools(
         p,
         group_capacities=[2, 0],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
         conflict_priority="Groupers",
@@ -297,7 +236,6 @@ def test_solver_character_tokenization_separator():
     groups, success = solver.solve_with_ortools(
         p,
         group_capacities=[2, 2],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
@@ -314,14 +252,12 @@ def test_solver_comma_illegal_handling():
     groups1, _ = solver.solve_with_ortools(
         p1,
         group_capacities=[2, 0],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
     groups2, _ = solver.solve_with_ortools(
         p2,
         group_capacities=[2, 0],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
@@ -336,7 +272,6 @@ def test_solver_character_tokenization_grouper():
     groups, success = solver.solve_with_ortools(
         p,
         group_capacities=[3, 1],
-        respect_stars=False,
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
