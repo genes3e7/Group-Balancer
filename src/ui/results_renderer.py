@@ -72,13 +72,13 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
         if not disp_df.empty:
             # Dynamically build display columns based on available data
             display_columns = [config.COL_NAME]
-            
+
             # Add constraint columns if they exist in the member data
             if config.COL_GROUPER in disp_df.columns:
                 display_columns.append(config.COL_GROUPER)
             if config.COL_SEPARATOR in disp_df.columns:
                 display_columns.append(config.COL_SEPARATOR)
-            
+
             # Append all score columns
             display_columns.extend(score_cols)
 
