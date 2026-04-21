@@ -1,9 +1,23 @@
+"""
+Build Script for the Group Balancer Application.
+
+This script uses PyInstaller to bundle the application into a single
+standalone executable for distribution. It cleans up previous build
+artifacts and handles the necessary hidden imports.
+"""
+
 import PyInstaller.__main__
 import os
 import shutil
 
 
-def build_executable():
+def build_executable() -> None:
+    """
+    Executes the PyInstaller build process.
+
+    Configures the build with necessary arguments to bundle dependencies
+    like OR-Tools and Pandas into a single file with a console interface.
+    """
     print("🚀 Starting Build Process...")
 
     args = [
