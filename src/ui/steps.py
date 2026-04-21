@@ -118,14 +118,25 @@ def render_step_1() -> None:
                     )
 
                 for col in score_cols:
-                    clean_df[col] = pd.to_numeric(clean_df[col], errors="coerce")
-                    coerced_count = clean_df[col].isna().sum()
-                    clean_df[col] = clean_df[col].fillna(0)
+                    original = clean_df[col].copy()
+                    non_empty_mask = original.notna() & original.astype(
+                        str
+                    ).str.strip().ne("")
+                    numeric = pd.to_numeric(original, errors="coerce")
+
+                    coerced_count = (non_empty_mask & numeric.isna()).sum()
+                    clean_df[col] = numeric.fillna(0)
 
                     if coerced_count > 0:
                         st.warning(
                             f"⚠️ {coerced_count} invalid scores in {col} were set to 0."
                         )
+
+                # Coerce categorical constraints to string, ensuring NaN rows are empty strings
+                for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
+                    clean_df[col] = clean_df[col].apply(
+                        lambda x: "" if pd.isna(x) else str(x)
+                    )
 
                 st.session_state.participants_df = clean_df
                 st.session_state.manual_df = clean_df.copy()
@@ -238,7 +249,12 @@ def render_step_2() -> None:
         for i, col in enumerate(score_cols):
             with weight_cols[i]:
                 score_weights[col] = st.number_input(
-                    f"Weight: {col}", min_value=0.0, max_value=10.0, value=1.0, step=0.1
+                    f"Weight: {col}",
+                    min_value=0.0,
+                    max_value=10.0,
+                    value=1.0,
+                    step=0.1,
+                    key=f"weight_{col}",
                 )
 
     st.subheader("Solver Configuration")

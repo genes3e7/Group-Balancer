@@ -95,8 +95,17 @@ def build_partition_model(
     grouper_sets = {}
     separator_sets = {}
     for i, p in enumerate(participants):
-        g_raw = str(p.get(config.COL_GROUPER, ""))
-        s_raw = str(p.get(config.COL_SEPARATOR, ""))
+        g_val = p.get(config.COL_GROUPER, "")
+        s_val = p.get(config.COL_SEPARATOR, "")
+
+        # Normalize NaN/None from sparse data gracefully before tokenization
+        if g_val is None or (isinstance(g_val, float) and math.isnan(g_val)):
+            g_val = ""
+        if s_val is None or (isinstance(s_val, float) and math.isnan(s_val)):
+            s_val = ""
+
+        g_raw = str(g_val)
+        s_raw = str(s_val)
 
         # Iterate over every character; treat each as an independent tag
         g_tags = {c for c in g_raw if not c.isspace() and c != ","}
@@ -129,20 +138,7 @@ def build_partition_model(
         for g in range(num_groups):
             model.Add(sum(x[(i, g)] for i in s_set) <= limit)
 
-    # --- 4. Fractional Cohesion (Groupers) ---
-    cohesion_penalties = []
-    base_cohesion_penalty = 10**9
-    for g_tag, g_set in grouper_sets.items():
-        if len(g_set) <= 1:
-            continue
-        for g in range(num_groups):
-            used = model.NewBoolVar(f"used_{g_tag}_{g}")
-            model.AddMaxEquality(used, [x[(i, g)] for i in g_set])
-            # Greedy overflow: prioritize smaller groups to keep large ones open
-            capacity_penalty = group_capacities[g] * 1000
-            cohesion_penalties.append(used * (base_cohesion_penalty + capacity_penalty))
-
-    # --- 5. Scoring Mode Evaluation ---
+    # --- 4. Scoring Mode Evaluation ---
     abs_diffs = []
     SIMPLE_TOTAL_SENTINEL = object()
     active_score_cols = (
@@ -150,6 +146,7 @@ def build_partition_model(
     )
 
     first_non_skipped_col = True
+    max_total_w_diff = 0
 
     for col_idx, col in enumerate(active_score_cols):
         if col is SIMPLE_TOTAL_SENTINEL:
@@ -217,6 +214,26 @@ def build_partition_model(
             w_diff = model.NewIntVar(0, w_diff_bound, f"w_diff_{col_name_str}_{g}")
             model.Add(w_diff == abs_diff * weight_m)
             abs_diffs.append(w_diff)
+
+        # Track the maximum possible objective contribution across all columns
+        max_total_w_diff += (max(1, diff_bound * weight_m)) * num_groups
+
+    # --- 5. Fractional Cohesion (Groupers) ---
+    cohesion_penalties = []
+
+    # Dynamic base penalty derived from the maximum contribution of w_diff to
+    # ensure cohesion is enforced as a primary objective without overflowing bounds.
+    base_cohesion_penalty = max_total_w_diff * 10 + 1000
+
+    for g_tag, g_set in grouper_sets.items():
+        if len(g_set) <= 1:
+            continue
+        for g in range(num_groups):
+            used = model.NewBoolVar(f"used_{g_tag}_{g}")
+            model.AddMaxEquality(used, [x[(i, g)] for i in g_set])
+            # Greedy overflow: prioritize smaller groups to keep large ones open
+            capacity_penalty = group_capacities[g] * 10
+            cohesion_penalties.append(used * (base_cohesion_penalty + capacity_penalty))
 
     model.Minimize(sum(abs_diffs) + sum(cohesion_penalties))
 
