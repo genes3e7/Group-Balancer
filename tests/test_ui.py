@@ -75,7 +75,7 @@ def test_results_renderer_grid_branches():
             config.COL_NAME: ["P1", "P2", "P3"],
             config.COL_GROUP: [1, 2, 3],
             "Score1": [10, 20, 30],
-        },
+        }
     )
     score_cols = ["Score1"]
 
@@ -341,6 +341,7 @@ def test_steps_render_2_navigation():
         patch("streamlit.header"),
         patch("streamlit.subheader"),
         patch("streamlit.columns") as mock_cols,
+        patch("streamlit.button") as mock_btn,
         patch("src.ui.session_manager.go_to_step") as mock_go,
         patch("streamlit.session_state", mock_state),
     ):
@@ -364,6 +365,8 @@ def test_steps_render_2_navigation():
             [c_back, c_go],  # st.columns([1, 5])
         ]
 
+        # Mock "Back" button click
+        mock_btn.side_effect = lambda label, **kwargs: label == "⬅ Back"
         steps.render_step_2()
         mock_go.assert_called_with(1)
 
@@ -372,7 +375,14 @@ def test_steps_render_1_success():
     """Verify Step 1 successful 'Next' navigation."""
     from src.ui import steps
 
-    df = pd.DataFrame({config.COL_NAME: ["A"], "Score1": [10]})
+    df = pd.DataFrame(
+        {
+            config.COL_NAME: ["A"],
+            "Score1": [10],
+            config.COL_GROUPER: [""],
+            config.COL_SEPARATOR: [""],
+        }
+    )
     mock_state = MagicMock()
 
     with (
@@ -417,7 +427,7 @@ def test_steps_load_uploaded_file_none():
     with patch("streamlit.session_state", mock_state):
         from src.ui import steps
 
-        steps._load_uploaded_file()
+        steps._load_uploaded_file()  # Should just return
 
 
 def test_steps_render_3_interactive():
@@ -425,7 +435,7 @@ def test_steps_render_3_interactive():
     from src.ui import steps
 
     mock_df = pd.DataFrame(
-        {config.COL_NAME: ["P1"], config.COL_GROUP: [1], "Score1": [10.0]},
+        {config.COL_NAME: ["P1"], config.COL_GROUP: [1], "Score1": [10.0]}
     )
     mock_state = MagicMock()
     mock_state.interactive_df = mock_df

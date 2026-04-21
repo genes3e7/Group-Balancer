@@ -34,12 +34,9 @@ def _load_uploaded_file() -> None:
                 st.session_state.manual_df = df_clean
                 st.toast(f"✅ Imported {len(df_clean)} rows!", icon="📂")
             else:
-                msg = f"File missing required columns: {config.COL_NAME} and Score*"
-                st.error(msg)
-        except (ValueError, TypeError, pd.errors.ParserError) as e:
+                st.error("File missing required columns: Name and Score*")
+        except Exception as e:
             st.error(f"Error reading file: {e}")
-        except Exception:
-            st.error("An unexpected error occurred while reading the file.")
 
 
 def render_step_1() -> None:
@@ -70,7 +67,7 @@ def render_step_1() -> None:
     edited_df = st.data_editor(
         st.session_state.manual_df,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         key="editor_input",
     )
 
@@ -115,11 +112,7 @@ def render_step_2() -> None:
         default = base + (1 if i < rem else 0)
         cap = int(
             cols[i % len(cols)].number_input(
-                f"G{i + 1}",
-                0,
-                total_p,
-                default,
-                key=f"cap_{i}",
+                f"G{i + 1}", 0, total_p, default, key=f"cap_{i}"
             )
         )
         group_capacities.append(cap)
@@ -212,7 +205,7 @@ def _render_table_view(score_cols: list[str]) -> None:
     """Renders result table.
 
     Args:
-        score_cols (list[str]): List of score columns to display.
+        score_cols: List of score columns to display.
     """
     editor_configs = {
         config.COL_GROUP: st.column_config.NumberColumn(
@@ -229,7 +222,7 @@ def _render_table_view(score_cols: list[str]) -> None:
         st.session_state.interactive_df,
         column_config=editor_configs,
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     if not edited_df.equals(st.session_state.interactive_df):
         st.session_state.interactive_df = edited_df
@@ -240,7 +233,7 @@ def _render_footer_actions(score_cols: list[str]) -> None:
     """Footer buttons.
 
     Args:
-        score_cols (list[str]): List of score columns to include in export.
+        score_cols: List of score columns to include in export.
     """
     excel_data = exporter.generate_excel_bytes(
         st.session_state.interactive_df,

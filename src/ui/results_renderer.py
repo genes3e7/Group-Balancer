@@ -5,8 +5,6 @@ statistics for each group in a grid layout across multiple score dimensions,
 including categorical constraint tags.
 """
 
-from typing import Any
-
 import pandas as pd
 import streamlit as st
 
@@ -26,10 +24,7 @@ def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
         return
 
     groups = group_helpers.aggregate_groups(
-        df,
-        config.COL_GROUP,
-        score_cols,
-        config.COL_NAME,
+        df, config.COL_GROUP, score_cols, config.COL_NAME
     )
 
     # Use columns for a grid-like layout
@@ -41,11 +36,8 @@ def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
             _render_single_card(group, score_cols)
 
 
-def _render_single_card(group: dict[str, Any], score_cols: list[str]) -> None:
+def _render_single_card(group: dict, score_cols: list[str]) -> None:
     """Helper to render a single group card.
-
-    Displays metrics for all score dimensions and a table containing members
-    and their constraint tags.
 
     Args:
         group: Dictionary containing group metadata and members.
@@ -65,7 +57,7 @@ def _render_single_card(group: dict[str, Any], score_cols: list[str]) -> None:
         if group["members"]:
             disp_df = pd.DataFrame(group["members"])
 
-            # Clean display for categorical tags (optional: only show if present)
+            # Clean display for categorical tags
             display_columns = [config.COL_NAME]
             if config.COL_GROUPER in disp_df.columns:
                 display_columns.append(config.COL_GROUPER)
@@ -75,7 +67,7 @@ def _render_single_card(group: dict[str, Any], score_cols: list[str]) -> None:
             # Append all score columns
             display_columns.extend(score_cols)
 
-            # Ensure score columns are formatted consistently with the metrics
+            # Ensure score columns are formatted consistently
             col_configs = {
                 col: st.column_config.NumberColumn(format="%.2f") for col in score_cols
             }
@@ -83,7 +75,7 @@ def _render_single_card(group: dict[str, Any], score_cols: list[str]) -> None:
             st.dataframe(
                 disp_df[display_columns],
                 hide_index=True,
-                use_container_width=True,
+                width="stretch",
                 column_config=col_configs,
             )
         else:
