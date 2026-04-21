@@ -182,17 +182,21 @@ def test_solver_simple_mode():
 
 def test_solver_pigeonhole_separator():
     """Test that separators force people apart using the spread logic."""
-    p = make_participants(4, score=10.0, separators=["A", "A", "A", "A"])
+    p = make_participants(4, score=10.0, separators=["A", "A", "A", ""])
     groups, success = solver.solve_with_ortools(
         p,
-        group_capacities=[2, 2],
+        group_capacities=[3, 1],
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
     assert success is True
-    # 4 people, 2 groups -> limit should be ceil(4/2) = 2 per group
-    for g in groups:
-        assert len(g["members"]) == 2
+
+    # 3 tagged people spread across 2 groups: limit should be ceil(3/2) = 2 per group for "A".
+    large_group = next(g for g in groups if len(g["members"]) == 3)
+    sep_count = sum(
+        1 for m in large_group["members"] if "A" in str(m.get(config.COL_SEPARATOR, ""))
+    )
+    assert sep_count <= 2
 
 
 def test_solver_fractional_cohesion():
@@ -266,16 +270,20 @@ def test_solver_conflict_resolution():
 
 def test_solver_character_tokenization_separator():
     """Verify that 'GSA' is interpreted as 3 independent separator tags."""
-    p = make_participants(4, score=10.0, separators=["GSA", "GSA", "GSA", "GSA"])
+    p = make_participants(4, score=10.0, separators=["GSA", "GSA", "GSA", ""])
     groups, success = solver.solve_with_ortools(
         p,
-        group_capacities=[2, 2],
+        group_capacities=[3, 1],
         score_columns=[SCORE_COL],
         score_weights={SCORE_COL: 1.0},
     )
     assert success is True
-    for g in groups:
-        assert len(g["members"]) == 2
+
+    large_group = next(g for g in groups if len(g["members"]) == 3)
+    sep_count = sum(
+        1 for m in large_group["members"] if "G" in str(m.get(config.COL_SEPARATOR, ""))
+    )
+    assert sep_count <= 2
 
 
 def test_solver_comma_illegal_handling():

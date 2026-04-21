@@ -144,10 +144,15 @@ def build_partition_model(
 
     # --- 5. Scoring Mode Evaluation ---
     abs_diffs = []
-    active_score_cols = ["_SIMPLE_TOTAL_"] if opt_mode == "Simple" else score_columns
+    SIMPLE_TOTAL_SENTINEL = object()
+    active_score_cols = (
+        [SIMPLE_TOTAL_SENTINEL] if opt_mode == "Simple" else score_columns
+    )
+
+    first_non_skipped_col = True
 
     for col_idx, col in enumerate(active_score_cols):
-        if col == "_SIMPLE_TOTAL_":
+        if col is SIMPLE_TOTAL_SENTINEL:
             scores = [
                 int(
                     round(
@@ -161,12 +166,14 @@ def build_partition_model(
                 for p in participants
             ]
             weight_m = 100
+            col_name_str = "simple_total"
         else:
             scores = [
                 int(round(float(p.get(col, 0)) * config.SCALE_FACTOR))
                 for p in participants
             ]
             weight_m = int(round(score_weights.get(col, 1.0) * 100))
+            col_name_str = str(col)
 
         total_score = sum(scores)
         min_sum = sum(s for s in scores if s < 0)
@@ -176,15 +183,16 @@ def build_partition_model(
             continue
 
         g_sums = [
-            model.NewIntVar(min_sum, max_sum, f"g_sum_{col}_{g}")
+            model.NewIntVar(min_sum, max_sum, f"g_sum_{col_name_str}_{g}")
             for g in range(num_groups)
         ]
 
-        if col_idx == 0:
+        if first_non_skipped_col:
             for g1 in range(num_groups):
                 for g2 in range(g1 + 1, num_groups):
                     if group_capacities[g1] == group_capacities[g2]:
                         model.Add(g_sums[g1] <= g_sums[g2])
+            first_non_skipped_col = False
 
         diff_bound = max(1, (max_sum - min_sum) * num_people * 2)
 
@@ -195,18 +203,18 @@ def build_partition_model(
 
             target_val = total_score * group_capacities[g]
             actual_val = model.NewIntVar(
-                min_sum * num_people, max_sum * num_people, f"act_{col}_{g}"
+                min_sum * num_people, max_sum * num_people, f"act_{col_name_str}_{g}"
             )
             model.Add(actual_val == g_sums[g] * num_people)
 
-            diff = model.NewIntVar(-diff_bound, diff_bound, f"diff_{col}_{g}")
+            diff = model.NewIntVar(-diff_bound, diff_bound, f"diff_{col_name_str}_{g}")
             model.Add(diff == actual_val - target_val)
 
-            abs_diff = model.NewIntVar(0, diff_bound, f"abs_{col}_{g}")
+            abs_diff = model.NewIntVar(0, diff_bound, f"abs_{col_name_str}_{g}")
             model.AddAbsEquality(abs_diff, diff)
 
             w_diff_bound = max(1, diff_bound * weight_m)
-            w_diff = model.NewIntVar(0, w_diff_bound, f"w_diff_{col}_{g}")
+            w_diff = model.NewIntVar(0, w_diff_bound, f"w_diff_{col_name_str}_{g}")
             model.Add(w_diff == abs_diff * weight_m)
             abs_diffs.append(w_diff)
 

@@ -407,7 +407,9 @@ def _render_table_view(score_cols: list[str]) -> None:
                 std_val = 0.0
 
             st.metric(f"{col} Std Dev", f"{std_val:.4f}")
-            st.dataframe(gdf.style.format({"Avg": "{:.2f}"}), hide_index=True)
+            st.dataframe(
+                gdf.style.format({"Avg": "{:.2f}", "Sum": "{:.2f}"}), hide_index=True
+            )
 
 
 def _render_footer_actions(has_data: bool, score_cols: list[str]) -> None:
