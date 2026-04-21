@@ -2,7 +2,8 @@
 Core optimization logic using Google OR-Tools.
 
 This module defines the Constraint Programming (CP) model used to partition
-participants into balanced groups based on their scores and 'star' status.
+participants into balanced groups using Simple/Advanced modes and Pigeonhole constraints.
+Tags are processed via raw character iteration.
 """
 
 import math
@@ -13,11 +14,9 @@ from src.core import config
 
 
 class SolutionPrinter(cp_model.CpSolverSolutionCallback):
-    """
-    Callback to print intermediate solutions found by the solver.
-    """
+    """Callback to print intermediate solutions found by the solver."""
 
-    def __init__(self, start_time):
+    def __init__(self, start_time: float):
         """
         Initializes the printer.
 
@@ -27,136 +26,263 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.__start_time = start_time
         self.__solution_count = 0
+        self.__last_print_time = 0.0
 
-    def on_solution_callback(self):
-        """
-        Called by the solver when a new valid solution is found.
-        Prints the objective value and elapsed time.
-        """
-        current_time = time.time()
-        obj = self.ObjectiveValue()
+    def on_solution_callback(self) -> None:
+        """Called by the solver when a new valid solution is found."""
         self.__solution_count += 1
-        elapsed = current_time - self.__start_time
+        current_time = time.time()
 
-        sys.stdout.write(
-            f"\r  > Found solution #{self.__solution_count} | "
-            f"Objective (Deviation): {obj} | Time: {elapsed:.2f}s\033[K"
-        )
-        sys.stdout.flush()
+        if current_time - self.__last_print_time >= 0.1:
+            obj = self.ObjectiveValue()
+            elapsed = current_time - self.__start_time
+            sys.stdout.write(
+                f"\r  > Solutions Evaluated: {self.__solution_count} | "
+                f"Objective: {obj} | Time: {elapsed:.2f}s\033[K"
+            )
+            sys.stdout.flush()
+            self.__last_print_time = current_time
 
 
-def solve_with_ortools(
-    participants: list[dict], num_groups: int, respect_stars: bool
-) -> tuple[list[dict], bool]:
+def build_partition_model(
+    participants: list[dict],
+    group_capacities: list[int],
+    score_columns: list[str],
+    score_weights: dict[str, float],
+    opt_mode: str = "Advanced",
+    conflict_priority: str = "Groupers",
+) -> tuple[cp_model.CpModel, dict, int, int]:
     """
-    Solves the group partitioning problem.
-
-    Minimizes the sum of absolute deviations of group scores from the global average.
-    Ensures group sizes are balanced (diff <= 1) and optionally distributes
-    'star' players evenly.
+    Constructs the Constraint Programming model for the group balancer.
 
     Args:
         participants (list[dict]): List of participant data.
-        num_groups (int): Number of groups to create.
-        respect_stars (bool): Whether to enforce even distribution of 'star' players.
+        group_capacities (list[int]): Exact capacity requirements for each group.
+        score_columns (list[str]): The continuous score dimensions to balance.
+        score_weights (dict[str, float]): Scalar multipliers for each score dimension.
+        opt_mode (str): 'Simple' (pre-aggregated) or 'Advanced' (multi-dimensional).
+        conflict_priority (str): 'Groupers' or 'Separators' resolution logic.
 
     Returns:
-        tuple[list[dict], bool]: A tuple containing the resulting group structure
-        and a success boolean.
+        tuple: (model, x_vars, num_people, num_groups)
+
+    Raises:
+        ValueError: If capacities are invalid or mathematically contradictory.
     """
-    if num_groups < 1:
-        raise ValueError("num_groups must be at least 1")
+    if not group_capacities or any(cap < 0 for cap in group_capacities):
+        raise ValueError("group_capacities must be valid non-negative requirements.")
+
+    num_people = len(participants)
+    num_groups = len(group_capacities)
+
+    if sum(group_capacities) != num_people:
+        raise ValueError("Sum of group capacities must equal total participants.")
 
     model = cp_model.CpModel()
 
-    num_people = len(participants)
-    scores = [
-        int(round(float(p[config.COL_SCORE]) * config.SCALE_FACTOR))
-        for p in participants
-    ]
-    total_score = sum(scores)
-
-    stars = [
-        i
-        for i, p in enumerate(participants)
-        if str(p[config.COL_NAME]).endswith(config.ADVANTAGE_CHAR)
-    ]
-
-    base_size = num_people // num_groups
-    remainder = num_people % num_groups
-
-    group_sizes_map = {}
-    for g in range(num_groups):
-        if g < remainder:
-            group_sizes_map[g] = base_size + 1
-        else:
-            group_sizes_map[g] = base_size
-
+    # --- 1. Variable Initialization ---
     x = {}
     for i in range(num_people):
         for g in range(num_groups):
             x[(i, g)] = model.NewBoolVar(f"assign_p{i}_g{g}")
-
-    for i in range(num_people):
-        model.Add(sum(x[(i, g)] for g in range(num_groups)) == 1)
+        model.AddExactlyOne([x[(i, g)] for g in range(num_groups)])
 
     for g in range(num_groups):
-        model.Add(sum(x[(i, g)] for i in range(num_people)) == group_sizes_map[g])
+        model.Add(sum(x[(i, g)] for i in range(num_people)) == group_capacities[g])
 
-    if respect_stars and stars:
-        max_stars_per_group = math.ceil(len(stars) / num_groups)
-        min_stars_per_group = len(stars) // num_groups
+    # --- 2. Tag Parsing (Raw Character Iteration) ---
+    # Commas and whitespace are explicitly ignored to maintain CSV integrity.
+    grouper_sets = {}
+    separator_sets = {}
+    for i, p in enumerate(participants):
+        g_val = p.get(config.COL_GROUPER, "")
+        s_val = p.get(config.COL_SEPARATOR, "")
+
+        # Normalize NaN/None from sparse data gracefully before tokenization
+        if g_val is None or (isinstance(g_val, float) and math.isnan(g_val)):
+            g_val = ""
+        if s_val is None or (isinstance(s_val, float) and math.isnan(s_val)):
+            s_val = ""
+
+        g_raw = str(g_val)
+        s_raw = str(s_val)
+
+        # Iterate over every character; treat each as an independent tag
+        g_tags = {c for c in g_raw if not c.isspace() and c != ","}
+        s_tags = {c for c in s_raw if not c.isspace() and c != ","}
+
+        for tag in g_tags:
+            grouper_sets.setdefault(tag, set()).add(i)
+        for tag in s_tags:
+            separator_sets.setdefault(tag, set()).add(i)
+
+    # Conflict Resolution based on exact token matches
+    if conflict_priority == "Groupers":
+        for s_tag, s_set in separator_sets.items():
+            for g_tag, g_set in grouper_sets.items():
+                overlap = s_set.intersection(g_set)
+                if len(overlap) > 1:
+                    s_set.difference_update(overlap)
+    else:
+        for g_tag, g_set in list(grouper_sets.items()):
+            for s_tag, s_set in separator_sets.items():
+                overlap = g_set.intersection(s_set)
+                if len(overlap) > 1:
+                    g_set.difference_update(overlap)
+
+    # --- 3. Pigeonhole Spread (Separators) ---
+    for s_tag, s_set in separator_sets.items():
+        if not s_set:
+            continue
+        limit = math.ceil(len(s_set) / num_groups)
         for g in range(num_groups):
-            model.Add(sum(x[(i, g)] for i in stars) <= max_stars_per_group)
-            model.Add(sum(x[(i, g)] for i in stars) >= min_stars_per_group)
+            model.Add(sum(x[(i, g)] for i in s_set) <= limit)
 
+    # --- 4. Scoring Mode Evaluation ---
     abs_diffs = []
-    max_domain_val = total_score * num_people
+    SIMPLE_TOTAL_SENTINEL = object()
+    active_score_cols = (
+        [SIMPLE_TOTAL_SENTINEL] if opt_mode == "Simple" else score_columns
+    )
 
-    for g in range(num_groups):
-        g_sum = model.NewIntVar(0, total_score, f"sum_group_{g}")
-        model.Add(g_sum == sum(x[(i, g)] * scores[i] for i in range(num_people)))
+    first_non_skipped_col = True
+    max_total_w_diff = 0
 
-        target_val = total_score * group_sizes_map[g]
-        actual_val = model.NewIntVar(0, max_domain_val, f"actual_val_{g}")
-        model.Add(actual_val == g_sum * num_people)
+    for col_idx, col in enumerate(active_score_cols):
+        if col is SIMPLE_TOTAL_SENTINEL:
+            scores = [
+                int(
+                    round(
+                        sum(
+                            float(p.get(c, 0)) * score_weights.get(c, 1.0)
+                            for c in score_columns
+                        )
+                        * config.SCALE_FACTOR
+                    )
+                )
+                for p in participants
+            ]
+            weight_m = 100
+            col_name_str = "simple_total"
+        else:
+            scores = [
+                int(round(float(p.get(col, 0)) * config.SCALE_FACTOR))
+                for p in participants
+            ]
+            weight_m = int(round(score_weights.get(col, 1.0) * 100))
+            col_name_str = str(col)
 
-        diff = model.NewIntVar(-max_domain_val, max_domain_val, f"diff_{g}")
-        model.Add(diff == actual_val - target_val)
+        total_score = sum(scores)
+        min_sum = sum(s for s in scores if s < 0)
+        max_sum = sum(s for s in scores if s > 0)
 
-        abs_diff = model.NewIntVar(0, max_domain_val, f"abs_diff_{g}")
-        model.AddAbsEquality(abs_diff, diff)
+        if min_sum == 0 and max_sum == 0:
+            continue
 
-        abs_diffs.append(abs_diff)
+        g_sums = [
+            model.NewIntVar(min_sum, max_sum, f"g_sum_{col_name_str}_{g}")
+            for g in range(num_groups)
+        ]
 
-    model.Minimize(sum(abs_diffs))
+        if first_non_skipped_col:
+            for g1 in range(num_groups):
+                for g2 in range(g1 + 1, num_groups):
+                    if group_capacities[g1] == group_capacities[g2]:
+                        model.Add(g_sums[g1] <= g_sums[g2])
+            first_non_skipped_col = False
 
-    solver = cp_model.CpSolver()
-    solver.parameters.max_time_in_seconds = config.SOLVER_TIMEOUT
-    solver.parameters.num_search_workers = config.SOLVER_NUM_WORKERS
+        diff_bound = max(1, (max_sum - min_sum) * num_people * 2)
 
-    printer = SolutionPrinter(time.time())
-    status = solver.Solve(model, printer)
+        for g in range(num_groups):
+            model.Add(
+                g_sums[g] == sum(x[(i, g)] * scores[i] for i in range(num_people))
+            )
 
-    print("")  # Ensure newline after solution printing
+            target_val = total_score * group_capacities[g]
+            actual_val = model.NewIntVar(
+                min_sum * num_people, max_sum * num_people, f"act_{col_name_str}_{g}"
+            )
+            model.Add(actual_val == g_sums[g] * num_people)
+
+            diff = model.NewIntVar(-diff_bound, diff_bound, f"diff_{col_name_str}_{g}")
+            model.Add(diff == actual_val - target_val)
+
+            abs_diff = model.NewIntVar(0, diff_bound, f"abs_{col_name_str}_{g}")
+            model.AddAbsEquality(abs_diff, diff)
+
+            w_diff_bound = max(1, diff_bound * weight_m)
+            w_diff = model.NewIntVar(0, w_diff_bound, f"w_diff_{col_name_str}_{g}")
+            model.Add(w_diff == abs_diff * weight_m)
+            abs_diffs.append(w_diff)
+
+        # Track the maximum possible objective contribution across all columns
+        max_total_w_diff += (max(1, diff_bound * weight_m)) * num_groups
+
+    # --- 5. Fractional Cohesion (Groupers) ---
+    cohesion_penalties = []
+
+    # Dynamic base penalty derived from the maximum contribution of w_diff to
+    # ensure cohesion is enforced as a primary objective without overflowing bounds.
+    base_cohesion_penalty = max_total_w_diff * 10 + 1000
+
+    for g_tag, g_set in grouper_sets.items():
+        if len(g_set) <= 1:
+            continue
+        for g in range(num_groups):
+            used = model.NewBoolVar(f"used_{g_tag}_{g}")
+            model.AddMaxEquality(used, [x[(i, g)] for i in g_set])
+            # Greedy overflow: prioritize smaller groups to keep large ones open
+            capacity_penalty = group_capacities[g] * 10
+            cohesion_penalties.append(used * (base_cohesion_penalty + capacity_penalty))
+
+    model.Minimize(sum(abs_diffs) + sum(cohesion_penalties))
+
+    return model, x, num_people, num_groups
+
+
+def solve_with_ortools(
+    participants: list[dict],
+    group_capacities: list[int],
+    score_columns: list[str],
+    score_weights: dict[str, float],
+    opt_mode: str = "Advanced",
+    conflict_priority: str = "Groupers",
+) -> tuple[list[dict], bool]:
+    """
+    Main orchestration function to execute the solver.
+
+    Args:
+        participants (list[dict]): Participant data.
+        group_capacities (list[int]): Size constraints.
+        score_columns (list[str]): Dimensions to balance.
+        score_weights (dict[str, float]): Weights per dimension.
+        opt_mode (str): Optimization topology.
+        conflict_priority (str): Conflict resolution strategy.
+
+    Returns:
+        tuple[list[dict], bool]: Groupings and success flag.
+    """
+    model, x, num_people, num_groups = build_partition_model(
+        participants,
+        group_capacities,
+        score_columns,
+        score_weights,
+        opt_mode,
+        conflict_priority,
+    )
+
+    solver_inst = cp_model.CpSolver()
+    solver_inst.parameters.max_time_in_seconds = config.SOLVER_TIMEOUT
+    solver_inst.parameters.num_search_workers = config.SOLVER_NUM_WORKERS
+
+    status = solver_inst.Solve(model, SolutionPrinter(time.time()))
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        result_groups = []
-        for g in range(num_groups):
-            group_data = {"id": g + 1, "members": [], "current_sum": 0.0, "avg": 0.0}
-            result_groups.append(group_data)
-
+        result_groups = [{"id": g + 1, "members": []} for g in range(num_groups)]
         for i in range(num_people):
             for g in range(num_groups):
-                if solver.Value(x[(i, g)]) == 1:
+                if solver_inst.Value(x[(i, g)]) == 1:
                     result_groups[g]["members"].append(participants[i])
-
-        for g in result_groups:
-            g_sum = sum(float(m[config.COL_SCORE]) for m in g["members"])
-            count = len(g["members"])
-            g["current_sum"] = g_sum
-            g["avg"] = g_sum / count if count > 0 else 0.0
-
         return result_groups, True
-    else:
-        return [], False
+
+    return [], False

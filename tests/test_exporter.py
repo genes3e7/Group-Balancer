@@ -7,19 +7,21 @@ import io
 from src.utils import exporter
 from src.core import config
 
+SCORE_COL = f"{config.SCORE_PREFIX}1"
+
 
 def test_generate_excel_bytes():
     """Test that Excel generation returns bytes and contains the expected sheet."""
     df = pd.DataFrame(
         {
             config.COL_NAME: ["A", "B"],
-            config.COL_SCORE: [10, 20],
+            SCORE_COL: [10, 20],
             config.COL_GROUP: [1, 2],
         }
     )
 
     output = exporter.generate_excel_bytes(
-        df, config.COL_GROUP, config.COL_SCORE, config.COL_NAME
+        df, config.COL_GROUP, [SCORE_COL], config.COL_NAME
     )
 
     assert isinstance(output, bytes)
@@ -36,13 +38,13 @@ def test_generate_excel_matrix_content():
     df = pd.DataFrame(
         {
             config.COL_NAME: ["A", "B"],
-            config.COL_SCORE: [10, 20],
+            SCORE_COL: [10, 20],
             config.COL_GROUP: [1, 2],
         }
     )
 
     output = exporter.generate_excel_bytes(
-        df, config.COL_GROUP, config.COL_SCORE, config.COL_NAME
+        df, config.COL_GROUP, [SCORE_COL], config.COL_NAME
     )
 
     with io.BytesIO(output) as f:
@@ -63,13 +65,13 @@ def test_generate_excel_odd_groups():
     df = pd.DataFrame(
         {
             config.COL_NAME: ["A", "B", "C"],
-            config.COL_SCORE: [10, 20, 30],
+            SCORE_COL: [10, 20, 30],
             config.COL_GROUP: [1, 2, 3],
         }
     )
 
     output = exporter.generate_excel_bytes(
-        df, config.COL_GROUP, config.COL_SCORE, config.COL_NAME
+        df, config.COL_GROUP, [SCORE_COL], config.COL_NAME
     )
 
     with io.BytesIO(output) as f:
@@ -82,10 +84,10 @@ def test_generate_excel_odd_groups():
 
 def test_generate_excel_empty():
     """Test behavior with empty input."""
-    df = pd.DataFrame(columns=[config.COL_NAME, config.COL_SCORE, config.COL_GROUP])
+    df = pd.DataFrame(columns=[config.COL_NAME, SCORE_COL, config.COL_GROUP])
 
     output = exporter.generate_excel_bytes(
-        df, config.COL_GROUP, config.COL_SCORE, config.COL_NAME
+        df, config.COL_GROUP, [SCORE_COL], config.COL_NAME
     )
 
     with io.BytesIO(output) as f:
