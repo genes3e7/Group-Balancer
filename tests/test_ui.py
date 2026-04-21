@@ -53,8 +53,11 @@ def test_components_header():
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.expander"),
     ):
-        # Mock columns to return 3 mocks for unpacking
-        mock_cols.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        # Mock columns to return 3 mocks for labels and 3 for bar segments
+        mock_cols.side_effect = [
+            [MagicMock(), MagicMock(), MagicMock()],
+            [MagicMock(), MagicMock(), MagicMock()],
+        ]
         components.render_page_header(1)
 
 
@@ -156,8 +159,15 @@ def test_components_header_branches():
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.expander"),
     ):
-        # Mock 3 columns
-        mock_cols.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        # Mock calls for each step
+        mock_cols.side_effect = [
+            [MagicMock(), MagicMock(), MagicMock()],  # s=1 labels
+            [MagicMock(), MagicMock(), MagicMock()],  # s=1 bar
+            [MagicMock(), MagicMock(), MagicMock()],  # s=2 labels
+            [MagicMock(), MagicMock(), MagicMock()],  # s=2 bar
+            [MagicMock(), MagicMock(), MagicMock()],  # s=3 labels
+            [MagicMock(), MagicMock(), MagicMock()],  # s=3 bar
+        ]
 
         # Test each step to hit all branches
         for s in [1, 2, 3]:
@@ -205,7 +215,7 @@ def test_steps_render_1():
 
 def test_steps_render_2():
     """Verify Step 2 renders configuration elements."""
-    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10]})
+    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = MagicMock()
     mock_state.participants_df = mock_df
 
@@ -222,29 +232,23 @@ def test_steps_render_2():
         patch("streamlit.header"),
         patch("streamlit.subheader"),
         patch("streamlit.columns") as mock_cols,
-        patch("streamlit.number_input"),
+        patch("streamlit.number_input") as mock_num,
         patch("streamlit.radio") as mock_radio,
-        patch("streamlit.slider"),
+        patch("streamlit.slider") as mock_slider,
         patch("streamlit.button", return_value=False),
         patch("streamlit.expander"),
         patch("streamlit.session_state", mock_state),
     ):
-        c1, c2 = MagicMock(), MagicMock()
-        # Initial num_groups input
-        c1.number_input.return_value = 1
-
-        # Second call st.columns(num_groups)
-        g_col = MagicMock()
-        # Group capacity input must return integer
-        g_col.number_input.return_value = 1
+        mock_num.return_value = 1.0
+        # Mock radio for both calls: Mode and Priority
+        mock_radio.side_effect = ["Advanced", "Groupers"]
+        mock_slider.return_value = 1
 
         mock_cols.side_effect = [
-            [c1, c2],  # first call: st.columns(2)
-            [g_col],  # second: st.columns(num_groups)
-            [MagicMock(), MagicMock()],  # third: st.columns([1, 5])
+            [MagicMock(), MagicMock()],  # st.columns(2)
+            [MagicMock()],  # st.columns(num_groups)
+            [MagicMock(), MagicMock()],  # st.columns([1, 5])
         ]
-
-        mock_radio.side_effect = ["Advanced", "Groupers"]
 
         from src.ui import steps
 
@@ -324,7 +328,7 @@ def test_steps_render_2_navigation():
     """Verify navigation buttons in Step 2."""
     from src.ui import steps
 
-    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10]})
+    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = MagicMock()
     mock_state.participants_df = mock_df
 
@@ -341,21 +345,18 @@ def test_steps_render_2_navigation():
         patch("streamlit.header"),
         patch("streamlit.subheader"),
         patch("streamlit.columns") as mock_cols,
-        patch("streamlit.button") as mock_btn,
+        patch("streamlit.button"),
         patch("src.ui.session_manager.go_to_step") as mock_go,
         patch("streamlit.session_state", mock_state),
     ):
         c1, c2 = MagicMock(), MagicMock()
-        c1.number_input.return_value = 1
+        c1.number_input.return_value = 1.0
 
         g_col = MagicMock()
-        g_col.number_input.return_value = 1
+        g_col.number_input.return_value = 1.0
 
-        # Buttons on columns
         c_back = MagicMock()
         c_go = MagicMock()
-
-        # Mock "Back" button click, "Generate" not clicked
         c_back.button.return_value = True
         c_go.button.return_value = False
 
@@ -365,8 +366,6 @@ def test_steps_render_2_navigation():
             [c_back, c_go],  # st.columns([1, 5])
         ]
 
-        # Mock "Back" button click
-        mock_btn.side_effect = lambda label, **kwargs: label == "⬅ Back"
         steps.render_step_2()
         mock_go.assert_called_with(1)
 
@@ -378,7 +377,7 @@ def test_steps_render_1_success():
     df = pd.DataFrame(
         {
             config.COL_NAME: ["A"],
-            "Score1": [10],
+            "Score1": [10.0],
             config.COL_GROUPER: [""],
             config.COL_SEPARATOR: [""],
         }
@@ -470,12 +469,14 @@ def test_steps_render_3_interactive():
 
 def test_data_loader_invalid_columns_check():
     """Verify data_loader identifies missing required columns."""
+    from pathlib import Path
+
     from src.core import data_loader
 
     df = pd.DataFrame({"Wrong": ["A"]})
     with (
         patch("pandas.read_csv", return_value=df),
-        patch("src.core.data_loader.validate_file_path", return_value="test.csv"),
+        patch("src.core.data_loader.validate_file_path", return_value=Path("test.csv")),
     ):
         assert data_loader.load_data("test.csv") is None
 

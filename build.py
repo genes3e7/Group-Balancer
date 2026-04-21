@@ -1,4 +1,5 @@
-"""Build script to package the Group Balancer application into a standalone executable.
+"""
+Build script to package the Group Balancer application into a standalone executable.
 
 Uses PyInstaller to bundle the Streamlit app and core logic into a single file
 or directory structure depending on the target distribution.
@@ -7,6 +8,7 @@ or directory structure depending on the target distribution.
 import os
 import shutil
 import subprocess
+import sys
 
 
 def build_executable():
@@ -33,8 +35,8 @@ def build_executable():
     # Define PyInstaller Command
     # We bundle 'app.py' which launches the Streamlit UI.
     # --noconfirm: Overwrite existing
-    # --onefile: Bundle into a single executable
-    # --additional-hooks-dir: Streamlit requires specific hooks
+    # --onedir: Create a distribution folder
+    # --windowed: Disable the console window
     cmd = [
         "pyinstaller",
         "--noconfirm",
@@ -50,8 +52,10 @@ def build_executable():
         print(f"\n✅ Build Complete! Check: {os.path.abspath('dist')}")
     except subprocess.CalledProcessError as e:
         print(f"\n❌ Build Failed: {e}")
+        sys.exit(1)
     except FileNotFoundError:
         print("\n❌ Error: PyInstaller not found. Please install it.")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

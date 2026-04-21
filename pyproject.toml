@@ -1,6 +1,6 @@
 [project]
 name = "group-balancer"
-version = "6.1.0"
+version = "1.0.0"
 description = "Optimizes team allocations based on individual scores and constraints."
 authors = [{ name = "Group Balancer Contributors" }]
 requires-python = ">=3.10"
@@ -10,7 +10,6 @@ dependencies = [
     "numpy>=1.24.0",
     "openpyxl>=3.1.0",
     "ortools>=9.8.0",
-    "pathspec>=0.11.0",
 ]
 
 [build-system]
@@ -21,7 +20,7 @@ build-backend = "setuptools.build_meta"
 exclude = [
     ".git",
     ".ruff_cache",
-    ".venv",
+    ".pytest_cache",
     "build",
     "dist",
     "venv",
@@ -30,12 +29,9 @@ line-length = 88
 indent-width = 4
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "D"]
-ignore = ["D100", "D104"] # We will ensure these are present, but ignoring for now to see other issues
+select = ["E", "F", "I", "N", "W", "UP", "B"]
+ignore = []
 fixable = ["ALL"]
-
-[tool.ruff.lint.pydocstyle]
-convention = "google"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -5,25 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [6.1.0] - 2025-02-18
+## [6.1.0] - 2026-04-21
 
 ### Added
-- **Security Hardening:**
-  - Strict file path validation and normalization.
-  - File size limits (max 10MB) and participant limits (max 1000).
-  - Explicit integer overflow protection for CP-SAT objective functions.
-- **Service Layer:** Introduced `src.core.services` to decouple Streamlit UI from business logic.
-- **Type System:** Comprehensive typing using `dataclasses` and `Enums` for `Participant` and `SolverConfig`.
-- **Global Logging:** Professional logging configuration with stream handlers and formatted output.
-- **New Tests:** Added `test_edge_cases.py`, `test_infra.py`, `test_ui.py`, and `test_utils.py`.
+- **Core Architecture:** Implemented Strategy, Builder, and TagProcessor patterns for the CP-SAT solver.
+- **Service Layer:** Introduced `DataService` and `OptimizationService` to decouple UI from business logic.
+- **Security:** Hardened input validation with path sanitization, size limits, and CP-SAT overflow scaling.
+- **Type System:** Migrated to strongly-typed models using `dataclasses` and `MappingProxyType`.
+- **Logging:** Standardized internal telemetry using Python's logging library.
+- **New Tests:** 
+  - `test_models_unit.py`: Validation logic for configurations.
+  - `test_services.py`: Integration checks for the service layer.
+  - `test_coverage_edge_cases.py`: Defensive error path verification.
+  - `test_infra.py`: Build and app importability tests.
+- **CI/CD:** Migrated CI pipeline to `uv` for 3x faster execution and improved dependency resolution.
 
 ### Changed
-- **Solver Refactoring:**
-  - Implemented **Builder Pattern** (`ConstraintBuilder`) for complex model construction.
-  - Implemented **Strategy Pattern** (`ScoringStrategy`) for different optimization modes (Simple vs Advanced).
-  - Isolated tag processing logic into `TagProcessor`.
-- **Project Structure:** Moved core logic into `src.core` and UI components into `src.ui`.
-- **Streamlit Interface:** Updated to use the new `OptimizationService` for better maintainability and testability.
+- **UI Restoration:** Restored original red-themed progress bar using safe native Streamlit components.
+- **Modernization:** Updated all deprecated `use_container_width` parameters to `width='stretch'`.
+- **Refactoring:** Consolidated solver "God function" into modular components.
 
 ### Fixed
 - Potential integer overflow in CP-SAT when dealing with large score ranges and weights.

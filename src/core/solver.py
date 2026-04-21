@@ -1,4 +1,5 @@
-"""Core optimization logic using Google OR-Tools.
+"""
+Core optimization logic using Google OR-Tools.
 
 Refactored to use Builder and Strategy patterns for professional standards,
 SRP, and Open/Closed principles.
@@ -7,7 +8,6 @@ SRP, and Open/Closed principles.
 import math
 import time
 from abc import ABC, abstractmethod
-from typing import Any
 
 from ortools.sat.python import cp_model
 
@@ -22,20 +22,10 @@ from src.core.models import (
 
 
 class SolutionPrinter(cp_model.CpSolverSolutionCallback):
-    """Callback to log intermediate solutions found by the solver.
+    """Callback to log intermediate solutions found by the solver."""
 
-    Attributes:
-        __start_time: Time when optimization started.
-        __solution_count: Number of solutions found.
-        __last_log_time: Last time progress was logged.
-    """
-
-    def __init__(self, start_time: float) -> None:
-        """Initializes the solution printer.
-
-        Args:
-            start_time: The unix timestamp when the solver started.
-        """
+    def __init__(self, start_time: float):
+        """Initializes the printer with the solver start time."""
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.__start_time = start_time
         self.__solution_count = 0
@@ -50,8 +40,10 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
             obj = self.ObjectiveValue()
             elapsed = current_time - self.__start_time
             logger.info(
-                f"Solver Progress: {self.__solution_count} solutions | "
-                f"Objective: {obj} | Elapsed: {elapsed:.1f}s",
+                "Solver Progress: %d solutions | Objective: %d | Elapsed: %.1fs",
+                self.__solution_count,
+                obj,
+                elapsed,
             )
             self.__last_log_time = current_time
 
@@ -61,32 +53,23 @@ class TagProcessor:
 
     @staticmethod
     def get_tags(val: str) -> set[str]:
-        """Extracts unique characters as tags, ignoring whitespace and commas.
-
-        Args:
-            val: The raw string containing tags.
-
-        Returns:
-            A set of unique tag characters.
-        """
+        """Extracts unique characters as tags, ignoring whitespace and commas."""
         if not val or not isinstance(val, str):
             return set()
         return {c for c in val if not c.isspace() and c != ","}
 
     @classmethod
     def process_participants(
-        cls,
-        participants: list[Participant],
-        priority: ConflictPriority,
+        cls, participants: list[Participant], priority: ConflictPriority
     ) -> tuple[dict[str, set[int]], dict[str, set[int]]]:
         """Generates grouper and separator sets with conflict resolution.
 
         Args:
-            participants: List of participant objects.
-            priority: Which tag type wins in case of conflict.
+            participants: List of strongly-typed Participant models.
+            priority: Logic to resolve tag collisions.
 
         Returns:
-            A tuple containing (grouper_sets, separator_sets).
+            Tuple of (grouper_sets, separator_sets).
         """
         groupers: dict[str, set[int]] = {}
         separators: dict[str, set[int]] = {}
@@ -100,19 +83,19 @@ class TagProcessor:
             for tag in s_tags:
                 separators.setdefault(tag, set()).add(i)
 
-        # Conflict Resolution
-        if priority == ConflictPriority.GROUPERS:
-            for s_set in separators.values():
-                for g_set in groupers.values():
-                    overlap = s_set.intersection(g_set)
-                    if len(overlap) > 1:
-                        s_set.difference_update(overlap)
-        else:
-            for g_set in groupers.values():
-                for s_set in separators.values():
-                    overlap = g_set.intersection(s_set)
-                    if len(overlap) > 1:
-                        g_set.difference_update(overlap)
+        # Conflict Resolution: Only resolve for the same tag key
+        common_tags = set(groupers.keys()) & set(separators.keys())
+
+        for tag in common_tags:
+            g_set = groupers[tag]
+            s_set = separators[tag]
+            overlap = s_set & g_set
+
+            if len(overlap) > 1:
+                if priority == ConflictPriority.GROUPERS:
+                    s_set.difference_update(overlap)
+                else:
+                    g_set.difference_update(overlap)
 
         return groupers, separators
 
@@ -122,38 +105,19 @@ class ScoringStrategy(ABC):
 
     @abstractmethod
     def get_score_vectors(
-        self,
-        participants: list[Participant],
-        cfg: SolverConfig,
+        self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Returns (name, scores, weight_multiplier) for each dimension.
-
-        Args:
-            participants: List of participants.
-            cfg: Solver configuration.
-
-        Returns:
-            List of tuples (dimension_name, score_list, weight).
-        """
+        """Returns (name, scores, weight_multiplier) for each dimension."""
+        pass
 
 
 class AdvancedScoring(ScoringStrategy):
     """Balances each score dimension independently."""
 
     def get_score_vectors(
-        self,
-        participants: list[Participant],
-        cfg: SolverConfig,
+        self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Returns score vectors for each dimension.
-
-        Args:
-            participants: List of participants.
-            cfg: Solver configuration.
-
-        Returns:
-            List of tuples (dimension_name, score_list, weight).
-        """
+        """Generates independent score vectors for each weight mapping."""
         vectors = []
         for col, weight in cfg.score_weights.items():
             scores = [
@@ -169,19 +133,9 @@ class SimpleScoring(ScoringStrategy):
     """Balances a single weighted total score."""
 
     def get_score_vectors(
-        self,
-        participants: list[Participant],
-        cfg: SolverConfig,
+        self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Returns a single score vector representing the weighted total.
-
-        Args:
-            participants: List of participants.
-            cfg: Solver configuration.
-
-        Returns:
-            List containing one tuple (name, scores, weight).
-        """
+        """Generates a single pre-aggregated score vector."""
         scores = []
         for p in participants:
             total = sum(
@@ -193,33 +147,17 @@ class SimpleScoring(ScoringStrategy):
 
 
 class ConstraintBuilder:
-    """Stateful builder for constructing the CP-SAT partition model.
+    """Stateful builder for constructing the CP-SAT partition model."""
 
-    Attributes:
-        participants: List of participants to process.
-        cfg: Optimization configuration.
-        num_people: Total count of participants.
-        num_groups: Total count of target groups.
-        model: The CP-SAT model being built.
-        x: Map of (participant_index, group_index) to CP-SAT Boolean variables.
-        objectives: List of optimization terms to minimize.
-        max_objective_bound: Theoretical maximum sum of all objective terms.
-    """
-
-    def __init__(self, participants: list[Participant], cfg: SolverConfig) -> None:
-        """Initializes the builder.
-
-        Args:
-            participants: List of participant models.
-            cfg: Solver configuration.
-        """
+    def __init__(self, participants: list[Participant], cfg: SolverConfig):
+        """Initializes the model builder."""
         self.participants = participants
         self.cfg = cfg
         self.num_people = len(participants)
         self.num_groups = cfg.num_groups
         self.model = cp_model.CpModel()
-        self.x: dict[tuple[int, int], cp_model.IntVar] = {}
-        self.objectives: list[cp_model.IntVar] = []
+        self.x = {}  # (p_idx, g_idx) -> BoolVar
+        self.objectives = []
         self.max_objective_bound = 0
 
     def build_variables(self) -> None:
@@ -232,7 +170,7 @@ class ConstraintBuilder:
         for g in range(self.num_groups):
             self.model.Add(
                 sum(self.x[(i, g)] for i in range(self.num_people))
-                == self.cfg.group_capacities[g],
+                == self.cfg.group_capacities[g]
             )
 
     def add_pigeonhole_constraints(self, separators: dict[str, set[int]]) -> None:
@@ -271,8 +209,9 @@ class ConstraintBuilder:
             if diff_bound * weight_m > 2**60:
                 scale_down = math.ceil((diff_bound * weight_m) / 2**60)
                 logger.warning(
-                    f"Extreme score range in {name} risking overflow. "
-                    f"Scaling down by {scale_down}.",
+                    "Extreme score range in %s risking overflow. Scaling by %d.",
+                    name,
+                    scale_down,
                 )
                 scores = [int(round(s / scale_down)) for s in scores]
                 total_score = sum(scores)
@@ -299,7 +238,7 @@ class ConstraintBuilder:
             for g in range(self.num_groups):
                 self.model.Add(
                     g_sums[g]
-                    == sum(self.x[(i, g)] * scores[i] for i in range(self.num_people)),
+                    == sum(self.x[(i, g)] * scores[i] for i in range(self.num_people))
                 )
                 target = total_score * self.cfg.group_capacities[g]
                 diff = self.model.NewIntVar(-diff_bound, diff_bound, f"diff_{name}_{g}")
@@ -328,29 +267,26 @@ class ConstraintBuilder:
             for g in range(self.num_groups):
                 used = self.model.NewBoolVar(f"used_{tag}_{g}")
                 self.model.AddMaxEquality(used, [self.x[(i, g)] for i in g_set])
-                # Small bias to keep large groups for complex tag sets
+
+                # Incorporate SolverConfig.grouper_weight
+                weight = self.cfg.grouper_weight
                 cap_penalty = self.cfg.group_capacities[g] * 10
-                self.objectives.append(used * (base_penalty + cap_penalty))
+                self.objectives.append(used * ((base_penalty + cap_penalty) * weight))
 
     def get_model(self) -> cp_model.CpModel:
-        """Finalizes and returns the model.
-
-        Returns:
-            The configured CP-SAT model.
-        """
+        """Finalizes and returns the model."""
         self.model.Minimize(sum(self.objectives))
         return self.model
 
 
 def solve_with_ortools(
-    participants_raw: list[dict[str, Any]],
-    cfg: SolverConfig,
-) -> tuple[list[dict[str, Any]], int, float]:
+    participants_raw: list[dict], cfg: SolverConfig
+) -> tuple[list[dict], int, float]:
     """Primary entry point for the solver.
 
     Args:
-        participants_raw: List of participant dictionaries.
-        cfg: Solver configuration.
+        participants_raw: List of dictionaries from input files.
+        cfg: The solver configuration parameters.
 
     Returns:
         Tuple: (grouped_participants, solver_status, elapsed_time)
@@ -376,8 +312,7 @@ def solve_with_ortools(
     builder.build_variables()
 
     groupers, separators = TagProcessor.process_participants(
-        participants,
-        cfg.conflict_priority,
+        participants, cfg.conflict_priority
     )
     builder.add_pigeonhole_constraints(separators)
 
@@ -408,13 +343,15 @@ def solve_with_ortools(
                 if solver_inst.Value(builder.x[(i, g)]) == 1:
                     assigned_group = g + 1
                     break
+
             p_dict = {
                 config.COL_NAME: p.name,
                 config.COL_GROUP: assigned_group,
                 config.COL_GROUPER: p.groupers,
                 config.COL_SEPARATOR: p.separators,
             }
-            p_dict.update(p.scores)
+            # Unpack MappingsProxyType for compatibility
+            p_dict.update(dict(p.scores))
             results.append(p_dict)
 
     return results, status, elapsed

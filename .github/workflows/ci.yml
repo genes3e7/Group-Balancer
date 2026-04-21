@@ -44,6 +44,8 @@ jobs:
         enable-cache: true
     - name: Set up Python ${{ matrix.python-version }}
       run: uv python install ${{ matrix.python-version }}
+    - name: Use matrix Python
+      run: uv venv --python ${{ matrix.python-version }}
     - name: Install dependencies
       run: |
         uv pip install -r requirements.in
@@ -52,18 +54,18 @@ jobs:
       run: uv run pytest tests/
     - name: Record Success
       if: success()
-      run: echo "${{ matrix.python-version }}" > python_version_${{ matrix.python-version }}.txt
+      run: echo "${{ matrix.python-version }}" > python_version_${{ matrix.python-version.txt }}
     - name: Upload Success Artifact
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: passed-version-${{ matrix.python-version }}
-        path: python_version_${{ matrix.python-version }}.txt
+        path: python_version_${{ matrix.python-version.txt }}
 
   finalize-updates:
     needs: test-matrix
     runs-on: ubuntu-latest
-    if: always() && needs.test-matrix.result != 'skipped'
+    if: needs.test-matrix.result == 'success'
     steps:
     - uses: actions/checkout@v4
       with:
@@ -87,20 +89,19 @@ jobs:
       uses: astral-sh/setup-uv@v5
       with:
         enable-cache: true
+    - name: Sync environment
+      run: uv venv && uv pip install -r requirements-dev.in
     - name: Update README Tree & Versions
       run: |
-        uv pip install pathspec
         uv run python tools/update_readme.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"
     - name: Compile requirements.txt
       run: uv pip compile requirements.in --output-file requirements.txt
     - name: Ruff Format & Fix
       run: |
-        uv pip install ruff
         uv run ruff check . --fix
         uv run ruff format .
     - name: Verify Builder
       run: |
-        uv pip install pyinstaller -r requirements.txt
         uv run python build.py
     - name: Commit and Push changes
       env:
@@ -108,8 +109,9 @@ jobs:
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
-        git add .
+        git add -u
+        git add README.md requirements.txt CHANGELOG.md
         if ! git diff --staged --quiet; then
-          git commit -m "chore: professional standards refactor & uv migration"
+          git commit -m "chore: professional standards updates and CI maintenance"
           git push origin HEAD:"$REF_NAME"
         fi

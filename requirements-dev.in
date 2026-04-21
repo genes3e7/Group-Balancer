@@ -6,6 +6,7 @@
 
 # Dev Tools
 pytest
+pytest-cov
 ruff
-pathspec
-pip-tools
+pathspec # Required for tools/update_readme.py
+pip-tools # Retained for compatibility with local build-scripts

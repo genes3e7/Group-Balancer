@@ -34,9 +34,19 @@ def main():
     print(f"\nFound {num_people} participants and {len(score_cols)} score dimensions.")
 
     try:
-        num_groups = int(input(f"Enter number of groups (1-{num_people}) [2]: ") or "2")
+        num_groups_str = input(f"Enter number of groups (1-{num_people}) [2]: ").strip()
+        num_groups = int(num_groups_str or "2")
+
+        if not (1 <= num_groups <= num_people):
+            logger.error(
+                "Invalid number of groups: %d. Must be between 1 and %d.",
+                num_groups,
+                num_people,
+            )
+            sys.exit(1)
+
     except ValueError:
-        logger.error("Invalid number of groups. Exiting.")
+        logger.error("Invalid input: Number of groups must be an integer.")
         sys.exit(1)
 
     # Simple even capacity split for CLI

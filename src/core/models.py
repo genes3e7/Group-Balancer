@@ -43,7 +43,7 @@ class Participant:
     separators: str = ""
     original_index: int | None = None
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Sanitize inputs after initialization."""
         if not isinstance(self.name, str):
             object.__setattr__(self, "name", str(self.name))
@@ -79,7 +79,7 @@ class SolverConfig:
     timeout_seconds: int = 60
     num_workers: int = 4
 
-    def __post_init__(self) -> None:
+    def __post_init__(self):
         """Validate configuration parameters.
 
         Raises:
@@ -88,20 +88,42 @@ class SolverConfig:
         # Ensure deep immutability
         object.__setattr__(self, "group_capacities", tuple(self.group_capacities))
         object.__setattr__(
-            self,
-            "score_weights",
-            MappingProxyType(dict(self.score_weights)),
+            self, "score_weights", MappingProxyType(dict(self.score_weights))
         )
 
         if self.num_groups <= 0:
-            msg = "Number of groups must be positive."
-            raise ValueError(msg)
-        if sum(self.group_capacities) <= 0:
-            msg = "Total capacity must be positive."
-            raise ValueError(msg)
+            raise ValueError("Number of groups must be positive.")
+        if self.num_groups > config.MAX_GROUPS:
+            raise ValueError(f"Number of groups exceeds limit of {config.MAX_GROUPS}.")
+
+        total_participants = sum(self.group_capacities)
+        if total_participants <= 0:
+            raise ValueError("Total capacity must be positive.")
+        if total_participants > config.MAX_PARTICIPANTS:
+            raise ValueError(
+                f"Total participants ({total_participants}) exceeds "
+                f"limit of {config.MAX_PARTICIPANTS}."
+            )
+
         if len(self.group_capacities) != self.num_groups:
-            msg = "Group capacities list length must match num_groups."
-            raise ValueError(msg)
+            raise ValueError("Group capacities list length must match num_groups.")
         if any(c < 0 for c in self.group_capacities):
-            msg = "Group capacities cannot be negative."
-            raise ValueError(msg)
+            raise ValueError("Group capacities cannot be negative.")
+
+        # Validate score weights
+        if not self.score_weights:
+            raise ValueError("At least one score weight must be provided.")
+
+        has_positive_weight = False
+        import math
+
+        for col, weight in self.score_weights.items():
+            if not math.isfinite(weight):
+                raise ValueError(f"Score weight for {col} must be a finite number.")
+            if weight < 0:
+                raise ValueError(f"Score weight for {col} cannot be negative.")
+            if weight > 0:
+                has_positive_weight = True
+
+        if not has_positive_weight:
+            raise ValueError("At least one score weight must be positive.")
