@@ -2,7 +2,8 @@
 Data loading and sanitization utilities.
 
 This module handles the import of participant data from CSV and Excel files,
-ensuring that column names are normalized and data types are coerced correctly.
+ensuring that column names are normalized and data types are coerced correctly
+for multi-dimensional scoring and advanced constraints.
 """
 
 import os
@@ -56,6 +57,10 @@ def load_data(filepath: str) -> list[dict] | None:
     """
     Loads participant data from a CSV or Excel file.
 
+    Dynamically detects all columns starting with the configured SCORE_PREFIX
+    and initializes constraint columns if missing. Issues warnings for missing
+    or non-numeric data before filling with zeroes.
+
     Args:
         filepath (str): Path to the source file.
 
@@ -77,24 +82,44 @@ def load_data(filepath: str) -> list[dict] | None:
 
         df.columns = df.columns.str.strip()
 
-        if config.COL_NAME not in df.columns or config.COL_SCORE not in df.columns:
+        score_cols = [
+            col for col in df.columns if str(col).startswith(config.SCORE_PREFIX)
+        ]
+
+        if config.COL_NAME not in df.columns or not score_cols:
             print(
-                f"Error: Input file must contain columns '{config.COL_NAME}' and '{config.COL_SCORE}'."
+                f"Error: Input file must contain column '{config.COL_NAME}' and at least one score column starting with '{config.SCORE_PREFIX}'."
             )
             print(f"Found columns: {list(df.columns)}")
             return None
 
         df[config.COL_NAME] = df[config.COL_NAME].astype(str).str.strip()
 
-        original_scores = df[config.COL_SCORE]
-        df[config.COL_SCORE] = pd.to_numeric(original_scores, errors="coerce")
+        if config.COL_GROUPER not in df.columns:
+            df[config.COL_GROUPER] = ""
+        if config.COL_SEPARATOR not in df.columns:
+            df[config.COL_SEPARATOR] = ""
 
-        coerced_mask = df[config.COL_SCORE].isna() & original_scores.notna()
-        if coerced_mask.any():
-            invalid_names = df.loc[coerced_mask, config.COL_NAME].tolist()
-            print(f"Warning: Non-numeric scores for {invalid_names} were set to 0.")
+        for col in score_cols:
+            original_scores = df[col].copy()
+            df[col] = pd.to_numeric(original_scores, errors="coerce")
 
-        df[config.COL_SCORE] = df[config.COL_SCORE].fillna(0)
+            missing_mask = original_scores.isna()
+            coerced_mask = df[col].isna() & original_scores.notna()
+
+            if missing_mask.any():
+                missing_names = df.loc[missing_mask, config.COL_NAME].tolist()
+                print(
+                    f"Warning: Missing scores in {col} for {missing_names} were set to 0."
+                )
+
+            if coerced_mask.any():
+                invalid_names = df.loc[coerced_mask, config.COL_NAME].tolist()
+                print(
+                    f"Warning: Non-numeric scores in {col} for {invalid_names} were set to 0."
+                )
+
+            df[col] = df[col].fillna(0)
 
         records = df.to_dict("records")
         if not records:
