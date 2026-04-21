@@ -3,6 +3,7 @@ Core optimization logic using Google OR-Tools.
 
 This module defines the Constraint Programming (CP) model used to partition
 participants into balanced groups using Simple/Advanced modes and Pigeonhole constraints.
+Tags are processed via raw character iteration.
 """
 
 import math
@@ -103,25 +104,24 @@ def build_partition_model(
             model.Add(sum(x[(i, g)] for i in stars) <= math.ceil(expected))
             model.Add(sum(x[(i, g)] for i in stars) >= math.floor(expected))
 
-    # --- 3. Tag Parsing & Conflict Resolution ---
+    # --- 3. Tag Parsing (Raw Character Iteration) ---
+    # Commas and whitespace are explicitly ignored to maintain CSV integrity.
     grouper_sets = {}
     separator_sets = {}
     for i, p in enumerate(participants):
-        g_tags = [
-            t.strip()
-            for t in str(p.get(config.COL_GROUPER, "")).split(",")
-            if t.strip()
-        ]
-        s_tags = [
-            t.strip()
-            for t in str(p.get(config.COL_SEPARATOR, "")).split(",")
-            if t.strip()
-        ]
+        g_raw = str(p.get(config.COL_GROUPER, ""))
+        s_raw = str(p.get(config.COL_SEPARATOR, ""))
+
+        # Iterate over every character; treat each as an independent tag
+        g_tags = {c for c in g_raw if not c.isspace() and c != ","}
+        s_tags = {c for c in s_raw if not c.isspace() and c != ","}
+
         for tag in g_tags:
             grouper_sets.setdefault(tag, set()).add(i)
         for tag in s_tags:
             separator_sets.setdefault(tag, set()).add(i)
 
+    # Conflict Resolution based on user priority
     if conflict_priority.startswith("Groupers"):
         for s_tag, s_set in separator_sets.items():
             for g_tag, g_set in grouper_sets.items():
@@ -145,14 +145,14 @@ def build_partition_model(
 
     # --- 5. Fractional Cohesion (Groupers) ---
     cohesion_penalties = []
-    base_cohesion_penalty = 10**9  # Massive penalty to override soft scoring
+    base_cohesion_penalty = 10**9
     for g_tag, g_set in grouper_sets.items():
         if len(g_set) <= 1:
             continue
         for g in range(num_groups):
             used = model.NewBoolVar(f"used_{g_tag}_{g}")
             model.AddMaxEquality(used, [x[(i, g)] for i in g_set])
-            # Tie-breaker: Prioritize fitting into smaller groups to preserve big groups
+            # Greedy overflow: prioritize smaller groups to keep large ones open
             capacity_penalty = group_capacities[g] * 1000
             cohesion_penalties.append(used * (base_cohesion_penalty + capacity_penalty))
 
@@ -196,7 +196,6 @@ def build_partition_model(
             for g in range(num_groups)
         ]
 
-        # Symmetry breaking
         if col_idx == 0:
             for g1 in range(num_groups):
                 for g2 in range(g1 + 1, num_groups):
@@ -241,19 +240,19 @@ def solve_with_ortools(
     conflict_priority: str = "Groupers",
 ) -> tuple[list[dict], bool]:
     """
-    Main orchestration function to execute the solver and format the groupings.
+    Main orchestration function to execute the solver.
 
     Args:
-        participants (list[dict]): Participant dictionaries.
-        group_capacities (list[int]): Exact size constraints per group.
-        respect_stars (bool): Maintain uniform star distribution.
-        score_columns (list[str]): Columns to balance.
-        score_weights (dict[str, float]): Impact weight logic.
-        opt_mode (str): Optimization topology selection.
-        conflict_priority (str): Collision resolution mechanism.
+        participants (list[dict]): Participant data.
+        group_capacities (list[int]): Size constraints.
+        respect_stars (bool): distribute leaders.
+        score_columns (list[str]): Dimensions to balance.
+        score_weights (dict[str, float]): Weights per dimension.
+        opt_mode (str): Optimization topology.
+        conflict_priority (str): Conflict resolution strategy.
 
     Returns:
-        tuple[list[dict], bool]: Resolved groupings and success flag.
+        tuple[list[dict], bool]: Groupings and success flag.
     """
     model, x, num_people, num_groups = build_partition_model(
         participants,
@@ -270,7 +269,6 @@ def solve_with_ortools(
     solver_inst.parameters.num_search_workers = config.SOLVER_NUM_WORKERS
 
     status = solver_inst.Solve(model, SolutionPrinter(time.time()))
-    print("")
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         result_groups = [{"id": g + 1, "members": []} for g in range(num_groups)]
