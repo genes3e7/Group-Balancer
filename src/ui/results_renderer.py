@@ -129,7 +129,6 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
 
             edited_df = st.data_editor(
                 disp_df[display_columns],
-                hide_index=True,
                 width="stretch",
                 column_config=col_configs,
                 key=f"editor_group_{group['id']}",
@@ -138,12 +137,10 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
             if not edited_df.equals(disp_df[display_columns]):
                 # A group reassignment happened
                 interactive_df = st.session_state.interactive_df
-                for _, row in edited_df.iterrows():
-                    name = row[config.COL_NAME]
+                for idx, row in edited_df.iterrows():
                     new_grp = row[config.COL_GROUP]
-                    mask = interactive_df[config.COL_NAME] == name
-                    if interactive_df.loc[mask, config.COL_GROUP].iloc[0] != new_grp:
-                        interactive_df.loc[mask, config.COL_GROUP] = new_grp
+                    if interactive_df.at[idx, config.COL_GROUP] != new_grp:
+                        interactive_df.at[idx, config.COL_GROUP] = new_grp
                 st.session_state.interactive_df = interactive_df
                 st.rerun()
         else:

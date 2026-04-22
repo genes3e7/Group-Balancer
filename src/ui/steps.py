@@ -26,11 +26,11 @@ def _load_uploaded_file() -> None:
             else:
                 df_new = pd.read_excel(uploaded)
 
-            # Use Service layer for cleaning
-            df_clean = DataService.clean_participants_df(df_new)
-            score_cols = DataService.get_score_columns(df_clean)
-
-            if config.COL_NAME in df_clean.columns and score_cols:
+            # Validate raw upload before cleaning
+            score_cols_raw = DataService.get_score_columns(df_new)
+            if config.COL_NAME in df_new.columns and score_cols_raw:
+                # Use Service layer for cleaning
+                df_clean = DataService.clean_participants_df(df_new)
                 st.session_state.manual_df = df_clean
                 st.toast(f"✅ Imported {len(df_clean)} rows!", icon="📂")
             else:
@@ -59,8 +59,11 @@ def render_step_1() -> None:
             st.session_state.manual_df[col] = ""
 
     if st.button("➕ Add Score Column"):
-        current_scores = DataService.get_score_columns(st.session_state.manual_df)
-        new_name = f"{config.SCORE_PREFIX}{len(current_scores) + 1}"
+        current_cols = st.session_state.manual_df.columns
+        n = 1
+        while f"{config.SCORE_PREFIX}{n}" in current_cols:
+            n += 1
+        new_name = f"{config.SCORE_PREFIX}{n}"
         st.session_state.manual_df[new_name] = 0.0
         st.rerun()
 

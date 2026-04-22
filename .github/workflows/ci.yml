@@ -86,9 +86,15 @@ jobs:
            exit 1
         fi
         # Exclude experimental/allowed-failure versions from the stable badge range
-        cat artifacts/*.txt | grep -vF -- "3.15-dev" || true | sort -V > sorted_versions.txt
-        echo "MIN_VER=$(head -n 1 sorted_versions.txt || echo "")" >> $GITHUB_ENV
-        echo "MAX_VER=$(tail -n 1 sorted_versions.txt || echo "")" >> $GITHUB_ENV
+        (cat artifacts/*.txt | grep -vF -- "3.15-dev" || true) | sort -V > sorted_versions.txt
+        
+        if [ ! -s sorted_versions.txt ]; then
+           echo "No stable versions found after filtering. Skipping README update."
+           exit 0
+        fi
+        
+        echo "MIN_VER=$(head -n 1 sorted_versions.txt)" >> $GITHUB_ENV
+        echo "MAX_VER=$(tail -n 1 sorted_versions.txt)" >> $GITHUB_ENV
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
       with:

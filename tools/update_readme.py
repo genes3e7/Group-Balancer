@@ -32,7 +32,10 @@ def load_gitignore_spec(root_path: str) -> pathspec.PathSpec:
 
     if os.path.exists(gitignore_path):
         with open(gitignore_path, encoding="utf-8") as f:
-            patterns.extend(f.readlines())
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#"):
+                    patterns.append(line)
 
     return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
 
@@ -121,7 +124,7 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
     # 2. Update Version Badge
     if min_ver and max_ver:
         # Matches badge URL part: python-3.10%20-%203.14-blue
-        badge_pattern = re.compile(r"python-3\.[0-9]+.*?-blue")
+        badge_pattern = re.compile(r"python-3\.[0-9]+[^\s\[\]\(\)]*-blue")
         new_badge_url = f"python-{min_ver}%20-%20{max_ver}-blue"
         content = badge_pattern.sub(new_badge_url, content)
 

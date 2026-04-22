@@ -27,19 +27,10 @@ except ImportError:
     except ImportError:
 
         def add_script_run_ctx(t: Any, c: Any = None) -> None:
-            """Fallback for add_script_run_ctx if streamlit is not installed.
-
-            Args:
-                t: Thread object.
-                c: Context object.
-            """
+            """Fallback for add_script_run_ctx if streamlit is not installed."""
 
         def get_script_run_ctx() -> Any:
-            """Fallback for get_script_run_ctx if streamlit is not installed.
-
-            Returns:
-                Any: Always None.
-            """
+            """Fallback for get_script_run_ctx if streamlit is not installed."""
             return None
 
 
@@ -74,10 +65,6 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         if current_time - self.last_update_time >= 0.25:
             if self.ctx:
                 add_script_run_ctx(threading.current_thread(), self.ctx)
-
-            if st.session_state.get("stop_early", False):
-                self.StopSearch()
-                return
 
             obj = self.ObjectiveValue()
             elapsed = max(0.01, current_time - self.start_time)

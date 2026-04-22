@@ -3,6 +3,8 @@
 Updated to match the professional standards refactor (models and result formats).
 """
 
+from ortools.sat.python import cp_model
+
 from src.core import config, solver
 from src.core.models import ConflictPriority, OptimizationMode, SolverConfig
 
@@ -41,10 +43,10 @@ def make_participants(
 def get_solver_config(
     num_groups: int,
     capacities: list[int],
-    weights: dict = None,
-    mode=OptimizationMode.ADVANCED,
-    priority=ConflictPriority.GROUPERS,
-):
+    weights: dict[str, float] | None = None,
+    mode: OptimizationMode = OptimizationMode.ADVANCED,
+    priority: ConflictPriority = ConflictPriority.GROUPERS,
+) -> SolverConfig:
     """Helper to create SolverConfig."""
     if weights is None:
         weights = {SCORE_COL: 1.0}
@@ -97,7 +99,10 @@ def test_solver_multi_dimensional_weighted():
         {config.COL_NAME: "P4", SCORE_COL: 10, s2: 100},
     ]
     cfg = get_solver_config(2, [2, 2], weights={SCORE_COL: 1.0, s2: 0.0})
-    results, _, _ = solver.solve_with_ortools(participants, cfg)
+    results, status, _ = solver.solve_with_ortools(participants, cfg)
+
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert len(results) == 4
 
     # Check that each group has one 100 and one 10 for Score1
     for gid in [1, 2]:
@@ -129,7 +134,7 @@ def test_solver_pigeonhole_separator():
     assert g1_sep <= 2
     assert g2_sep <= 2
     assert g1_sep + g2_sep == 3
-    assert g2_sep <= 2
+    assert g1_sep >= 1
 
 
 def test_solver_fractional_cohesion():

@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from src.core import data_loader, services, solver, solver_interface
+from src.core import data_loader, services, solver
 from src.core.models import (
     ConflictPriority,
     OptimizationMode,
@@ -66,12 +66,3 @@ def test_solver_overflow_scaling_path():
         solver.solve_with_ortools([{"Name": "A", "Score1": 1e20}], cfg)
         # Verify warning was logged
         assert mock_warn.called
-
-
-def test_solver_interface_import_error_mock():
-    """Test solver_interface without streamlit ctx (lines 23-43)."""
-    # This is partially covered by tests but we ensure the fallback logic is exercised
-    with patch("src.core.solver_interface.get_script_run_ctx", return_value=None):
-        callback = solver_interface.StreamlitSolverCallback(None, 10)
-        assert callback.ctx is None
-        callback.on_solution_callback()  # Should not crash

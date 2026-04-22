@@ -286,9 +286,13 @@ def test_steps_load_uploaded_file_csv():
     mock_file.name = "test.csv"
     mock_state = MagicMock()
     mock_state.u_file = mock_file
+    mock_df = pd.DataFrame({config.COL_NAME: ["P1"], "Score1": [100.0]})
 
     with (
-        patch("pandas.read_csv") as mock_read,
+        patch("pandas.read_csv", return_value=mock_df) as mock_read,
+        patch(
+            "src.core.services.DataService.get_score_columns", return_value=["Score1"]
+        ),
         patch("src.core.services.DataService.clean_participants_df") as mock_clean,
         patch("streamlit.session_state", mock_state),
         patch("streamlit.toast"),
@@ -430,9 +434,13 @@ def test_steps_load_uploaded_file_excel():
     mock_file.name = "test.xlsx"
     mock_state = MagicMock()
     mock_state.u_file = mock_file
+    mock_df = pd.DataFrame({config.COL_NAME: ["P1"], "Score1": [100.0]})
 
     with (
-        patch("pandas.read_excel") as mock_read,
+        patch("pandas.read_excel", return_value=mock_df) as mock_read,
+        patch(
+            "src.core.services.DataService.get_score_columns", return_value=["Score1"]
+        ),
         patch("src.core.services.DataService.clean_participants_df") as mock_clean,
         patch("streamlit.session_state", mock_state),
         patch("streamlit.toast"),
