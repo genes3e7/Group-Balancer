@@ -100,26 +100,46 @@ def test_results_renderer_single_card_with_members():
         "members": [
             {
                 config.COL_NAME: "A",
+                config.COL_GROUP: 1,
                 "Score1": 10,
                 config.COL_GROUPER: "G",
                 config.COL_SEPARATOR: "S",
             },
-            {config.COL_NAME: "B", "Score1": 20},
+            {config.COL_NAME: "B", config.COL_GROUP: 1, "Score1": 20},
         ],
     }
+
+    mock_state = MagicMock()
+    mock_state.get.return_value = 2
+
     with (
         patch("streamlit.container"),
         patch("streamlit.markdown"),
         patch("streamlit.columns") as mock_cols,
-        patch("streamlit.dataframe"),
+        patch("streamlit.data_editor") as mock_editor,
         patch("streamlit.expander"),
         patch("streamlit.metric"),
+        patch("streamlit.session_state", mock_state),
     ):
         mock_cols.side_effect = [
             [MagicMock(), MagicMock()],  # c1, c2
             [MagicMock()],  # m_cols
         ]
+
+        # Mock data_editor to return the same dataframe (no changes)
+        def mock_data_editor(df, *args, **kwargs):
+            return df
+
+        mock_editor.side_effect = mock_data_editor
+
         results_renderer._render_single_card(group, ["Score1"])
+
+        # Check dataframe was rendered via data_editor
+        mock_editor.assert_called_once()
+        df_arg = mock_editor.call_args[0][0]
+        assert "Groupers" in df_arg.columns
+        assert "Score1" in df_arg.columns
+        assert "Group" in df_arg.columns
 
 
 def test_steps_render_3_cards():

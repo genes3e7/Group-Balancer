@@ -208,31 +208,58 @@ def render_step_3() -> None:
 
 
 def _render_table_view(score_cols: list[str]) -> None:
-    """Renders result table.
+    """Renders result table with live statistics.
 
     Args:
         score_cols: List of score columns to display.
     """
-    editor_configs = {
-        config.COL_GROUP: st.column_config.NumberColumn(
-            "Group",
-            min_value=1,
-            format="%d",
-        ),
-        config.COL_NAME: st.column_config.TextColumn(disabled=True),
-    }
-    for col in score_cols:
-        editor_configs[col] = st.column_config.NumberColumn(disabled=True)
+    stats_col, editor_col = st.columns([1, 3])
+    with editor_col:
+        st.subheader("Edit Assignments")
+        editor_configs = {
+            config.COL_GROUP: st.column_config.NumberColumn(
+                "Group",
+                min_value=1,
+                max_value=st.session_state.get("num_groups_target", 10),
+                format="%d",
+            ),
+            config.COL_NAME: st.column_config.TextColumn(disabled=True),
+            config.COL_GROUPER: st.column_config.TextColumn(disabled=True),
+            config.COL_SEPARATOR: st.column_config.TextColumn(disabled=True),
+        }
+        for col in score_cols:
+            editor_configs[col] = st.column_config.NumberColumn(disabled=True)
 
-    edited_df = st.data_editor(
-        st.session_state.interactive_df,
-        column_config=editor_configs,
-        hide_index=True,
-        width="stretch",
-    )
-    if not edited_df.equals(st.session_state.interactive_df):
-        st.session_state.interactive_df = edited_df
-        st.rerun()
+        edited_df = st.data_editor(
+            st.session_state.interactive_df,
+            column_config=editor_configs,
+            hide_index=True,
+            width="stretch",
+            key="results_editor_table",
+        )
+        if not edited_df.equals(st.session_state.interactive_df):
+            st.session_state.interactive_df = edited_df
+            st.rerun()
+
+    with stats_col:
+        st.subheader("Live Stats")
+        for col in score_cols:
+            st.markdown(f"**{col} Stats**")
+            gdf = (
+                st.session_state.interactive_df.groupby(config.COL_GROUP)[col]
+                .agg(["count", "mean", "sum"])
+                .reset_index()
+            )
+            gdf.columns = ["Group", "Count", "Avg", "Sum"]
+
+            std_val = gdf["Avg"].std()
+            if pd.isna(std_val):
+                std_val = 0.0
+
+            st.metric(f"{col} Std Dev", f"{std_val:.4f}")
+            st.dataframe(
+                gdf.style.format({"Avg": "{:.2f}", "Sum": "{:.2f}"}), hide_index=True
+            )
 
 
 def _render_footer_actions(score_cols: list[str]) -> None:

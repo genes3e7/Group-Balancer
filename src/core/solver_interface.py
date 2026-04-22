@@ -68,6 +68,10 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         Streamlit status placeholder with a progress summary including solution
         count and weighted deviation.
         """
+        if st.session_state.get("stop_early", False):
+            self.StopSearch()
+            return
+
         self.solution_count += 1
         current_time = time.time()
 
@@ -111,8 +115,10 @@ def run_optimization(
         A tuple of (results_df, metrics_dict). results_df is None if the
         solver fails to find any feasible solution.
     """
-    start_time = time.time()
+    if status_box:
+        status_box.info("Solver Status: ⏳ Initializing...")
 
+    start_time = time.time()
     # 1. Build Model using Builder
     builder = solver.ConstraintBuilder(participants, cfg)
     builder.build_variables()

@@ -104,7 +104,7 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
 
         if group["members"]:
             disp_df = pd.DataFrame(group["members"])
-            display_columns = [config.COL_NAME]
+            display_columns = [config.COL_NAME, config.COL_GROUP]
 
             # Add tags if they exist and are not empty
             for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
@@ -112,15 +112,39 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
                     display_columns.append(col)
 
             display_columns.extend(score_cols)
-            col_configs = {
-                col: st.column_config.NumberColumn(format="%.2f") for col in score_cols
-            }
 
-            st.dataframe(
+            max_groups = st.session_state.get("num_groups_target", 10)
+            col_configs = {
+                config.COL_GROUP: st.column_config.NumberColumn(
+                    "Group", min_value=1, max_value=max_groups, format="%d"
+                ),
+                config.COL_NAME: st.column_config.TextColumn(disabled=True),
+            }
+            for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
+                col_configs[col] = st.column_config.TextColumn(disabled=True)
+            for col in score_cols:
+                col_configs[col] = st.column_config.NumberColumn(
+                    format="%.2f", disabled=True
+                )
+
+            edited_df = st.data_editor(
                 disp_df[display_columns],
                 hide_index=True,
                 width="stretch",
                 column_config=col_configs,
+                key=f"editor_group_{group['id']}",
             )
+
+            if not edited_df.equals(disp_df[display_columns]):
+                # A group reassignment happened
+                interactive_df = st.session_state.interactive_df
+                for _, row in edited_df.iterrows():
+                    name = row[config.COL_NAME]
+                    new_grp = row[config.COL_GROUP]
+                    mask = interactive_df[config.COL_NAME] == name
+                    if interactive_df.loc[mask, config.COL_GROUP].iloc[0] != new_grp:
+                        interactive_df.loc[mask, config.COL_GROUP] = new_grp
+                st.session_state.interactive_df = interactive_df
+                st.rerun()
         else:
             st.caption("No members assigned.")
