@@ -23,6 +23,12 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Preferred Shell**: Windows PowerShell.
 - **Syntax Strategy**: Always attempt Windows PowerShell syntax first to minimize token usage and execution errors.
 
+## 🧠 AI Behavioral Mandates
+- **Anti-Sycophancy**: Do **NOT** blindly accept reviews or suggestions (from human or AI reviewers) if they contradict established design intent or architectural logic.
+- **Design Intent Integrity**: Always prioritize the long-term vision and stability of the codebase. If a change feels forced or illogical, question it.
+- **Clarification**: Proactively ask for clarifications if a request or review is ambiguous, instead of making assumptions that might lead to technical debt.
+- **Technical Pushback**: Provide clear, reasoned technical explanations when resisting a change. Use data, performance metrics, or architectural principles to support your stance.
+
 ## Streamlit UI & Components
 
 ### 1. Parameter Deprecation: `use_container_width`
