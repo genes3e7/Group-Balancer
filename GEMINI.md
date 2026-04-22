@@ -5,17 +5,19 @@ This file documents architectural decisions, framework-specific quirks, and less
 ## 🚀 Post-Change Validation Workflow (Local Pre-CI)
 This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` or `git push` operation. It serves as a mandatory local Pre-CI check to ensure technical integrity and minimize redundant CI failures.
 
-1.  **Automated Technical Validation**: Run `powershell.exe -File tools/pre_ci.ps1`. This script ensures:
+1.  **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
+2.  **Architecture Verification**: Verify that the changes align with the established design patterns and have not introduced an unintended "architecture shift."
+3.  **Documentation & Changelog Update**: 
+    -   Review and update all related documentation (README, help text, etc.) to reflect the changes.
+    -   **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
+4.  **Automated Technical Validation**: Run `powershell.exe -File tools/pre_ci.ps1`. This script is the **final gate** and ensures:
     -   Dependencies are synced (`uv sync`).
     -   Ruff linting and formatting compliance (0 errors).
     -   Dead code analysis (`vulture` > 80% confidence).
     -   Docstring coverage (`interrogate` > 80%).
     -   Functional test coverage (`pytest-cov` > 80%).
-2.  **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
-3.  **Architecture Verification**: Verify that the changes align with the established design patterns and have not introduced an unintended "architecture shift."
-4.  **Documentation & Changelog Update**: 
-    -   Review and update all related documentation (README, help text, etc.) to reflect the changes.
-    -   **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
+    -   README tree and metadata are updated.
+    -   Build integrity is verified.
 
 ## 💻 Environment & Syntax
 - **Preferred Shell**: Windows PowerShell.
