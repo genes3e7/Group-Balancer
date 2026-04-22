@@ -28,10 +28,11 @@ uv run pytest
 
 # 6. Update README (Mirrors CI finalize-updates)
 Write-Host "`n [6/7] Updating README structure and metadata..."
-# Note: Locally we use the current python version as a placeholder for min/max
-# unless specified otherwise. This ensures the Tree structure is updated.
-$current_ver = (uv run python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-uv run python tools/update_readme.py $current_ver $current_ver
+# Default to project stable range (3.10-3.14) for local runs
+# Use $args[0] and $args[1] if user wants to override
+$min_v = if ($args[0]) { $args[0] } else { "3.10" }
+$max_v = if ($args[1]) { $args[1] } else { "3.14" }
+uv run python tools/update_readme.py $min_v $max_v
 
 # 7. Verify Build (Mirrors CI build step)
 Write-Host "`n [7/7] Verifying Build script integrity..."
