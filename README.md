@@ -30,7 +30,7 @@
 
 #### Using uv (Recommended)
 ```bash
-# Install dependencies and setup environment
+# Install dependencies and setup environment from uv.lock
 uv sync
 
 # Launch the UI
@@ -43,8 +43,8 @@ uv run streamlit run app.py
 python -m venv venv
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies from pyproject.toml
+pip install .
 
 # Run the app
 streamlit run app.py
@@ -77,10 +77,6 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── build.py
 ├── group_balancer.py
 ├── pyproject.toml
-├── requirements-dev.in
-├── requirements-dev.txt
-├── requirements.in
-├── requirements.txt
 ├── src/
 │   ├── __init__.py
 │   ├── core/
@@ -116,9 +112,10 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   ├── test_solver_unit.py
 │   ├── test_ui.py
 │   └── test_utils.py
-└── tools/
-    ├── __init__.py
-    └── update_readme.py
+├── tools/
+│   ├── __init__.py
+│   └── update_readme.py
+└── uv.lock
 ```
 <!-- PROJECT_TREE_END -->
 

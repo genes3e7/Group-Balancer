@@ -19,7 +19,14 @@ logger = logging.getLogger("readme_tool")
 
 
 def load_gitignore_spec(root_path: str) -> pathspec.PathSpec:
-    """Loads .gitignore patterns and returns a PathSpec object."""
+    """Loads .gitignore patterns and returns a PathSpec object.
+
+    Args:
+        root_path: The root directory of the project.
+
+    Returns:
+        A PathSpec object containing the patterns from .gitignore.
+    """
     patterns = [".git/", "__pycache__/", "venv/", ".venv/", "artifacts/"]
     gitignore_path = os.path.join(root_path, ".gitignore")
 
@@ -31,7 +38,15 @@ def load_gitignore_spec(root_path: str) -> pathspec.PathSpec:
 
 
 def generate_tree(startpath: str, spec: pathspec.PathSpec) -> str:
-    """Generates a string representation of the file tree."""
+    """Generates a string representation of the file tree.
+
+    Args:
+        startpath: The directory to start the tree from.
+        spec: PathSpec object to filter out ignored files.
+
+    Returns:
+        A string representing the file tree in markdown code block.
+    """
     tree_lines = ["```text", "."]
 
     # Use a recursive approach for cleaner indentation logic
@@ -75,8 +90,13 @@ def generate_tree(startpath: str, spec: pathspec.PathSpec) -> str:
     return "\n".join(tree_lines)
 
 
-def update_readme(min_ver: str = None, max_ver: str = None):
-    """Updates README.md with generated tree and dynamic version info."""
+def update_readme(min_ver: str = None, max_ver: str = None) -> None:
+    """Updates README.md with generated tree and dynamic version info.
+
+    Args:
+        min_ver: Minimum supported Python version.
+        max_ver: Maximum supported Python version.
+    """
     spec = load_gitignore_spec(".")
     tree = generate_tree(".", spec)
     readme_path = "README.md"

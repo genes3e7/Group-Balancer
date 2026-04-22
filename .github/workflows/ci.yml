@@ -4,7 +4,7 @@ on:
   push:
     branches: [ "main", "master" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "*" ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.head_ref }}
@@ -26,8 +26,7 @@ jobs:
         filters: |
           python:
             - '**.py'
-            - 'requirements.in'
-            - 'requirements.txt'
+            - 'uv.lock'
             - 'pyproject.toml'
             - '.github/workflows/ci.yml'
 
@@ -50,9 +49,7 @@ jobs:
         python-version: ${{ matrix.python-version }}
         activate-environment: true
     - name: Install dependencies
-      run: |
-        uv pip install -r requirements.txt
-        uv pip install pytest
+      run: uv sync --all-groups
     - name: Test with Pytest
       run: uv run pytest tests/
     - name: Record Success
@@ -68,11 +65,14 @@ jobs:
   finalize-updates:
     needs: test-matrix
     runs-on: ubuntu-latest
-    if: needs.test-matrix.result == 'success'
+    if: |
+      needs.test-matrix.result == 'success' &&
+      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        ref: ${{ github.event.pull_request.head.ref || github.ref }}
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
@@ -85,7 +85,8 @@ jobs:
         if [ -z "$(ls -A artifacts)" ]; then
            exit 1
         fi
-        cat artifacts/*.txt | sort -V > sorted_versions.txt
+        # Exclude experimental/allowed-failure versions from the stable badge range
+        cat artifacts/*.txt | grep -v "3.15-dev" | sort -V > sorted_versions.txt
         echo "MIN_VER=$(head -n 1 sorted_versions.txt)" >> $GITHUB_ENV
         echo "MAX_VER=$(tail -n 1 sorted_versions.txt)" >> $GITHUB_ENV
     - name: Set up uv
@@ -94,12 +95,10 @@ jobs:
         enable-cache: true
         activate-environment: true
     - name: Install dependencies
-      run: uv pip install -r requirements-dev.in
+      run: uv sync --all-groups
     - name: Update README Tree & Versions
       run: |
         uv run python tools/update_readme.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"
-    - name: Compile requirements.txt
-      run: uv pip compile requirements.in --output-file requirements.txt
     - name: Ruff Format & Fix
       run: |
         uv run ruff check . --fix
@@ -114,6 +113,7 @@ jobs:
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add -u
+        git add uv.lock
         if ! git diff --staged --quiet; then
           git commit -m "chore: professional standards updates and CI maintenance"
           git push origin HEAD:"$REF_NAME"

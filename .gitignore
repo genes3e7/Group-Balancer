@@ -46,7 +46,6 @@ Thumbs.db
 # Project specific
 *.xlsx
 *.spec
-uv.lock
 
 # CI Artifacts
 artifacts/
