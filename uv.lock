@@ -404,7 +404,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
-    { name = "streamlit", specifier = ">=1.30.0" },
+    { name = "streamlit", specifier = ">=1.49.0" },
 ]
 provides-extras = ["dev"]
 
