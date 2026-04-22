@@ -2,7 +2,7 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10 - 3.15-dev](https://img.shields.io/badge/python-3.10%20-%203.15-dev-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10 - 3.15-dev](https://img.shields.io/badge/python-3.10%20-%203.14-blue.svg)](https://www.python.org/downloads/)
 
 **Group Balancer** is an advanced mathematical partitioning tool designed to solve the "Fair Team" problem. Whether you are organizing a classroom, a corporate workshop, or a gaming tournament, this tool ensures your groups are balanced by skill, diverse by expertise, and respectful of social dynamics.
 
@@ -77,6 +77,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── build.py
 ├── group_balancer.py
 ├── pyproject.toml
+├── sorted_versions.txt
 ├── src/
 │   ├── __init__.py
 │   ├── core/
