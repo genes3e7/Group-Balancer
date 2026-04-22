@@ -127,3 +127,15 @@ class SolverConfig:
 
         if not has_positive_weight:
             raise ValueError("At least one score weight must be positive.")
+
+        # Validate penalty weights
+        for name, weight in [
+            ("grouper_weight", self.grouper_weight),
+            ("separator_weight", self.separator_weight),
+        ]:
+            if not math.isfinite(weight):
+                raise ValueError(f"{name} must be a finite number.")
+            if weight < 0:
+                raise ValueError(f"{name} cannot be negative.")
+            if weight > 1_000_000:
+                raise ValueError(f"{name} exceeds safe limit of 1,000,000.")

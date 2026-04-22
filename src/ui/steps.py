@@ -88,7 +88,11 @@ def render_step_1() -> None:
 
 
 def render_step_2() -> None:
-    """Renders Configuration step."""
+    """Renders Step 2: Configuration.
+
+    Handles group count, capacity allocation, objective weighting, and
+    solver mode selection. Validates that capacities sum to total participants.
+    """
     st.header("Step 2: Configuration")
     df = st.session_state.get("participants_df")
     if df is None or df.empty:
@@ -101,7 +105,7 @@ def render_step_2() -> None:
     score_cols = st.session_state.get("score_cols", [])
 
     c1, c2 = st.columns(2)
-    num_groups = int(c1.number_input("Groups", 1, total_p, 2))
+    num_groups = int(c1.number_input("Groups", 1, total_p, min(2, total_p)))
     c2.info(f"Total Participants: {total_p}")
 
     st.subheader("Group Capacities")

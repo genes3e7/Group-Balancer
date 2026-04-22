@@ -182,8 +182,12 @@ class ConstraintBuilder:
         for tag, s_set in separators.items():
             if not s_set or not tag.strip():
                 continue
-            limit = math.ceil(len(s_set) / self.num_groups)
             for g in range(self.num_groups):
+                # Ensure each group's separator count is bounded by its total capacity
+                limit = min(
+                    self.cfg.group_capacities[g],
+                    math.ceil(len(s_set) / self.num_groups),
+                )
                 self.model.Add(sum(self.x[(i, g)] for i in s_set) <= limit)
 
     def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
@@ -268,10 +272,11 @@ class ConstraintBuilder:
                 used = self.model.NewBoolVar(f"used_{tag}_{g}")
                 self.model.AddMaxEquality(used, [self.x[(i, g)] for i in g_set])
 
-                # Incorporate SolverConfig.grouper_weight
+                # Incorporate SolverConfig.grouper_weight and clamp to prevent overflow
                 weight = self.cfg.grouper_weight
                 cap_penalty = self.cfg.group_capacities[g] * 10
-                self.objectives.append(used * ((base_penalty + cap_penalty) * weight))
+                penalty = min((base_penalty + cap_penalty) * weight, (1 << 60) - 1)
+                self.objectives.append(used * penalty)
 
     def get_model(self) -> cp_model.CpModel:
         """Finalizes and returns the model."""

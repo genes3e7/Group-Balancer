@@ -15,10 +15,16 @@ from src.core.models import (
 
 def test_data_loader_exceptions():
     """Test PermissionError and general Exception in load_data."""
-    with patch("pandas.read_csv", side_effect=PermissionError):
+    with (
+        patch("src.core.data_loader.validate_file_path", return_value="test.csv"),
+        patch("pandas.read_csv", side_effect=PermissionError),
+    ):
         assert data_loader.load_data("test.csv") is None
 
-    with patch("pandas.read_csv", side_effect=Exception):
+    with (
+        patch("src.core.data_loader.validate_file_path", return_value="test.csv"),
+        patch("pandas.read_csv", side_effect=Exception),
+    ):
         assert data_loader.load_data("test.csv") is None
 
 

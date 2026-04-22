@@ -10,3 +10,4 @@ pytest-cov
 ruff
 pathspec # Required for tools/update_readme.py
 pip-tools # Retained for compatibility with local build-scripts
+pyinstaller

@@ -468,15 +468,18 @@ def test_steps_render_3_interactive():
 
 
 def test_data_loader_invalid_columns_check():
-    """Verify data_loader identifies missing required columns."""
-    from pathlib import Path
+    """Verify that load_data returns None when required columns are missing.
 
+    Mocks path validation to return a valid string and CSV loading to return
+    a dataframe with incorrect columns, ensuring the validation logic
+    identifies the failure.
+    """
     from src.core import data_loader
 
     df = pd.DataFrame({"Wrong": ["A"]})
     with (
+        patch("src.core.data_loader.validate_file_path", return_value="test.csv"),
         patch("pandas.read_csv", return_value=df),
-        patch("src.core.data_loader.validate_file_path", return_value=Path("test.csv")),
     ):
         assert data_loader.load_data("test.csv") is None
 
@@ -496,3 +499,56 @@ def test_steps_start_over():
         steps._render_footer_actions(["Score1"])
         mock_state.clear.assert_called_once()
         mock_rerun.assert_called_once()
+
+
+def test_steps_render_2_clamped_groups():
+    """Verify that the number of groups is correctly clamped to the participant count.
+
+    Ensures that when only one participant is present, the default group count
+    does not exceed the participant count, preventing Streamlit widget errors.
+    """
+    from src.ui import steps
+
+    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})  # total_p = 1
+    mock_state = MagicMock()
+    mock_state.participants_df = mock_df
+
+    def get_side_effect(key, default=None):
+        if key == "participants_df":
+            return mock_df
+        if key == "score_cols":
+            return ["Score1"]
+        return default
+
+    mock_state.get.side_effect = get_side_effect
+
+    with (
+        patch("streamlit.header"),
+        patch("streamlit.subheader"),
+        patch("streamlit.columns") as mock_cols,
+        patch("streamlit.number_input"),
+        patch("streamlit.radio") as mock_radio,
+        patch("streamlit.slider"),
+        patch("streamlit.button", return_value=False),
+        patch("streamlit.expander"),
+        patch("streamlit.session_state", mock_state),
+    ):
+        mock_radio.side_effect = ["Advanced", "Groupers"]
+        c1, c2 = MagicMock(), MagicMock()
+        g_col = MagicMock()
+        c_back, c_go = MagicMock(), MagicMock()
+        c_back.button.return_value = False
+        c_go.button.return_value = False
+
+        mock_cols.side_effect = [
+            [c1, c2],  # st.columns(2)
+            [g_col],  # st.columns(num_groups)
+            [c_back, c_go],  # st.columns([1, 5])
+        ]
+
+        steps.render_step_2()
+
+        # Check the call to number_input for "Groups"
+        # num_groups = int(c1.number_input("Groups", 1, total_p, min(2, total_p)))
+        # For total_p=1, it should be c1.number_input("Groups", 1, 1, 1)
+        c1.number_input.assert_any_call("Groups", 1, 1, 1)

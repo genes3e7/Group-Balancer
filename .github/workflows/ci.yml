@@ -42,25 +42,23 @@ jobs:
       uses: astral-sh/setup-uv@v5
       with:
         enable-cache: true
-    - name: Set up Python ${{ matrix.python-version }}
-      run: uv python install ${{ matrix.python-version }}
-    - name: Use matrix Python
-      run: uv venv --python ${{ matrix.python-version }}
+        python-version: ${{ matrix.python-version }}
+        activate-environment: true
     - name: Install dependencies
       run: |
-        uv pip install -r requirements.in
+        uv pip install -r requirements.txt
         uv pip install pytest
     - name: Test with Pytest
       run: uv run pytest tests/
     - name: Record Success
       if: success()
-      run: echo "${{ matrix.python-version }}" > python_version_${{ matrix.python-version.txt }}
+      run: echo "${{ matrix.python-version }}" > python_version_${{ matrix.python-version }}.txt
     - name: Upload Success Artifact
       if: success()
       uses: actions/upload-artifact@v4
       with:
         name: passed-version-${{ matrix.python-version }}
-        path: python_version_${{ matrix.python-version.txt }}
+        path: python_version_${{ matrix.python-version }}.txt
 
   finalize-updates:
     needs: test-matrix
@@ -89,8 +87,9 @@ jobs:
       uses: astral-sh/setup-uv@v5
       with:
         enable-cache: true
-    - name: Sync environment
-      run: uv venv && uv pip install -r requirements-dev.in
+        activate-environment: true
+    - name: Install dependencies
+      run: uv pip install -r requirements-dev.in
     - name: Update README Tree & Versions
       run: |
         uv run python tools/update_readme.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"

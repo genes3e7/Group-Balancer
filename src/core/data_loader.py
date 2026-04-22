@@ -33,10 +33,17 @@ def validate_file_path(path: str) -> str:
     project_root = os.path.realpath(os.getcwd())
 
     # Ensure path is within project root for traversal protection
-    if not abs_path.startswith(project_root):
-        # We allow reading files from the project directory only for security
-        logger.warning("File access attempted outside project root: %s", abs_path)
-        # Note: Absolute traversal prevention requires environment enforcement.
+    try:
+        if os.path.commonpath([project_root, abs_path]) != project_root:
+            logger.error("File access attempted outside project root: %s", abs_path)
+            raise ValueError(
+                "Access denied: File must be within the project directory."
+            )
+    except Exception as e:
+        if isinstance(e, ValueError):
+            raise
+        logger.error("Path validation error: %s", e)
+        raise ValueError("Invalid path configuration.") from e
 
     if not os.path.exists(abs_path):
         raise FileNotFoundError(f"File not found: {abs_path}")

@@ -21,6 +21,26 @@ def mock_file(tmp_path):
     return str(f)
 
 
+@pytest.fixture(autouse=True)
+def mock_project_root(tmp_path):
+    """Mocks getcwd and realpath to use tmp_path as project root."""
+    with (
+        patch("os.getcwd", return_value=str(tmp_path)),
+        patch("os.path.realpath", side_effect=lambda x: x),
+    ):
+        yield
+
+
+def test_validate_file_path_security_violation():
+    """Test that paths outside project root are rejected."""
+    # Since project root is mocked to tmp_path, we try a path outside it
+    outside_path = (
+        "/etc/passwd" if os.name != "nt" else "C:/Windows/system32/config/SAM"
+    )
+    with pytest.raises(ValueError, match="Access denied"):
+        data_loader.validate_file_path(outside_path)
+
+
 def test_validate_file_path_exists(mock_file):
     """Test path validation for existing file."""
     path = data_loader.validate_file_path(mock_file)
@@ -46,10 +66,12 @@ def test_validate_file_path_boundary(tmp_path):
         data_loader.validate_file_path(str(large_file))
 
 
-def test_validate_file_path_missing():
+def test_validate_file_path_missing(tmp_path):
     """Test path validation for missing file."""
+    # Use absolute path inside mocked root
+    missing = os.path.join(str(tmp_path), "non_existent.csv")
     with pytest.raises(FileNotFoundError):
-        data_loader.validate_file_path("non_existent.csv")
+        data_loader.validate_file_path(missing)
 
 
 def test_validate_file_path_not_a_file(tmp_path):
