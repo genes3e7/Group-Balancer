@@ -150,21 +150,23 @@ def render_step_2() -> None:
         session_manager.go_to_step(1)
 
     if c_go.button("🚀 Generate", type="primary", disabled=not cap_valid):
+        st.session_state.stop_early = False
         st.session_state.num_groups_target = num_groups
         st.session_state.group_capacities = group_capacities
 
         status_box = st.empty()
 
-        # Use Service layer for optimization
-        result_df, metrics = OptimizationService.run(
-            df,
-            group_capacities,
-            score_weights,
-            OptimizationMode(opt_mode),
-            ConflictPriority(priority),
-            timeout,
-            status_box=status_box,
-        )
+        with st.spinner("Initializing solver engine..."):
+            # Use Service layer for optimization
+            result_df, metrics = OptimizationService.run(
+                df,
+                group_capacities,
+                score_weights,
+                OptimizationMode(opt_mode),
+                ConflictPriority(priority),
+                timeout,
+                status_box=status_box,
+            )
 
         if result_df is not None:
             st.session_state.results_df = result_df
@@ -173,6 +175,10 @@ def render_step_2() -> None:
             st.session_state.solver_elapsed = metrics["elapsed"]
             time.sleep(0.5)
             session_manager.go_to_step(3)
+
+    st.divider()
+    if st.button("🛑 Stop Early"):
+        st.session_state.stop_early = True
 
 
 def render_step_3() -> None:
