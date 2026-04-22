@@ -33,14 +33,21 @@ def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
     )
 
     stats_data = []
+    total_p = sum(g["count"] for g in groups)
     for col in score_cols:
         group_avgs = [g["averages"].get(col, 0.0) for g in groups]
         series = pd.Series(group_avgs)
+        # Participant-weighted global average
+        weighted_avg = (
+            sum(g["averages"].get(col, 0.0) * g["count"] for g in groups) / total_p
+            if total_p > 0
+            else 0.0
+        )
         stats_data.append(
             {
                 "Score Dimension": col,
-                "Global Avg": series.mean(),
-                "Avg Std Dev (Balance)": series.std() if len(group_avgs) > 1 else 0.0,
+                "Global Avg": weighted_avg,
+                "Avg Std Dev (Balance)": series.std(ddof=0) if len(group_avgs) > 1 else 0.0,
             }
         )
 
@@ -48,7 +55,7 @@ def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
     st.dataframe(
         stats_df,
         hide_index=True,
-        width="stretch",
+        use_container_width=True,
         column_config={
             "Global Avg": st.column_config.NumberColumn(format="%.2f"),
             "Avg Std Dev (Balance)": st.column_config.NumberColumn(
@@ -129,7 +136,7 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
 
             edited_df = st.data_editor(
                 disp_df[display_columns],
-                width="stretch",
+                use_container_width=True,
                 column_config=col_configs,
                 key=f"editor_group_{group['id']}",
             )

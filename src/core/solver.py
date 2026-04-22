@@ -323,7 +323,9 @@ def solve_with_ortools(
         Participant(
             name=p.get(config.COL_NAME, "Unknown"),
             scores={
-                k: float(v) for k, v in p.items() if k.startswith(config.SCORE_PREFIX)
+                str(k): float(v)
+                for k, v in p.items()
+                if str(k).startswith(config.SCORE_PREFIX)
             },
             groupers=str(p.get(config.COL_GROUPER, "")),
             separators=str(p.get(config.COL_SEPARATOR, "")),

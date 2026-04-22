@@ -28,7 +28,7 @@ def _load_uploaded_file() -> None:
 
             # Validate raw upload before cleaning
             # Normalize headers consistent with DataService.clean_participants_df
-            df_new.columns = df_new.columns.str.strip()
+            df_new.columns = df_new.columns.astype(str).str.strip()
             score_cols_raw = DataService.get_score_columns(df_new)
             if config.COL_NAME in df_new.columns and score_cols_raw:
                 # Use Service layer for cleaning
@@ -72,7 +72,7 @@ def render_step_1() -> None:
     edited_df = st.data_editor(
         st.session_state.manual_df,
         num_rows="dynamic",
-        width="stretch",
+        use_container_width=True,
         key="editor_input",
     )
 
@@ -119,9 +119,10 @@ def render_step_2() -> None:
     cols = st.columns(num_groups)
     for i in range(num_groups):
         default = base + (1 if i < rem else 0)
+        # Use num_groups in key to force reset on count change
         cap = int(
             cols[i % len(cols)].number_input(
-                f"G{i + 1}", 0, total_p, default, key=f"cap_{i}"
+                f"G{i + 1}", 0, total_p, default, key=f"cap_{num_groups}_{i}"
             )
         )
         group_capacities.append(cap)
@@ -177,6 +178,11 @@ def render_step_2() -> None:
             st.session_state.solver_status = metrics["status"]
             st.session_state.solver_elapsed = metrics["elapsed"]
             time.sleep(0.5)
+            session_manager.go_to_step(3)
+        else:
+            # Surface error state in results view
+            st.session_state.solver_status = metrics["status"]
+            st.session_state.solver_elapsed = metrics["elapsed"]
             session_manager.go_to_step(3)
 
 
@@ -239,7 +245,7 @@ def _render_table_view(score_cols: list[str]) -> None:
             st.session_state.interactive_df,
             column_config=editor_configs,
             hide_index=True,
-            width="stretch",
+            use_container_width=True,
             key="results_editor_table",
         )
         if not edited_df.equals(st.session_state.interactive_df):

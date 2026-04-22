@@ -35,6 +35,7 @@ def build_executable():
         for root, dirs, _ in os.walk("src"):
             if "__pycache__" in dirs:
                 shutil.rmtree(os.path.join(root, "__pycache__"))
+                dirs.remove("__pycache__")
 
     # Define PyInstaller Command
     # We bundle 'app.py' which launches the Streamlit UI.

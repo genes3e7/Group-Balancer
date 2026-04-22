@@ -77,7 +77,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
                     st.markdown("### ⚙️ Optimization Progress")
                     m1, m2, m3 = st.columns(3)
                     m1.metric("Solutions", self.solution_count)
-                    m2.metric("Weighted Deviation", f"{display_obj:.4f}")
+                    m2.metric("Weighted Objective", f"{display_obj:.4f}")
                     m3.metric("Time", f"{elapsed:.1f}s")
             self.last_update_time = current_time
 
@@ -152,7 +152,7 @@ def run_optimization(
                     display_obj = cb.ObjectiveValue() / (
                         config.SCALE_FACTOR * cb.num_people * 100
                     )
-                    st.write(f"Final weighted deviation: {display_obj:.4f}")
+                    st.write(f"Final weighted objective: {display_obj:.4f}")
 
         results = []
         for i, p in enumerate(participants):

@@ -33,9 +33,9 @@ def load_gitignore_spec(root_path: str) -> pathspec.PathSpec:
     if os.path.exists(gitignore_path):
         with open(gitignore_path, encoding="utf-8") as f:
             for line in f:
-                line = line.strip()
-                if line and not line.startswith("#"):
-                    patterns.append(line)
+                stripped = line.strip()
+                if stripped and not stripped.startswith("#"):
+                    patterns.append(stripped)
 
     return pathspec.PathSpec.from_lines("gitwildmatch", patterns)
 
