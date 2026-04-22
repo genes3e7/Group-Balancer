@@ -170,8 +170,8 @@ def run_optimization(
                     f"✅ Optimization Complete ({status_name})", expanded=False
                 ):
                     st.write(f"Computation time: {elapsed:.2f}s")
-                    display_obj = cb.ObjectiveValue() / (
-                        config.SCALE_FACTOR * cb.num_people * 100
+                    display_obj = solver_inst.ObjectiveValue() / (
+                        config.SCALE_FACTOR * len(participants) * 100
                     )
                     st.write(f"Final weighted objective: {display_obj:.4f}")
 

@@ -7,7 +7,7 @@ Write-Host "`n Running Local Pre-CI Checks..."
 
 # 1. Sync dependencies
 Write-Host "`n [1/7] Syncing dependencies..."
-uv sync --all-extras
+uv sync --all-extras --frozen
 
 # 2. Ruff Linting and Formatting
 Write-Host "`n [2/7] Running Ruff (Linting and Formatting)..."

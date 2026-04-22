@@ -132,8 +132,29 @@ def render_step_2() -> None:
         st.error(f"Capacity mismatch: {sum(group_capacities)} != {total_p}")
 
     with st.expander("⚙️ Advanced Solver Controls", expanded=True):
-        opt_mode = st.radio("Mode", ["Simple", "Advanced"], index=1)
-        priority = st.radio("Priority", ["Groupers", "Separators"], index=0)
+        mode_options = {
+            "simple": OptimizationMode.SIMPLE,
+            "advanced": OptimizationMode.ADVANCED,
+        }
+        priority_options = {
+            "groupers": ConflictPriority.GROUPERS,
+            "separators": ConflictPriority.SEPARATORS,
+        }
+
+        opt_mode_key = st.radio(
+            "Mode",
+            list(mode_options.keys()),
+            index=1,
+            key="optimization_mode",
+            format_func=lambda k: mode_options[k].value,
+        )
+        priority_key = st.radio(
+            "Priority",
+            list(priority_options.keys()),
+            index=0,
+            key="conflict_priority",
+            format_func=lambda k: priority_options[k].value,
+        )
 
     st.subheader("Objective Weighting")
     score_weights = {
@@ -166,8 +187,8 @@ def render_step_2() -> None:
             df,
             group_capacities,
             score_weights,
-            OptimizationMode(opt_mode),
-            ConflictPriority(priority),
+            mode_options[opt_mode_key],
+            priority_options[priority_key],
             timeout,
             status_box=status_box,
         )

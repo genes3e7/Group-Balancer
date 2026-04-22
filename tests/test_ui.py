@@ -265,10 +265,9 @@ def test_steps_render_2():
         patch("streamlit.session_state", mock_state),
     ):
         mock_num.return_value = 1.0
-        # Mock radio for both calls: Mode and Priority
-        mock_radio.side_effect = ["Advanced", "Groupers"]
+        # Mock radio for both calls: Mode and Priority (using stable keys)
+        mock_radio.side_effect = ["advanced", "groupers"]
         mock_slider.return_value = 1
-
         mock_cols.side_effect = [
             [MagicMock(), MagicMock()],  # st.columns(2)
             [MagicMock()],  # st.columns(num_groups)

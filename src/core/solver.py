@@ -9,6 +9,7 @@ import math
 import time
 from abc import ABC, abstractmethod
 
+import pandas as pd
 from ortools.sat.python import cp_model
 
 from src import logger
@@ -280,11 +281,10 @@ class ConstraintBuilder:
             groupers: Mapping of grouper tags to sets of participant indices.
         """
         # Prevent 64-bit integer overflow in CP-SAT.
-        # Use a more conservative Big-M value. max_objective_bound is already scaled.
-        # Ensure that (base_penalty * num_tags * num_groups) fits in 2^62.
-        # Default to a safe large constant if no scoring objectives added yet.
-        safe_max = 1 << 52  # Much more conservative than 1 << 60
-        base_penalty = min(max(10000, self.max_objective_bound * 2), safe_max)
+        # aggregate_cap (e.g. 1 << 60) must fit all objectives.
+        aggregate_cap = 1 << 60
+        per_term_cap = aggregate_cap // max(1, len(groupers) * self.num_groups)
+        base_penalty = min(self.max_objective_bound * 10 + 1000, per_term_cap)
 
         for tag, g_set in groupers.items():
             if len(g_set) <= 1:
@@ -293,12 +293,14 @@ class ConstraintBuilder:
                 used = self.model.NewBoolVar(f"used_{tag}_{g}")
                 self.model.AddMaxEquality(used, [self.x[(i, g)] for i in g_set])
 
-                # Incorporate SolverConfig.grouper_weight and clamp
+                # Incorporate SolverConfig.grouper_weight and clamp per-term
                 weight = self.cfg.grouper_weight
                 cap_penalty = self.cfg.group_capacities[g] * 10
-                # Final term must fit within objective sum.
-                penalty = min((base_penalty + cap_penalty) * weight, safe_max)
+                raw_penalty = (base_penalty + cap_penalty) * weight
+                penalty = min(raw_penalty, per_term_cap)
+
                 self.objectives.append(used * penalty)
+                self.max_objective_bound += penalty
 
     def get_model(self) -> cp_model.CpModel:
         """Finalizes and returns the model."""
@@ -321,15 +323,19 @@ def solve_with_ortools(
     # Convert raw dicts to Participant models
     participants = [
         Participant(
-            name=p.get(config.COL_NAME, "Unknown"),
+            name=str(p.get(config.COL_NAME, f"P{i}")),
             scores={
                 str(k): float(v)
                 for k, v in p.items()
                 if str(k).startswith(config.SCORE_PREFIX)
             },
-            groupers=str(p.get(config.COL_GROUPER, "")),
-            separators=str(p.get(config.COL_SEPARATOR, "")),
-            original_index=i,
+            groupers=str(p.get(config.COL_GROUPER, ""))
+            if not pd.isna(p.get(config.COL_GROUPER))
+            else "",
+            separators=str(p.get(config.COL_SEPARATOR, ""))
+            if not pd.isna(p.get(config.COL_SEPARATOR))
+            else "",
+            original_index=p.get("_original_index", i),
         )
         for i, p in enumerate(participants_raw)
     ]

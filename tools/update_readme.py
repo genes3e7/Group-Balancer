@@ -53,7 +53,13 @@ def generate_tree(startpath: str, spec: pathspec.PathSpec) -> str:
     tree_lines = ["```text", "."]
 
     # Use a recursive approach for cleaner indentation logic
-    def walk_dir(path, prefix=""):
+    def walk_dir(path: str, prefix: str = "") -> None:
+        """Recursively walks the directory to build the tree lines.
+
+        Args:
+            path: Current directory path.
+            prefix: Indentation prefix for the current level.
+        """
         # Get relative path for matching
         rel_path = os.path.relpath(path, startpath)
 
