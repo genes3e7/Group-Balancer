@@ -17,6 +17,8 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "ruff>=0.1.0",
+    "vulture>=2.10",
+    "interrogate>=1.5.0",
     "pyinstaller>=6.0.0",
     "pathspec>=0.12.0",
 ]
@@ -45,3 +47,22 @@ fixable = ["ALL"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--cov=src --cov-report=term-missing --cov-fail-under=80"
+
+[tool.interrogate]
+ignore-init-module = true
+ignore-init-method = true
+ignore-private = true
+ignore-semiprivate = false
+ignore-magic = true
+ignore-module = false
+ignore-nested-functions = false
+ignore-nested-classes = false
+ignore-setters = false
+fail-under = 80
+exclude = ["setup.py", "tests", "build"]
+ignore-regex = ["^get$", "^mock_.*", ".*Base$"]
+verbose = 0
+quiet = false
+whitelist-regex = []
+color = true

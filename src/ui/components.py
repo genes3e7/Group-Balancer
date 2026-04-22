@@ -90,8 +90,8 @@ def render_page_header(step: int) -> None:
         target = i + 1
         with col:
             if target <= step:
-                st.image(red_svg, use_container_width=True)
+                st.image(red_svg, width="stretch")
             else:
-                st.image(gray_svg, use_container_width=True)
+                st.image(gray_svg, width="stretch")
 
     st.write("")  # Final padding

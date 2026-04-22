@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [6.0.0] - 2026-04-22
 
 ### Added
+- **Detailed Solver Error Reporting:** The UI now surfaces specific optimization failure reasons (e.g., `INFEASIBLE`, `MODEL_INVALID`) with actionable troubleshooting tips.
+- **Project Mandates (GEMINI.md):** Formalized architectural decisions, framework-specific quirks (Streamlit `width="stretch"`), and a mandatory post-change validation workflow to ensure long-term codebase integrity.
 - **Multi-Dimensional Scoring:** Support for balancing groups across multiple score dimensions with user-configurable weights.
 - **Custom Group Capacities:** Ability to explicitly define exact capacities for each group instead of strictly balanced splits.
 - **Advanced Categorical Constraints:** Replaced legacy "star player" logic with character-based `Groupers` (keep together) and `Separators` (spread apart) tags.
@@ -19,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - **UI Modernization:** Upgraded results view to use interactive `st.data_editor` cards, enabling stable, index-based manual member reassignments.
-- **Parameter Renaming:** Replaced deprecated `use_container_width` with `width='stretch'` (requires Streamlit >= 1.49.0).
+- **Parameter Reversion:** Restored `width='stretch'` instead of `use_container_width` to maintain backward compatibility and avoid future deprecations (codified in `GEMINI.md`).
 - **Documentation:** Standardized the entire codebase to 100% Google-style docstrings and updated the README with dynamic project trees.
 - **Dependency Management:** Removed legacy `requirements.in/txt` in favor of `pyproject.toml` and `uv`.
 

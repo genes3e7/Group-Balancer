@@ -139,7 +139,28 @@ def run_optimization(
     elapsed = time.time() - start_time
 
     status_name = solver_inst.StatusName(status)
-    metrics = {"status": status_name, "elapsed": elapsed, "raw_status": status}
+    error_msg = None
+    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        if status_name == "MODEL_INVALID":
+            error_msg = (
+                "The solver model is invalid. This often happens due to "
+                "numerical overflows from extremely large weights or "
+                "conflicting constraints."
+            )
+        elif status_name == "INFEASIBLE":
+            error_msg = (
+                "No solution exists that satisfies all hard constraints "
+                "(capacities and separator tags)."
+            )
+        else:
+            error_msg = f"Solver stopped with status: {status_name}"
+
+    metrics = {
+        "status": status_name,
+        "elapsed": elapsed,
+        "raw_status": status,
+        "error": error_msg,
+    }
 
     # 3. Results
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):

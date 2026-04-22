@@ -72,7 +72,7 @@ def render_step_1() -> None:
     edited_df = st.data_editor(
         st.session_state.manual_df,
         num_rows="dynamic",
-        use_container_width=True,
+        width="stretch",
         key="editor_input",
     )
 
@@ -177,12 +177,14 @@ def render_step_2() -> None:
             st.session_state.interactive_df = result_df.copy()
             st.session_state.solver_status = metrics["status"]
             st.session_state.solver_elapsed = metrics["elapsed"]
+            st.session_state.solver_error = None
             time.sleep(0.5)
             session_manager.go_to_step(3)
         else:
             # Surface error state in results view
             st.session_state.solver_status = metrics["status"]
             st.session_state.solver_elapsed = metrics["elapsed"]
+            st.session_state.solver_error = metrics.get("error")
             session_manager.go_to_step(3)
 
 
@@ -194,11 +196,22 @@ def render_step_3() -> None:
 
     status_name = st.session_state.get("solver_status")
     elapsed = st.session_state.get("solver_elapsed", 0.0)
+    error_msg = st.session_state.get("solver_error")
 
     if status_name == "OPTIMAL":
         st.success(f"🎯 Optimal Solution found in {elapsed:.2f}s")
-    else:
+    elif status_name == "FEASIBLE":
         st.warning(f"⏳ Best solution found in {elapsed:.2f}s (Status: {status_name})")
+    elif error_msg:
+        st.error(f"❌ {error_msg}")
+        st.info(
+            "💡 **Tips to resolve:**\n"
+            "- Check for conflicting Separator tags.\n"
+            "- Ensure group capacities are large enough for the number of tags.\n"
+            "- Try increasing the timeout or using 'Simple' mode."
+        )
+    else:
+        st.warning(f"⏳ Solver stopped in {elapsed:.2f}s (Status: {status_name})")
 
     if "interactive_df" not in st.session_state:
         st.error("No results found.")
@@ -245,7 +258,7 @@ def _render_table_view(score_cols: list[str]) -> None:
             st.session_state.interactive_df,
             column_config=editor_configs,
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
             key="results_editor_table",
         )
         if not edited_df.equals(st.session_state.interactive_df):
