@@ -27,6 +27,8 @@ def _load_uploaded_file() -> None:
                 df_new = pd.read_excel(uploaded)
 
             # Validate raw upload before cleaning
+            # Normalize headers consistent with DataService.clean_participants_df
+            df_new.columns = df_new.columns.str.strip()
             score_cols_raw = DataService.get_score_columns(df_new)
             if config.COL_NAME in df_new.columns and score_cols_raw:
                 # Use Service layer for cleaning

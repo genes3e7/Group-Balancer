@@ -37,7 +37,9 @@ def aggregate_groups(
     unique_groups = sorted(df[col_group].unique())
 
     for g_id in unique_groups:
-        members = df[df[col_group] == g_id].to_dict("records")
+        group_df = df[df[col_group] == g_id].copy()
+        group_df["_original_index"] = group_df.index
+        members = group_df.to_dict("records")
         count = len(members)
         averages = {}
         sums = {}

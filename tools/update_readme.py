@@ -84,7 +84,7 @@ def generate_tree(startpath: str, spec: pathspec.PathSpec) -> str:
             display_name = item + "/" if os.path.isdir(full_path) else item
             tree_lines.append(f"{prefix}{connector}{display_name}")
 
-            if os.path.isdir(full_path):
+            if os.path.isdir(full_path) and not os.path.islink(full_path):
                 extension = "    " if is_last else "│   "
                 walk_dir(full_path, prefix + extension)
 

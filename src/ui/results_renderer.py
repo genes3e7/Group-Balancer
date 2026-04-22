@@ -40,7 +40,7 @@ def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
             {
                 "Score Dimension": col,
                 "Global Avg": series.mean(),
-                "Avg Std Dev (Balance)": series.std(),
+                "Avg Std Dev (Balance)": series.std() if len(group_avgs) > 1 else 0.0,
             }
         )
 
@@ -137,10 +137,11 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
             if not edited_df.equals(disp_df[display_columns]):
                 # A group reassignment happened
                 interactive_df = st.session_state.interactive_df
-                for idx, row in edited_df.iterrows():
+                for local_idx, row in edited_df.iterrows():
+                    orig_idx = disp_df.at[local_idx, "_original_index"]
                     new_grp = row[config.COL_GROUP]
-                    if interactive_df.at[idx, config.COL_GROUP] != new_grp:
-                        interactive_df.at[idx, config.COL_GROUP] = new_grp
+                    if interactive_df.at[orig_idx, config.COL_GROUP] != new_grp:
+                        interactive_df.at[orig_idx, config.COL_GROUP] = new_grp
                 st.session_state.interactive_df = interactive_df
                 st.rerun()
         else:

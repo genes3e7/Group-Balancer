@@ -5,38 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [6.1.1] - 2026-04-22
-
-### Fixed
-- **UI:** Resolved group assignment corruption by switching to index-based row matching in result editors.
-- **Data Entry:** Improved file upload validation to catch missing required columns early.
-- **Solver Interface:** Removed dead `stop_early` logic and redundant script-run context re-attachment.
-- **CI/CD:** Fixed operator precedence bug in version determination and added empty-file guard for README updates.
-- **Tools:** Refined `.gitignore` parsing and Python version badge regex in `update_readme.py`.
-- **Tests:** Fixed duplicate assertions and updated solver status checks to use enum constants.
-- **Type Safety:** Enhanced type hints and defaults in test configuration helpers.
-
-## [6.1.0] - 2026-04-21
+## [6.0.0] - 2026-04-22
 
 ### Added
-- **Core Architecture:** Implemented Strategy, Builder, and TagProcessor patterns for the CP-SAT solver.
-- **Service Layer:** Introduced `DataService` and `OptimizationService` to decouple UI from business logic.
-- **Security:** Hardened input validation with path sanitization, size limits, and CP-SAT overflow scaling.
-- **Type System:** Migrated to strongly-typed models using `dataclasses` and `MappingProxyType`.
-- **Logging:** Standardized internal telemetry using Python's logging library.
-- **New Tests:** 
-  - `test_models_unit.py`: Validation logic for configurations.
-  - `test_services.py`: Integration checks for the service layer.
-  - `test_coverage_edge_cases.py`: Defensive error path verification.
-  - `test_infra.py`: Build and app importability tests.
-- **CI/CD:** Migrated CI pipeline to `uv` for 3x faster execution and improved dependency resolution.
+- **Multi-Dimensional Scoring:** Support for balancing groups across multiple score dimensions with user-configurable weights.
+- **Custom Group Capacities:** Ability to explicitly define exact capacities for each group instead of strictly balanced splits.
+- **Advanced Categorical Constraints:** Replaced legacy "star player" logic with character-based `Groupers` (keep together) and `Separators` (spread apart) tags.
+- **Core Architecture:** Implemented Strategy, Builder, and TagProcessor patterns for the Google OR-Tools CP-SAT solver.
+- **Service Layer:** Introduced `DataService` and `OptimizationService` to cleanly decouple UI from business logic.
+- **Live Solver UI:** Added live optimization progress tracking and clear feedback on "Optimal" vs "Feasible" solutions.
+- **Enhanced Exports:** Excel exporter now dynamically adapts to multi-dimensional score columns and includes dataset-level statistics.
+- **CI/CD:** Migrated workflow to use `uv` for ultra-fast dependency resolution and lockfile management (`uv.lock`).
 
 ### Changed
-- **UI Restoration:** Restored original red-themed progress bar using safe native Streamlit components.
-- **Modernization:** Updated all deprecated `use_container_width` parameters to `width='stretch'`.
-- **Refactoring:** Consolidated solver "God function" into modular components.
+- **UI Modernization:** Upgraded results view to use interactive `st.data_editor` cards, enabling stable, index-based manual member reassignments.
+- **Parameter Renaming:** Replaced deprecated `use_container_width` with `width='stretch'` (requires Streamlit >= 1.49.0).
+- **Documentation:** Standardized the entire codebase to 100% Google-style docstrings and updated the README with dynamic project trees.
+- **Dependency Management:** Removed legacy `requirements.in/txt` in favor of `pyproject.toml` and `uv`.
 
 ### Fixed
-- Potential integer overflow in CP-SAT when dealing with large score ranges and weights.
-- Inconsistent tag handling (now ignores whitespace and commas within tag strings).
-- Missing docstrings and module-level documentation across the codebase.
+- **Solver Stability:** Resolved CP-SAT integer overflow risks using dynamic bounds scaling and tightened symmetry-breaking rules to prevent over-constraining models.
+- **Data Ingestion:** Hardened file upload validation with column header normalization and robust numeric coercion for sparse data.
+- **UI State Corruption:** Fixed group assignment corruption by ensuring stable original row indices are preserved during aggregations.
+- **CI Integrity:** Fixed version sorting logic, added safety guards for README updates, and enforced secure workflow permissions (`contents: read`).
+- **Tooling:** Refined `.gitignore` parsing to handle symlinks safely and improved regex for Python version badges.

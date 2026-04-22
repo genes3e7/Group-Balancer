@@ -244,12 +244,17 @@ class ConstraintBuilder:
             ]
 
             # Advanced Symmetry Breaking: Enforce ordering for identical capacity
-            # groups. This prunes G! search branches, significantly improving
-            # efficiency.
-            for g1 in range(self.num_groups):
-                for g2 in range(g1 + 1, self.num_groups):
-                    if self.cfg.group_capacities[g1] == self.cfg.group_capacities[g2]:
-                        self.model.Add(g_sums[g1] <= g_sums[g2])
+            # groups on at most one canonical dimension. This prunes G! search
+            # branches without over-constraining multi-dimensional weights.
+            if weight_m > 0 and not getattr(self, "_symmetry_broken", False):
+                self._symmetry_broken = True
+                for g1 in range(self.num_groups):
+                    for g2 in range(g1 + 1, self.num_groups):
+                        if (
+                            self.cfg.group_capacities[g1]
+                            == self.cfg.group_capacities[g2]
+                        ):
+                            self.model.Add(g_sums[g1] <= g_sums[g2])
 
             for g in range(self.num_groups):
                 self.model.Add(
