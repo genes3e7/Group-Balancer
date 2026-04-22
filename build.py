@@ -26,6 +26,10 @@ def build_executable():
         if os.path.exists(d):
             shutil.rmtree(d)
 
+    # Clean legacy spec files from root
+    if os.path.exists("GroupBalancer.spec"):
+        os.remove("GroupBalancer.spec")
+
     # Clean internal src caches
     if os.path.exists("src"):
         for root, dirs, _ in os.walk("src"):
@@ -37,6 +41,7 @@ def build_executable():
     # --noconfirm: Overwrite existing
     # --onedir: Create a distribution folder
     # --windowed: Disable the console window
+    # --specpath: Place spec file in build dir
     cmd = [
         "pyinstaller",
         "--noconfirm",
@@ -44,6 +49,8 @@ def build_executable():
         "--windowed",
         "--name",
         "GroupBalancer",
+        "--specpath",
+        "build",
         "app.py",
     ]
 
