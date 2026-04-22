@@ -12,6 +12,53 @@ from src.core import config
 from src.utils import group_helpers
 
 
+def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
+    """Renders a summary table of global balancing KPIs.
+
+    Calculates the mean of group averages and the standard deviation between
+    those averages for each score dimension. Lower standard deviation indicates
+    better balance.
+
+    Args:
+        df: The DataFrame containing group assignments.
+        score_cols: The list of score columns to calculate statistics for.
+    """
+    if df is None or df.empty:
+        return
+
+    st.subheader("📊 Global Balancing KPIs")
+
+    groups = group_helpers.aggregate_groups(
+        df, config.COL_GROUP, score_cols, config.COL_NAME
+    )
+
+    stats_data = []
+    for col in score_cols:
+        group_avgs = [g["averages"].get(col, 0.0) for g in groups]
+        series = pd.Series(group_avgs)
+        stats_data.append(
+            {
+                "Score Dimension": col,
+                "Global Avg": series.mean(),
+                "Avg Std Dev (Balance)": series.std(),
+            }
+        )
+
+    stats_df = pd.DataFrame(stats_data)
+    st.dataframe(
+        stats_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Global Avg": st.column_config.NumberColumn(format="%.2f"),
+            "Avg Std Dev (Balance)": st.column_config.NumberColumn(
+                format="%.4f",
+                help="Standard deviation between group averages. Lower is better.",
+            ),
+        },
+    )
+
+
 def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
     """Renders groups in a grid layout (cards).
 

@@ -174,20 +174,34 @@ class ConstraintBuilder:
             )
 
     def add_pigeonhole_constraints(self, separators: dict[str, set[int]]) -> None:
-        """Ensures separator tags are spread across groups.
+        """Ensures separator tags are spread across groups proportionally.
+
+        Calculates a dynamic upper bound for each group based on its relative
+        capacity to ensure feasibility while maintaining dispersion.
 
         Args:
             separators: Mapping of separator tags to sets of participant indices.
         """
+        total_p = self.num_people
         for tag, s_set in separators.items():
             if not s_set or not tag.strip():
                 continue
+
+            n_tag = len(s_set)
+
             for g in range(self.num_groups):
-                # Ensure each group's separator count is bounded by its total capacity
-                limit = min(
-                    self.cfg.group_capacities[g],
-                    math.ceil(len(s_set) / self.num_groups),
-                )
+                cap_g = self.cfg.group_capacities[g]
+                # To ensure feasibility: Sum of limits across all groups >= n_tag.
+                # Proportional share: (n_tag * group_cap) / total_cap.
+                # Baseline: ceil(proportional_share).
+                # For uniform groups, this equals ceil(n_tag / G).
+                # For non-uniform, it scales with group size.
+                limit = min(cap_g, math.ceil((n_tag * cap_g) / total_p))
+
+                # If the sum of these tight limits might be < n_tag due to rounding,
+                # we'd have infeasibility. However, sum(ceil(p_i)) >= sum(p_i) = n_tag.
+                # So math.ceil((n_tag * cap_g) / total_p) is the tightest feasible
+                # limit.
                 self.model.Add(sum(self.x[(i, g)] for i in s_set) <= limit)
 
     def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
@@ -197,8 +211,9 @@ class ConstraintBuilder:
             strategy: The scoring strategy to use for vector generation.
         """
         vectors = strategy.get_score_vectors(self.participants, self.cfg)
-        first_vec = True
 
+        # Performance optimization: Order by score vectors to break symmetry
+        # more effectively than just a single dimension.
         for name, scores, weight_m in vectors:
             total_score = sum(scores)
             min_sum, max_sum = (
@@ -228,16 +243,13 @@ class ConstraintBuilder:
                 for g in range(self.num_groups)
             ]
 
-            # Symmetry breaking for equal-capacity groups
-            if first_vec:
-                for g1 in range(self.num_groups):
-                    for g2 in range(g1 + 1, self.num_groups):
-                        if (
-                            self.cfg.group_capacities[g1]
-                            == self.cfg.group_capacities[g2]
-                        ):
-                            self.model.Add(g_sums[g1] <= g_sums[g2])
-                first_vec = False
+            # Advanced Symmetry Breaking: Enforce ordering for identical capacity
+            # groups. This prunes G! search branches, significantly improving
+            # efficiency.
+            for g1 in range(self.num_groups):
+                for g2 in range(g1 + 1, self.num_groups):
+                    if self.cfg.group_capacities[g1] == self.cfg.group_capacities[g2]:
+                        self.model.Add(g_sums[g1] <= g_sums[g2])
 
             for g in range(self.num_groups):
                 self.model.Add(

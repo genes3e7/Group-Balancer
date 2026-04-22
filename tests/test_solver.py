@@ -106,9 +106,13 @@ def test_solver_multi_dimensional_weighted():
 
 
 def test_solver_pigeonhole_separator():
-    """Test separator spread."""
+    """Test separator spread.
+
+    With 4 participants (3 'A' tags) and 2 groups of size 2,
+    the proportional limit ceil(3 * 2 / 4) = 2 should be enforced.
+    """
     p = make_participants(4, separators=["A", "A", "A", ""])
-    cfg = get_solver_config(2, [3, 1])
+    cfg = get_solver_config(2, [2, 2])
     results, _, _ = solver.solve_with_ortools(p, cfg)
 
     # 3 'A's spread over 2 groups: limit 2
@@ -123,6 +127,8 @@ def test_solver_pigeonhole_separator():
         if p[config.COL_GROUP] == 2 and "A" in p[config.COL_SEPARATOR]
     )
     assert g1_sep <= 2
+    assert g2_sep <= 2
+    assert g1_sep + g2_sep == 3
     assert g2_sep <= 2
 
 

@@ -46,14 +46,16 @@ except ImportError:
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
     """Custom OR-Tools callback to pipe logs to Streamlit."""
 
-    def __init__(self, status_placeholder: Any) -> None:
+    def __init__(self, status_placeholder: Any, num_people: int) -> None:
         """Initializes the callback with a Streamlit status placeholder.
 
         Args:
             status_placeholder: A Streamlit placeholder object to update.
+            num_people: Total count of participants for scaling metrics.
         """
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.status_placeholder = status_placeholder
+        self.num_people = max(1, num_people)
         self.solution_count = 0
         self.start_time = time.time()
         self.last_update_time = 0.0
@@ -76,12 +78,15 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
             obj = self.ObjectiveValue()
             elapsed = max(0.01, current_time - self.start_time)
 
+            # Scale down to human readable units (Weighted Average Absolute Error)
+            display_obj = obj / (config.SCALE_FACTOR * self.num_people * 100)
+
             if self.status_placeholder:
                 with self.status_placeholder.container():
                     st.markdown("### ⚙️ Optimization Progress")
                     m1, m2, m3 = st.columns(3)
                     m1.metric("Solutions", self.solution_count)
-                    m2.metric("Weighted Deviation", f"{obj:,}")
+                    m2.metric("Weighted Deviation", f"{display_obj:.4f}")
                     m3.metric("Time", f"{elapsed:.1f}s")
             self.last_update_time = current_time
 
@@ -133,7 +138,7 @@ def run_optimization(
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
     solver_inst.parameters.num_search_workers = cfg.num_workers
 
-    cb = StreamlitSolverCallback(status_box)
+    cb = StreamlitSolverCallback(status_box, len(participants))
     status = solver_inst.Solve(model, cb)
 
     if cb.ctx:
@@ -151,7 +156,10 @@ def run_optimization(
                     f"✅ Optimization Complete ({status_name})", expanded=False
                 ):
                     st.write(f"Computation time: {elapsed:.2f}s")
-                    st.write(f"Final weighted deviation: {cb.ObjectiveValue():,}")
+                    display_obj = cb.ObjectiveValue() / (
+                        config.SCALE_FACTOR * cb.num_people * 100
+                    )
+                    st.write(f"Final weighted deviation: {display_obj:.4f}")
 
         results = []
         for i, p in enumerate(participants):

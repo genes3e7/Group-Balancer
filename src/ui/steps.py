@@ -193,8 +193,10 @@ def render_step_3() -> None:
         st.error("No results found.")
         return
 
-    view = st.radio("View", ["Table", "Cards"], horizontal=True)
     score_cols = st.session_state.get("score_cols", [])
+    results_renderer.render_global_stats(st.session_state.interactive_df, score_cols)
+
+    view = st.radio("View", ["Table", "Cards"], horizontal=True)
 
     if view == "Table":
         _render_table_view(score_cols)

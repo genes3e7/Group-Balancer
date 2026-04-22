@@ -15,7 +15,7 @@ def test_streamlit_solver_callback_on_solution():
     """Test the callback UI update logic."""
     # Create a mock status box
     mock_box = MagicMock()
-    cb = solver_interface.StreamlitSolverCallback(mock_box)
+    cb = solver_interface.StreamlitSolverCallback(mock_box, 2)
 
     # Mock ObjectiveValue
     cb.ObjectiveValue = MagicMock(return_value=123.4)
