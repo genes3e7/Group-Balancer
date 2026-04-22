@@ -90,7 +90,7 @@ def generate_tree(startpath: str, spec: pathspec.PathSpec) -> str:
     return "\n".join(tree_lines)
 
 
-def update_readme(min_ver: str = None, max_ver: str = None) -> None:
+def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> None:
     """Updates README.md with generated tree and dynamic version info.
 
     Args:
@@ -126,7 +126,9 @@ def update_readme(min_ver: str = None, max_ver: str = None) -> None:
         content = badge_pattern.sub(new_badge_url, content)
 
         # Also update the Alt Text of the badge: [Python 3.10 - 3.14]
-        alt_pattern = re.compile(r"\[Python 3\.[0-9]+\s*-\s*3\.[0-9]+\]")
+        alt_pattern = re.compile(
+            r"\[Python 3\.[0-9]+(?:-[^\]]+)?\s*-\s*3\.[0-9]+(?:-[^\]]+)?\]"
+        )
         new_alt = f"[Python {min_ver} - {max_ver}]"
         content = alt_pattern.sub(new_alt, content)
 
