@@ -68,16 +68,16 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         Streamlit status placeholder with a progress summary including solution
         count and weighted deviation.
         """
-        if st.session_state.get("stop_early", False):
-            self.StopSearch()
-            return
-
         self.solution_count += 1
         current_time = time.time()
 
         if current_time - self.last_update_time >= 0.25:
             if self.ctx:
                 add_script_run_ctx(threading.current_thread(), self.ctx)
+
+            if st.session_state.get("stop_early", False):
+                self.StopSearch()
+                return
 
             obj = self.ObjectiveValue()
             elapsed = max(0.01, current_time - self.start_time)
