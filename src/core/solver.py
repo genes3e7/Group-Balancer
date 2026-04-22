@@ -262,8 +262,12 @@ class ConstraintBuilder:
         Args:
             groupers: Mapping of grouper tags to sets of participant indices.
         """
-        # Prevent 64-bit integer overflow in CP-SAT
-        base_penalty = min(self.max_objective_bound * 10 + 1000, (1 << 60) - 1)
+        # Prevent 64-bit integer overflow in CP-SAT.
+        # Use a more conservative Big-M value. max_objective_bound is already scaled.
+        # Ensure that (base_penalty * num_tags * num_groups) fits in 2^62.
+        # Default to a safe large constant if no scoring objectives added yet.
+        safe_max = 1 << 52  # Much more conservative than 1 << 60
+        base_penalty = min(max(10000, self.max_objective_bound * 2), safe_max)
 
         for tag, g_set in groupers.items():
             if len(g_set) <= 1:
@@ -272,10 +276,11 @@ class ConstraintBuilder:
                 used = self.model.NewBoolVar(f"used_{tag}_{g}")
                 self.model.AddMaxEquality(used, [self.x[(i, g)] for i in g_set])
 
-                # Incorporate SolverConfig.grouper_weight and clamp to prevent overflow
+                # Incorporate SolverConfig.grouper_weight and clamp
                 weight = self.cfg.grouper_weight
                 cap_penalty = self.cfg.group_capacities[g] * 10
-                penalty = min((base_penalty + cap_penalty) * weight, (1 << 60) - 1)
+                # Final term must fit within objective sum.
+                penalty = min((base_penalty + cap_penalty) * weight, safe_max)
                 self.objectives.append(used * penalty)
 
     def get_model(self) -> cp_model.CpModel:

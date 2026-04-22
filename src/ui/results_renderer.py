@@ -44,30 +44,27 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
         score_cols: List of score dimensions to show averages for.
     """
     with st.container(border=True):
-        st.markdown(f"### Group {group['id']}")
+        c1, c2 = st.columns([3, 1])
+        c1.markdown(f"### 👥 Group {group['id']}")
+        c2.metric("Size", len(group["members"]))
 
-        # Show key averages/sums as metrics
-        m_cols = st.columns(len(score_cols))
-        for j, col in enumerate(score_cols):
-            with m_cols[j]:
-                avg = group["averages"].get(col, 0)
-                st.metric(label=f"Avg {col}", value=f"{avg:.2f}")
+        with st.expander("📊 Group Summary", expanded=True):
+            m_cols = st.columns(len(score_cols))
+            for j, col in enumerate(score_cols):
+                with m_cols[j]:
+                    avg = group["averages"].get(col, 0)
+                    st.metric(label=f"Avg {col}", value=f"{avg:.1f}")
 
-        st.markdown("**Members:**")
         if group["members"]:
             disp_df = pd.DataFrame(group["members"])
-
-            # Clean display for categorical tags
             display_columns = [config.COL_NAME]
-            if config.COL_GROUPER in disp_df.columns:
-                display_columns.append(config.COL_GROUPER)
-            if config.COL_SEPARATOR in disp_df.columns:
-                display_columns.append(config.COL_SEPARATOR)
 
-            # Append all score columns
+            # Add tags if they exist and are not empty
+            for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
+                if col in disp_df.columns and not disp_df[col].eq("").all():
+                    display_columns.append(col)
+
             display_columns.extend(score_cols)
-
-            # Ensure score columns are formatted consistently
             col_configs = {
                 col: st.column_config.NumberColumn(format="%.2f") for col in score_cols
             }

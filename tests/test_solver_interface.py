@@ -21,12 +21,16 @@ def test_streamlit_solver_callback_on_solution():
     cb.ObjectiveValue = MagicMock(return_value=123.4)
 
     # Force the time to be > 0.25 seconds later to trigger the update
-    with patch("time.time", return_value=cb.start_time + 1.0):
+    with (
+        patch("time.time", return_value=cb.start_time + 1.0),
+        patch("streamlit.columns", return_value=[MagicMock()] * 3),
+        patch("streamlit.markdown"),
+    ):
         cb.on_solution_callback()
 
     assert cb.solution_count == 1
-    mock_box.markdown.assert_called_once()
-    assert "123.4" in mock_box.markdown.call_args[0][0]
+    # Should use the container from status_box
+    mock_box.container.assert_called()
 
 
 def test_run_optimization_success_with_status_box():
@@ -45,17 +49,22 @@ def test_run_optimization_success_with_status_box():
     )
 
     mock_box = MagicMock()
-    df, metrics = solver_interface.run_optimization(
-        participants,
-        cfg,
-        status_box=mock_box,
-    )
+    with (
+        patch("streamlit.status") as mock_status,
+        patch("streamlit.write"),
+        patch("streamlit.columns", return_value=[MagicMock()] * 3),
+        patch("streamlit.markdown"),
+    ):
+        df, metrics = solver_interface.run_optimization(
+            participants,
+            cfg,
+            status_box=mock_box,
+        )
 
-    assert df is not None
-    assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
-
-    # The final status markdown should be called
-    assert mock_box.markdown.call_count >= 1
+        assert df is not None
+        assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
+        # st.status should be called for completion
+        mock_status.assert_called()
 
 
 def test_run_optimization_failure_with_status_box():
@@ -73,12 +82,18 @@ def test_run_optimization_failure_with_status_box():
     )
 
     mock_box = MagicMock()
-    df, metrics = solver_interface.run_optimization(
-        participants,
-        cfg,
-        status_box=mock_box,
-    )
+    with (
+        patch("streamlit.status") as mock_status,
+        patch("streamlit.error"),
+        patch("streamlit.columns", return_value=[MagicMock()] * 3),
+        patch("streamlit.markdown"),
+    ):
+        df, metrics = solver_interface.run_optimization(
+            participants,
+            cfg,
+            status_box=mock_box,
+        )
 
-    assert df is None
-    # Ensure error was called
-    mock_box.error.assert_called_once()
+        assert df is None
+        # st.status should be called for failure
+        mock_status.assert_called()

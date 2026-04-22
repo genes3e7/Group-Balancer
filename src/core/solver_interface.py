@@ -9,6 +9,7 @@ import time
 from typing import Any
 
 import pandas as pd
+import streamlit as st
 from ortools.sat.python import cp_model
 
 from src.core import config, solver
@@ -59,7 +60,12 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         self.ctx = get_script_run_ctx()
 
     def on_solution_callback(self) -> None:
-        """Update UI with live progress variables."""
+        """Update UI with live progress variables.
+
+        Calculates elapsed time and current objective value, then updates the
+        Streamlit status placeholder with a progress summary including solution
+        count and weighted deviation.
+        """
         self.solution_count += 1
         current_time = time.time()
 
@@ -68,15 +74,15 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
                 add_script_run_ctx(threading.current_thread(), self.ctx)
 
             obj = self.ObjectiveValue()
-            elapsed = current_time - self.start_time
+            elapsed = max(0.01, current_time - self.start_time)
 
             if self.status_placeholder:
-                self.status_placeholder.markdown(
-                    f"**Solver Status:** 🏃 Running (Optimizing & Proving)... \n"
-                    f"Solutions Found: `{self.solution_count}` \n"
-                    f"Current Weighted Deviation: `{obj}` \n"
-                    f"Time Elapsed: `{elapsed:.2f}s`",
-                )
+                with self.status_placeholder.container():
+                    st.markdown("### ⚙️ Optimization Progress")
+                    m1, m2, m3 = st.columns(3)
+                    m1.metric("Solutions", self.solution_count)
+                    m2.metric("Weighted Deviation", f"{obj:,}")
+                    m3.metric("Time", f"{elapsed:.1f}s")
             self.last_update_time = current_time
 
 
@@ -87,13 +93,18 @@ def run_optimization(
 ) -> tuple[pd.DataFrame | None, dict[str, Any]]:
     """Runs the optimization using Participant models and SolverConfig.
 
+    Orchestrates the entire solver lifecycle: model building, constraint
+    addition, scoring strategy execution, and the final solve process.
+    Updates the UI via the provided status_box placeholder.
+
     Args:
-        participants: List of participants.
-        cfg: Solver configuration.
-        status_box: Streamlit status placeholder.
+        participants: List of strongly-typed Participant models.
+        cfg: The solver configuration parameters.
+        status_box: Optional Streamlit placeholder for live progress updates.
 
     Returns:
-        tuple: (Results dataframe or None, Status metrics dictionary).
+        A tuple of (results_df, metrics_dict). results_df is None if the
+        solver fails to find any feasible solution.
     """
     start_time = time.time()
 
@@ -135,11 +146,12 @@ def run_optimization(
     # 3. Results
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         if status_box:
-            status_msg = (
-                f"**Solver Status:** ✅ Complete ({status_name}) | "
-                f"Time: `{elapsed:.2f}s`"
-            )
-            status_box.markdown(status_msg)
+            with status_box:
+                with st.status(
+                    f"✅ Optimization Complete ({status_name})", expanded=False
+                ):
+                    st.write(f"Computation time: {elapsed:.2f}s")
+                    st.write(f"Final weighted deviation: {cb.ObjectiveValue():,}")
 
         results = []
         for i, p in enumerate(participants):
@@ -161,5 +173,19 @@ def run_optimization(
         return pd.DataFrame(results), metrics
 
     if status_box:
-        status_box.error(f"Solver Status: ❌ Failed (Status: {status_name})")
+        with status_box:
+            with st.status(f"❌ Optimization Failed ({status_name})", state="error"):
+                if status_name == "MODEL_INVALID":
+                    st.error(
+                        "The solver model is invalid. This often happens due to "
+                        "numerical overflows from extremely large weights or "
+                        "conflicting constraints."
+                    )
+                elif status_name == "INFEASIBLE":
+                    st.error(
+                        "No solution exists that satisfies all hard constraints "
+                        "(capacities and separator tags)."
+                    )
+                else:
+                    st.write(f"Solver stopped with status: {status_name}")
     return None, metrics

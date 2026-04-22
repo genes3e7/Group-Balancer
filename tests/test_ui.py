@@ -112,8 +112,13 @@ def test_results_renderer_single_card_with_members():
         patch("streamlit.markdown"),
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.dataframe"),
+        patch("streamlit.expander"),
+        patch("streamlit.metric"),
     ):
-        mock_cols.return_value = [MagicMock()]
+        mock_cols.side_effect = [
+            [MagicMock(), MagicMock()],  # c1, c2
+            [MagicMock()],  # m_cols
+        ]
         results_renderer._render_single_card(group, ["Score1"])
 
 
