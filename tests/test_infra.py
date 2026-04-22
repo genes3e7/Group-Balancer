@@ -11,12 +11,15 @@ def test_build_executable_cleanup():
     with (
         patch("os.path.exists", return_value=True),
         patch("shutil.rmtree") as mock_rm,
+        patch("os.remove") as mock_remove,
         patch("subprocess.run"),
     ):
         build.build_executable()
 
         # Verify cleanup of build and dist
         assert mock_rm.call_count >= 2
+        # Verify cleanup of spec
+        assert mock_remove.called
 
 
 def test_build_executable_success():
