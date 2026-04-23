@@ -125,7 +125,11 @@ class AdvancedScoring(ScoringStrategy):
                 int(round(p.scores.get(col, 0.0) * config.SCALE_FACTOR))
                 for p in participants
             ]
-            weight_m = int(round(weight * 100))
+            # Ensure tiny positive weights are not rounded to 0
+            if weight > 0:
+                weight_m = max(1, int(round(weight * 100)))
+            else:
+                weight_m = int(round(weight * 100))
             vectors.append((col, scores, weight_m))
         return vectors
 
@@ -269,10 +273,11 @@ class ConstraintBuilder:
                 abs_diff = self.model.NewIntVar(0, diff_bound, f"abs_{name}_{g}")
                 self.model.AddAbsEquality(abs_diff, diff)
 
-                w_diff = self.model.NewIntVar(0, diff_bound * weight_m, f"w_{name}_{g}")
+                weighted_bound = diff_bound * weight_m
+                w_diff = self.model.NewIntVar(0, weighted_bound, f"w_{name}_{g}")
                 self.model.Add(w_diff == abs_diff * weight_m)
                 self.objectives.append(w_diff)
-                self.max_objective_bound += diff_bound * weight_m
+                self.max_objective_bound += weighted_bound
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
         """Adds penalties for splitting grouper tags.
@@ -384,6 +389,7 @@ def solve_with_ortools(
                 config.COL_GROUP: assigned_group,
                 config.COL_GROUPER: p.groupers,
                 config.COL_SEPARATOR: p.separators,
+                "_original_index": p.original_index,
             }
             # Unpack MappingsProxyType for compatibility
             p_dict.update(dict(p.scores))

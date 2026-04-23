@@ -35,6 +35,7 @@ exclude = [
     "build",
     "dist",
     "venv",
+    ".venv",
 ]
 line-length = 88
 indent-width = 4

@@ -110,7 +110,9 @@ def render_step_2() -> None:
     score_cols = st.session_state.get("score_cols", [])
 
     c1, c2 = st.columns(2)
-    num_groups = int(c1.number_input("Groups", 1, total_p, min(2, total_p)))
+    num_groups = int(
+        c1.number_input("Groups", 1, total_p, min(2, total_p), key="groups_input")
+    )
     c2.info(f"Total Participants: {total_p}")
 
     st.subheader("Group Capacities")
@@ -168,6 +170,7 @@ def render_step_2() -> None:
             config.UI_TIMEOUT_MIN,
             config.UI_TIMEOUT_MAX,
             config.UI_TIMEOUT_DEFAULT,
+            key="timeout_slider",
         )
     )
 
@@ -203,6 +206,9 @@ def render_step_2() -> None:
             session_manager.go_to_step(3)
         else:
             # Surface error state in results view
+            # Clear stale results so KPIs/cards don't show old data
+            st.session_state.results_df = None
+            st.session_state.interactive_df = None
             st.session_state.solver_status = metrics["status"]
             st.session_state.solver_elapsed = metrics["elapsed"]
             st.session_state.solver_error = metrics.get("error")
@@ -234,14 +240,14 @@ def render_step_3() -> None:
     else:
         st.warning(f"⏳ Solver stopped in {elapsed:.2f}s (Status: {status_name})")
 
-    if "interactive_df" not in st.session_state:
+    if st.session_state.get("interactive_df") is None:
         st.error("No results found.")
         return
 
     score_cols = st.session_state.get("score_cols", [])
     results_renderer.render_global_stats(st.session_state.interactive_df, score_cols)
 
-    view = st.radio("View", ["Table", "Cards"], horizontal=True)
+    view = st.radio("View", ["Table", "Cards"], horizontal=True, key="view_toggle")
 
     if view == "Table":
         _render_table_view(score_cols)

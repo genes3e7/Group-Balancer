@@ -15,9 +15,9 @@ from src.utils import group_helpers
 def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
     """Renders a summary table of global balancing KPIs.
 
-    Calculates the mean of group averages and the standard deviation between
-    those averages for each score dimension. Lower standard deviation indicates
-    better balance.
+    The global average is a participant-weighted average across all groups.
+    The reported dispersion is the standard deviation computed across the
+    group averages. Lower standard deviation indicates better balance.
 
     Args:
         df: The DataFrame containing group assignments.

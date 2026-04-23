@@ -98,6 +98,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │       ├── __init__.py
 │       ├── exporter.py
 │       └── group_helpers.py
+├── streamlit_launcher.py
 ├── tests/
 │   ├── __init__.py
 │   ├── test_config.py
@@ -127,4 +128,4 @@ The project follows high-quality engineering standards:
 - **SOLID & SRP:** Decoupled Service, UI, and Core layers.
 - **Type Safety:** Strong typing with `dataclasses` and `TypedDict`.
 - **Testing:** 90%+ functional coverage with isolated sandboxed test execution.
-- **CI/CD:** Automated testing across Python 3.10-3.15-dev using `uv`.
+- **CI/CD:** Automated testing across Python 3.10-3.14 using `uv`.

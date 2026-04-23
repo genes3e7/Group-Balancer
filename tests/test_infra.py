@@ -34,7 +34,7 @@ def test_build_executable_success():
         mock_run.assert_called_once()
         args = mock_run.call_args[0][0]
         assert "pyinstaller" in args
-        assert "app.py" in args
+        assert any(arg.endswith("streamlit_launcher.py") for arg in args)
 
 
 def test_app_importable():

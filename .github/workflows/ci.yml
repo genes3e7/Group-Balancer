@@ -34,10 +34,9 @@ jobs:
     needs: check-changes
     if: needs.check-changes.outputs.python == 'true'
     runs-on: ubuntu-latest
-    continue-on-error: ${{ matrix.python-version == '3.15-dev' }}
     strategy:
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14", "3.15-dev"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
       fail-fast: false
 
     steps:
@@ -88,14 +87,7 @@ jobs:
         if [ -z "$(ls -A artifacts)" ]; then
            exit 1
         fi
-        # Exclude experimental/allowed-failure versions from the stable badge range
-        # Create the sorted file inside the ignored artifacts folder
-        (cat artifacts/*.txt | grep -vF -- "3.15-dev" || true) | sort -V > artifacts/sorted_versions.txt
-        
-        if [ ! -s artifacts/sorted_versions.txt ]; then
-           echo "No stable versions found after filtering. Skipping README update."
-           exit 0
-        fi
+        cat artifacts/*.txt | sort -V > artifacts/sorted_versions.txt
         
         echo "MIN_VER=$(head -n 1 artifacts/sorted_versions.txt)" >> $GITHUB_ENV
         echo "MAX_VER=$(tail -n 1 artifacts/sorted_versions.txt)" >> $GITHUB_ENV

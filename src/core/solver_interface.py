@@ -26,7 +26,7 @@ except ImportError:
         from streamlit.scriptrunner import add_script_run_ctx, get_script_run_ctx
     except ImportError:
 
-        def add_script_run_ctx(t: Any, c: Any = None) -> None:
+        def add_script_run_ctx(_: Any, c: Any = None) -> None:
             """Fallback for add_script_run_ctx if streamlit is not installed."""
 
         def get_script_run_ctx() -> Any:
@@ -188,6 +188,7 @@ def run_optimization(
                 config.COL_GROUP: assigned_group,
                 config.COL_GROUPER: p.groupers,
                 config.COL_SEPARATOR: p.separators,
+                "_original_index": p.original_index,
             }
             p_dict.update(p.scores)
             results.append(p_dict)

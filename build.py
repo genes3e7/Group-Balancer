@@ -20,6 +20,8 @@ def build_executable():
     """
     print("🚀 Starting Build Process...")
 
+    project_root = os.path.abspath(os.path.dirname(__file__))
+
     # Clean old artifacts
     dirs_to_clean = ["build", "dist"]
     for d in dirs_to_clean:
@@ -38,11 +40,12 @@ def build_executable():
                 dirs.remove("__pycache__")
 
     # Define PyInstaller Command
-    # We bundle 'app.py' which launches the Streamlit UI.
-    # --noconfirm: Overwrite existing
-    # --onedir: Create a distribution folder
-    # --windowed: Disable the console window
-    # --specpath: Place spec file in build dir
+    # We use 'streamlit_launcher.py' to bridge PyInstaller with Streamlit.
+    # app.py and src/ are included as data to ensure they are available in the bundle.
+    app_path = os.path.join(project_root, "app.py")
+    src_path = os.path.join(project_root, "src")
+    launcher_path = os.path.join(project_root, "streamlit_launcher.py")
+
     cmd = [
         "pyinstaller",
         "--noconfirm",
@@ -52,10 +55,17 @@ def build_executable():
         "GroupBalancer",
         "--specpath",
         "build",
-        "app.py",
+        "--add-data",
+        f"{app_path}{os.pathsep}.",
+        "--add-data",
+        f"{src_path}{os.pathsep}src",
+        launcher_path,
     ]
 
     try:
+        # Ensure build dir exists for spec file
+        os.makedirs("build", exist_ok=True)
+        print(f"Running command: {' '.join(cmd)}")
         subprocess.run(cmd, check=True)
         print(f"\n✅ Build Complete! Check: {os.path.abspath('dist')}")
     except subprocess.CalledProcessError as e:

@@ -156,6 +156,8 @@ def test_steps_render_3_cards():
             return 1.23
         if key == "score_cols":
             return ["Score1"]
+        if key == "interactive_df":
+            return mock_df
         return default
 
     mock_state.get.side_effect = get_side_effect
@@ -583,4 +585,4 @@ def test_steps_render_2_clamped_groups():
         # Check the call to number_input for "Groups"
         # num_groups = int(c1.number_input("Groups", 1, total_p, min(2, total_p)))
         # For total_p=1, it should be c1.number_input("Groups", 1, 1, 1)
-        c1.number_input.assert_any_call("Groups", 1, 1, 1)
+        c1.number_input.assert_any_call("Groups", 1, 1, 1, key="groups_input")
