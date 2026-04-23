@@ -3,9 +3,9 @@
 
 $ErrorActionPreference = "Stop"
 
-function Check-ExitCode {
+function Assert-ExitCode {
     if ($LASTEXITCODE -ne 0) {
-        Write-Error "Command failed with exit code $LASTEXITCODE"
+        Write-Warning "Command failed with exit code $LASTEXITCODE"
         exit $LASTEXITCODE
     }
 }
@@ -15,29 +15,29 @@ Write-Host "`n Running Local Pre-CI Checks..."
 # 1. Sync dependencies
 Write-Host "`n [1/7] Syncing dependencies..."
 uv sync --all-extras --frozen
-Check-ExitCode
+Assert-ExitCode
 
 # 2. Ruff Linting and Formatting
 Write-Host "`n [2/7] Running Ruff (Linting and Formatting)..."
 uv run ruff check . --fix
-Check-ExitCode
+Assert-ExitCode
 uv run ruff format .
-Check-ExitCode
+Assert-ExitCode
 
 # 3. Vulture (Dead Code Analysis)
 Write-Host "`n [3/7] Running Vulture (Dead Code Analysis)..."
 uv run vulture src/ --min-confidence 80
-Check-ExitCode
+Assert-ExitCode
 
 # 4. Interrogate (Docstring Coverage)
 Write-Host "`n [4/7] Running Interrogate (Docstring Coverage)..."
 uv run interrogate .
-Check-ExitCode
+Assert-ExitCode
 
 # 5. Pytest (Functional Tests and Coverage)
 Write-Host "`n [5/7] Running Pytest (Tests and Coverage)..."
 uv run pytest --cov=src --cov-fail-under=90
-Check-ExitCode
+Assert-ExitCode
 
 # 6. Update README (Mirrors CI finalize-updates)
 Write-Host "`n [6/7] Updating README structure and metadata..."
@@ -46,12 +46,12 @@ Write-Host "`n [6/7] Updating README structure and metadata..."
 $min_v = if ($args[0]) { $args[0] } else { "3.10" }
 $max_v = if ($args[1]) { $args[1] } else { "3.14" }
 uv run python tools/update_readme.py $min_v $max_v
-Check-ExitCode
+Assert-ExitCode
 
 # 7. Verify Build (Mirrors CI build step)
 Write-Host "`n [7/7] Verifying Build script integrity..."
 uv run python build.py
-Check-ExitCode
+Assert-ExitCode
 
 # Cleanup Artifacts
 Write-Host "`n Cleaning up artifacts..."

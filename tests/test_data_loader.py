@@ -236,7 +236,7 @@ def test_load_data_generic_exception(mock_file):
 
 
 def test_load_data_coerce(tmp_path):
-    """Cover line 160."""
+    """Coerce non-numeric score values to 0.0."""
     f = tmp_path / "test.csv"
     pd.DataFrame(
         {
@@ -252,7 +252,7 @@ def test_load_data_coerce(tmp_path):
 
 
 def test_load_data_empty_records_empty_dataframe(tmp_path):
-    """Cover line 165."""
+    """Return None when the file contains only a header row."""
     f = tmp_path / "test.csv"
     with open(f, "w") as fw:
         fw.write(f"{config.COL_NAME},{config.SCORE_PREFIX}1\n")

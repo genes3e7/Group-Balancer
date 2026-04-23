@@ -40,6 +40,7 @@ def test_render_step_2_no_data_stop():
     mock_state.get.return_value = None
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state = mock_state
+        mock_st.button.return_value = False
         mock_st.stop.side_effect = RuntimeError("stop")
         with pytest.raises(RuntimeError, match="stop"):
             steps.render_step_2()

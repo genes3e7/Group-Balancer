@@ -648,7 +648,7 @@ def test_steps_render_2_solver_failure_surface():
         patch("streamlit.subheader"),
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.number_input", return_value=1),
-        patch("src.ui.steps.st.radio", side_effect=["advanced", "groupers"]),
+        patch("streamlit.radio", side_effect=["advanced", "groupers"]),
         patch("streamlit.slider", return_value=10),
         patch("streamlit.button", side_effect=[False, True]),
         patch("streamlit.expander"),

@@ -319,6 +319,13 @@ class ConstraintBuilder:
         return self.model
 
 
+def _clean_tag_cell(value: object) -> str:
+    """Coerces a raw tag cell to a string, treating NaN/None as empty."""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return str(value)
+
+
 def solve_with_ortools(
     participants_raw: list[dict], cfg: SolverConfig
 ) -> tuple[list[dict], int, float]:
@@ -340,12 +347,8 @@ def solve_with_ortools(
                 for k, v in p.items()
                 if str(k).startswith(config.SCORE_PREFIX)
             },
-            groupers=str(p.get(config.COL_GROUPER, ""))
-            if not pd.isna(p.get(config.COL_GROUPER))
-            else "",
-            separators=str(p.get(config.COL_SEPARATOR, ""))
-            if not pd.isna(p.get(config.COL_SEPARATOR))
-            else "",
+            groupers=_clean_tag_cell(p.get(config.COL_GROUPER)),
+            separators=_clean_tag_cell(p.get(config.COL_SEPARATOR)),
             original_index=p.get("_original_index", i),
         )
         for i, p in enumerate(participants_raw)

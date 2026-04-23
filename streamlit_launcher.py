@@ -6,7 +6,7 @@ import sys
 import streamlit.web.cli
 
 
-def main():
+def main() -> None:
     """Launcher entry point for PyInstaller bundle."""
     # Determine the root directory of the bundle
     bundle_root = getattr(sys, "_MEIPASS", os.path.dirname(__file__))

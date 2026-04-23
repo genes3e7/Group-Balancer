@@ -76,6 +76,11 @@ def test_generate_excel_bytes_multiple_members():
         config.COL_NAME,
     )
     assert isinstance(excel_bytes, bytes)
+    assert len(excel_bytes) > 0
+    with io.BytesIO(excel_bytes) as f:
+        sheet = pd.read_excel(f, sheet_name="Balanced_Groups", header=None)
+    values = set(sheet.stack().astype(str))
+    assert {"GROUP 1", "GROUP 2", "A", "B", "C", "D"}.issubset(values)
 
 
 def test_generate_excel_bytes_odd_groups():
@@ -95,6 +100,12 @@ def test_generate_excel_bytes_odd_groups():
         config.COL_NAME,
     )
     assert isinstance(excel_bytes, bytes)
+    assert len(excel_bytes) > 0
+    with io.BytesIO(excel_bytes) as f:
+        sheet = pd.read_excel(f, sheet_name="Balanced_Groups", header=None)
+    values = set(sheet.stack().astype(str))
+    assert "GROUP 1" in values
+    assert "GROUP 2" not in values
 
 
 def test_exporter_no_groups_edge():
@@ -102,3 +113,8 @@ def test_exporter_no_groups_edge():
     df = pd.DataFrame()
     res = exporter.generate_excel_bytes(df, "Group", ["S1"], "Name")
     assert isinstance(res, bytes)
+    assert len(res) > 0
+    with io.BytesIO(res) as f:
+        xl = pd.ExcelFile(f)
+        assert "Balanced_Groups" in xl.sheet_names
+        assert xl.parse("Balanced_Groups").empty

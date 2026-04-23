@@ -124,6 +124,7 @@ def test_solver_interface_callback_throttling():
     cb.last_update_time = 100.0
     with patch("time.time", return_value=100.1):  # < 0.25 diff
         cb.on_solution_callback()
+        cb.status_placeholder.container.assert_not_called()
 
 
 def test_solver_interface_solve_line_145():
@@ -169,7 +170,7 @@ def test_solver_interface_status_box_unknown():
             mock_inst.StatusName.return_value = "UNKNOWN"
             status_box = MagicMock()
             solver_interface.run_optimization(participants, cfg, status_box=status_box)
-            mock_st.write.assert_called()
+            mock_st.error.assert_called()
 
 
 def test_solver_interface_status_box_invalid():

@@ -281,14 +281,20 @@ def _render_table_view(score_cols: list[str]) -> None:
         for col in score_cols:
             editor_configs[col] = st.column_config.NumberColumn(disabled=True)
 
+        df_for_editor = st.session_state.interactive_df.drop(
+            columns=["_original_index"], errors="ignore"
+        )
         edited_df = st.data_editor(
-            st.session_state.interactive_df,
+            df_for_editor,
             column_config=editor_configs,
             hide_index=True,
             width="stretch",
             key="results_editor_table",
         )
-        if not edited_df.equals(st.session_state.interactive_df):
+        if not edited_df.equals(df_for_editor):
+            if "_original_index" in st.session_state.interactive_df.columns:
+                orig_index = st.session_state.interactive_df["_original_index"]
+                edited_df["_original_index"] = orig_index
             st.session_state.interactive_df = edited_df
             st.rerun()
 

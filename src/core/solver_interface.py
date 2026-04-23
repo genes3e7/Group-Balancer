@@ -198,17 +198,8 @@ def run_optimization(
     if status_box:
         with status_box:
             with st.status(f"❌ Optimization Failed ({status_name})", state="error"):
-                if status_name == "MODEL_INVALID":
-                    st.error(
-                        "The solver model is invalid. This often happens due to "
-                        "numerical overflows from extremely large weights or "
-                        "conflicting constraints."
-                    )
-                elif status_name == "INFEASIBLE":
-                    st.error(
-                        "No solution exists that satisfies all hard constraints "
-                        "(capacities and separator tags)."
-                    )
+                if error_msg:
+                    st.error(error_msg)
                 else:
                     st.write(f"Solver stopped with status: {status_name}")
     return None, metrics

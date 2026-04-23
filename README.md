@@ -23,7 +23,7 @@
 ## Getting Started
 
 ### 1. Requirements
-*   Python 3.10 or higher.
+*   Python 3.10 through 3.14.
 *   Git (to clone the repo).
 
 ### 2. Installation
