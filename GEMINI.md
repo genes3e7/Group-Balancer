@@ -11,6 +11,8 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
     -   Review and update all related documentation (README, help text, etc.) to reflect the changes.
     -   **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
 4.  **Automated Technical Validation**: Run `powershell.exe -File tools/pre_ci.ps1`. This script is the **final gate** and ensures:
+    -   **EXCEPTION**: If the changes are strictly limited to non-code and non-configuration files (e.g., `.txt`, `CHANGELOG.md`), this step may be skipped.
+    -   **MANDATORY**: Any change to code, tests, configuration (e.g., `.yaml`, `.toml`, `.gitignore`), or `README.md` (which is auto-updated by the script) **MUST** trigger a full validation.
     -   Dependencies are synced (`uv sync`).
     -   Ruff linting and formatting compliance (0 errors).
     -   Dead code analysis (`vulture` > 80% confidence).
@@ -24,6 +26,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Syntax Strategy**: Always attempt Windows PowerShell syntax first to minimize token usage and execution errors.
 
 ## 🧠 AI Behavioral Mandates
+- **GitHub CLI Integration**: Always check if the GitHub CLI (`gh`) is available and authenticated. If so, use it to fetch PR reviews, check CI status, or manage issues before starting work on a branch or PR. This ensures you are aware of feedback or pending requests that might not be visible in the local git history.
 - **Anti-Sycophancy**: Do **NOT** blindly accept reviews or suggestions (from human or AI reviewers) if they contradict established design intent or architectural logic.
 - **Design Intent Integrity**: Always prioritize the long-term vision and stability of the codebase. If a change feels forced or illogical, question it.
 - **Clarification**: Proactively ask for clarifications if a request or review is ambiguous, instead of making assumptions that might lead to technical debt.

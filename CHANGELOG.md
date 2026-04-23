@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Detailed Solver Error Reporting:** The UI now surfaces specific optimization failure reasons (e.g., `INFEASIBLE`, `MODEL_INVALID`) with actionable troubleshooting tips.
+- **GitHub CLI Integration (GEMINI.md):** Added a mandate for using the GitHub CLI (`gh`) to check PR reviews and CI status before starting work.
+- **Workflow Refinement (GEMINI.md):** Introduced an exception to skip the mandatory pre-CI validation if changes are strictly limited to non-code/non-config files (e.g., CHANGELOG). Note: `README.md` and configuration files still trigger full validation.
 - **Project Mandates (GEMINI.md):** Formalized architectural decisions, framework-specific quirks (Streamlit `width="stretch"`), and a mandatory post-change validation workflow to ensure long-term codebase integrity.
 - **Multi-Dimensional Scoring:** Support for balancing groups across multiple score dimensions with user-configurable weights.
 - **Custom Group Capacities:** Ability to explicitly define exact capacities for each group instead of strictly balanced splits.
