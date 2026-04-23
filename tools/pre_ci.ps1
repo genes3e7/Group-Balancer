@@ -36,7 +36,7 @@ Check-ExitCode
 
 # 5. Pytest (Functional Tests and Coverage)
 Write-Host "`n [5/7] Running Pytest (Tests and Coverage)..."
-uv run pytest
+uv run pytest --cov=src --cov-fail-under=90
 Check-ExitCode
 
 # 6. Update README (Mirrors CI finalize-updates)

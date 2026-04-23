@@ -230,24 +230,31 @@ class ConstraintBuilder:
                 continue
 
             diff_bound = max(1, (max_sum - min_sum) * self.num_people * 2)
-            if diff_bound * weight_m > 2**60:
-                scale_down = math.ceil((diff_bound * weight_m) / 2**60)
+            weighted_bound = diff_bound * weight_m
+
+            if weighted_bound > 2**60:
+                extra_scale = math.ceil(weighted_bound / 2**60)
                 logger.warning(
                     "Extreme score range in %s risking overflow. Scaling by %d.",
                     name,
-                    scale_down,
+                    extra_scale,
                 )
-                scores = [int(round(s / scale_down)) for s in scores]
+                scores = [int(round(s / extra_scale)) for s in scores]
                 total_score = sum(scores)
                 min_sum = sum(s for s in scores if s < 0)
                 max_sum = sum(s for s in scores if s > 0)
                 diff_bound = max(1, (max_sum - min_sum) * self.num_people * 2)
+                weighted_bound = diff_bound * weight_m
+
+                if weighted_bound > 2**60:
+                    raise ValueError(
+                        f"Score range for {name} is too extreme even after scaling."
+                    )
 
             g_sums = [
                 self.model.NewIntVar(min_sum, max_sum, f"sum_{name}_{g}")
                 for g in range(self.num_groups)
             ]
-
             # Advanced Symmetry Breaking: Enforce ordering for identical capacity
             # groups on at most one canonical dimension. This prunes G! search
             # branches without over-constraining multi-dimensional weights.
@@ -273,7 +280,6 @@ class ConstraintBuilder:
                 abs_diff = self.model.NewIntVar(0, diff_bound, f"abs_{name}_{g}")
                 self.model.AddAbsEquality(abs_diff, diff)
 
-                weighted_bound = diff_bound * weight_m
                 w_diff = self.model.NewIntVar(0, weighted_bound, f"w_{name}_{g}")
                 self.model.Add(w_diff == abs_diff * weight_m)
                 self.objectives.append(w_diff)

@@ -5,13 +5,12 @@ Hardened with security and error handling checks.
 
 import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
 
 from src.core import config, data_loader
-from src.core.services import DataService
 
 
 @pytest.fixture
@@ -41,11 +40,13 @@ def test_validate_file_path_security_violation():
     with pytest.raises(ValueError, match="Access denied"):
         data_loader.validate_file_path(outside_path)
 
+
 def test_validate_file_path_type_error():
     """Test path validation exception when commonpath fails with non-ValueError."""
     with patch("os.path.commonpath", side_effect=TypeError("Bad type")):
         with pytest.raises(ValueError, match="Invalid path configuration"):
             data_loader.validate_file_path("test.csv")
+
 
 def test_validate_file_path_exists(mock_file):
     """Test path validation for existing file."""
@@ -97,11 +98,13 @@ def test_load_data_valid(mock_file):
     assert len(data) == 1
     assert data[0][config.COL_NAME] == "Alice"
 
+
 def test_load_data_valid_path_obj(mock_file):
     """Test loading valid data from pathlib.Path object."""
     data = data_loader.load_data(Path(mock_file))
     assert len(data) == 1
     assert data[0][config.COL_NAME] == "Alice"
+
 
 def test_load_data_valid_excel(tmp_path):
     """Test loading valid data from excel file."""
@@ -144,6 +147,7 @@ def test_load_data_empty_records(tmp_path):
     data = data_loader.load_data(str(f))
     assert data is None
 
+
 def test_load_data_missing_constraint_cols(tmp_path):
     """Test that missing constraint cols are gracefully filled."""
     f = tmp_path / "noconstraints.csv"
@@ -155,12 +159,24 @@ def test_load_data_missing_constraint_cols(tmp_path):
     assert data[0][config.COL_GROUPER] == ""
     assert data[0][config.COL_SEPARATOR] == ""
 
+
 @patch("builtins.input")
 @patch("src.core.data_loader.validate_file_path")
 def test_get_file_path_from_user_success(mock_val, mock_input):
     """Test successful CLI file path input with artifacts."""
-    mock_input.side_effect = ["", "& test.csv", "&test.csv", "& 'test.csv'", '""test.csv""']
-    mock_val.side_effect = ["C:/abs/test.csv", "C:/abs/test.csv", "C:/abs/test.csv", "C:/abs/test.csv"]
+    mock_input.side_effect = [
+        "",
+        "& test.csv",
+        "&test.csv",
+        "& 'test.csv'",
+        '""test.csv""',
+    ]
+    mock_val.side_effect = [
+        "C:/abs/test.csv",
+        "C:/abs/test.csv",
+        "C:/abs/test.csv",
+        "C:/abs/test.csv",
+    ]
 
     path1 = data_loader.get_file_path_from_user()
     path2 = data_loader.get_file_path_from_user()
@@ -170,6 +186,7 @@ def test_get_file_path_from_user_success(mock_val, mock_input):
     assert path2 == "C:/abs/test.csv"
     assert path3 == "C:/abs/test.csv"
     assert path4 == "C:/abs/test.csv"
+
 
 @patch("builtins.input")
 @patch("src.core.data_loader.validate_file_path")
@@ -181,6 +198,7 @@ def test_get_file_path_from_user_value_error(mock_val, mock_input):
     path = data_loader.get_file_path_from_user()
     assert path == "C:/good.csv"
 
+
 @patch("builtins.input")
 @patch("src.core.data_loader.validate_file_path")
 def test_get_file_path_from_user_fnf_error(mock_val, mock_input):
@@ -190,6 +208,7 @@ def test_get_file_path_from_user_fnf_error(mock_val, mock_input):
     path = data_loader.get_file_path_from_user()
     assert path == "C:/good.csv"
 
+
 @patch("builtins.input")
 def test_get_file_path_from_user_generic_error(mock_input):
     """Test general Exception loop in CLI file path input."""
@@ -198,16 +217,45 @@ def test_get_file_path_from_user_generic_error(mock_input):
     with pytest.raises(SystemExit):
         data_loader.get_file_path_from_user()
 
+
 def test_load_data_none():
     """Test load_data with None path."""
     assert data_loader.load_data(None) is None
+
 
 def test_load_data_permission_error(mock_file):
     """Test permission error handling."""
     with patch("pandas.read_csv", side_effect=PermissionError):
         assert data_loader.load_data(mock_file) is None
 
+
 def test_load_data_generic_exception(mock_file):
     """Test generic exception handling."""
     with patch("pandas.read_csv", side_effect=Exception):
         assert data_loader.load_data(mock_file) is None
+
+
+def test_load_data_coerce(tmp_path):
+    """Cover line 160."""
+    f = tmp_path / "test.csv"
+    pd.DataFrame(
+        {
+            config.COL_NAME: ["Alice"],
+            f"{config.SCORE_PREFIX}1": ["not a number"],
+            config.COL_GROUPER: [None],
+            config.COL_SEPARATOR: [None],
+        }
+    ).to_csv(f, index=False)
+    with patch("src.core.data_loader.validate_file_path", return_value=str(f)):
+        data = data_loader.load_data(str(f))
+    assert data[0][f"{config.SCORE_PREFIX}1"] == 0.0
+
+
+def test_load_data_empty_records_empty_dataframe(tmp_path):
+    """Cover line 165."""
+    f = tmp_path / "test.csv"
+    with open(f, "w") as fw:
+        fw.write(f"{config.COL_NAME},{config.SCORE_PREFIX}1\n")
+    with patch("src.core.data_loader.validate_file_path", return_value=str(f)):
+        data = data_loader.load_data(str(f))
+    assert data is None

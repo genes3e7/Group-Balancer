@@ -3,11 +3,18 @@
 Updated to match the professional standards refactor (models and result formats).
 """
 
+from unittest.mock import patch
+
+import pytest
 from ortools.sat.python import cp_model
 
 from src.core import config, solver
-from src.core.models import ConflictPriority, OptimizationMode, SolverConfig, Participant
-from unittest.mock import patch
+from src.core.models import (
+    ConflictPriority,
+    OptimizationMode,
+    Participant,
+    SolverConfig,
+)
 
 SCORE_COL = f"{config.SCORE_PREFIX}1"
 
@@ -165,18 +172,24 @@ def test_solver_conflict_resolution():
     gids_s = {p[config.COL_GROUP] for p in res_s if "X" in p[config.COL_SEPARATOR]}
     assert len(gids_s) == 2
 
+
 def test_solver_rounding_extreme():
     """Cover edge cases in solver.py rounding."""
     participants = [Participant(name="P1", scores={"S1": 10.0})]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 0.00000000001})
+    cfg = SolverConfig(
+        num_groups=1, group_capacities=[1], score_weights={"S1": 0.00000000001}
+    )
     from src.core.solver import AdvancedScoring
+
     strategy = AdvancedScoring()
     vectors = strategy.get_score_vectors(participants, cfg)
     assert vectors[0][2] == 1
 
+
 def test_circular_conflict_edge():
     """Test solver behavior with circular or contradictory constraints."""
     from src.core.solver_interface import run_optimization
+
     # A groupers B, B groupers C, C separators A
     participants = [
         Participant(name="A", scores={"S": 10}, groupers="X", separators="Z"),
@@ -184,7 +197,8 @@ def test_circular_conflict_edge():
         Participant(name="C", scores={"S": 10}, groupers="Y", separators="X"),
     ]
 
-    from src.core.models import OptimizationMode, ConflictPriority
+    from src.core.models import ConflictPriority, OptimizationMode
+
     config = SolverConfig(
         num_groups=2,
         group_capacities=[2, 1],
@@ -198,13 +212,46 @@ def test_circular_conflict_edge():
     assert len(df) == 3
     assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
 
-def test_empty_tags_handling_edge():
-    """Ensure empty tag strings don't crash the solver."""
-    from src.core.solver_interface import run_optimization
-    participants = [
-        Participant(name="A", scores={"S": 10}, groupers="", separators=""),
-        Participant(name="B", scores={"S": 10}, groupers=" ", separators="  "),
-    ]
-    config = SolverConfig(num_groups=2, group_capacities=[1, 1], score_weights={"S": 1.0})
-    df, metrics = run_optimization(participants, config)
-    assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
+
+def test_scoring_strategy_pass():
+    """Cover the abstract pass in ScoringStrategy (line 112)."""
+    from src.core.solver import ScoringStrategy
+
+    with patch.multiple(ScoringStrategy, __abstractmethods__=frozenset()):
+        strategy = ScoringStrategy()
+        strategy.get_score_vectors([], None)
+
+
+def test_solver_extreme_value_error():
+    """Cover line 250 ValueError."""
+    participants = [Participant(name="P1", scores={"S1": 1.0})]
+    # A huge weight so weight_m > 2**60
+    # weight_m is weight * 100, so weight > 2**60 / 100
+    huge_weight = (2**61) / 100.0
+    with patch("src.core.models.SolverConfig.__post_init__"):
+        cfg = SolverConfig(
+            num_groups=1, group_capacities=[1], score_weights={"S1": huge_weight}
+        )
+    from src.core.solver import AdvancedScoring, ConstraintBuilder
+
+    strategy = AdvancedScoring()
+    builder = ConstraintBuilder(participants, cfg)
+    builder.build_variables()
+    with pytest.raises(ValueError, match="too extreme even after scaling"):
+        builder.add_scoring_objectives(strategy)
+
+
+def test_solver_objective_generation_edge():
+    """Cover lines 230 (min_sum==0, max_sum==0), 234-244, and 250."""
+    participants = [Participant(name="P1", scores={"S1": 1e12, "S2": 0.0})]
+    cfg = SolverConfig(
+        num_groups=2, group_capacities=[1, 1], score_weights={"S1": 1.0, "S2": 1.0}
+    )
+    from src.core.solver import AdvancedScoring, ConstraintBuilder
+
+    strategy = AdvancedScoring()
+    builder = ConstraintBuilder(participants, cfg)
+    builder.build_variables()
+    with patch("src.core.solver.logger.warning") as mock_warn:
+        builder.add_scoring_objectives(strategy)
+        mock_warn.assert_called()

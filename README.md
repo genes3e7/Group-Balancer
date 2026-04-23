@@ -102,10 +102,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── tests/
 │   ├── __init__.py
 │   ├── test_config.py
-│   ├── test_coverage_boost.py
-│   ├── test_coverage_edge_cases.py
 │   ├── test_data_loader.py
-│   ├── test_edge_cases.py
 │   ├── test_exporter.py
 │   ├── test_infra.py
 │   ├── test_models_unit.py
@@ -113,6 +110,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   ├── test_solver.py
 │   ├── test_solver_interface.py
 │   ├── test_solver_unit.py
+│   ├── test_steps_edge.py
 │   ├── test_ui.py
 │   └── test_utils.py
 ├── tools/

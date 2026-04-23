@@ -77,6 +77,26 @@ def test_generate_excel_bytes_multiple_members():
     )
     assert isinstance(excel_bytes, bytes)
 
+
+def test_generate_excel_bytes_odd_groups():
+    """Test with odd number of groups to cover g2 is None branches."""
+    df = pd.DataFrame(
+        {
+            config.COL_NAME: ["A", "B"],
+            config.COL_GROUP: [1, 1],
+            SCORE_COL: [10, 20],
+        },
+    )
+    score_cols = [SCORE_COL]
+    excel_bytes = exporter.generate_excel_bytes(
+        df,
+        config.COL_GROUP,
+        score_cols,
+        config.COL_NAME,
+    )
+    assert isinstance(excel_bytes, bytes)
+
+
 def test_exporter_no_groups_edge():
     """Cover 'if not groups' branch in exporter."""
     df = pd.DataFrame()
