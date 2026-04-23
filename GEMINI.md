@@ -87,3 +87,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 ### 1. Docstrings
 - **Standard:** The project strictly standardizes on **Google-style docstrings** for all modules, classes, and functions to maintain a professional, readable codebase.
 
+### 2. Test File Organization
+- **Lesson:** Test files should be named professionally and correspond directly to the modules they test (e.g., `test_data_loader.py` for `data_loader.py`). Avoid temporary, non-descriptive names like `test_coverage_boost.py` or `test_coverage_100.py`.
+- **Reasoning:** Maintaining a structural parity between the `src/` and `tests/` directories ensures long-term maintainability and helps developers easily locate the tests for a given component.
+

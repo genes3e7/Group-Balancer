@@ -3,9 +3,10 @@
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
+import pytest
 
 from src.core import config
-from src.ui import components, results_renderer, session_manager
+from src.ui import components, results_renderer, session_manager, steps
 
 
 def test_session_manager_init():
@@ -173,7 +174,6 @@ def test_steps_render_3_cards():
         patch("streamlit.session_state", mock_state),
     ):
         mock_radio.return_value = "Cards"
-        from src.ui import steps
 
         steps.render_step_3()
         mock_cards.assert_called_once()
@@ -215,9 +215,7 @@ def test_steps_render_footer_actions():
         patch("streamlit.session_state", mock_state),
     ):
         mock_cols.return_value = [MagicMock(), MagicMock()]
-        from src.ui import steps
 
-        # Fixed signature: only takes score_cols
         steps._render_footer_actions(["Score1"])
         mock_dl.assert_called_once()
         assert mock_btn.call_count >= 1
@@ -234,8 +232,6 @@ def test_steps_render_1():
         patch("streamlit.data_editor") as mock_editor,
         patch("streamlit.session_state", MagicMock()),
     ):
-        from src.ui import steps
-
         steps.render_step_1()
         assert mock_editor.call_count == 1
 
@@ -267,7 +263,6 @@ def test_steps_render_2():
         patch("streamlit.session_state", mock_state),
     ):
         mock_num.return_value = 1.0
-        # Mock radio for both calls: Mode and Priority (using stable keys)
         mock_radio.side_effect = ["advanced", "groupers"]
         mock_slider.return_value = 1
         mock_cols.side_effect = [
@@ -275,8 +270,6 @@ def test_steps_render_2():
             [MagicMock()],  # st.columns(num_groups)
             [MagicMock(), MagicMock()],  # st.columns([1, 5])
         ]
-
-        from src.ui import steps
 
         steps.render_step_2()
 
@@ -298,8 +291,6 @@ def test_steps_load_uploaded_file_csv():
         patch("streamlit.session_state", mock_state),
         patch("streamlit.toast"),
     ):
-        from src.ui import steps
-
         steps._load_uploaded_file()
         mock_read.assert_called_once()
         mock_clean.assert_called_once()
@@ -321,8 +312,6 @@ def test_steps_add_score_column():
         patch("streamlit.rerun") as mock_rerun,
         patch("streamlit.session_state", mock_state),
     ):
-        from src.ui import steps
-
         steps.render_step_1()
         # Should have added Score2
         assert "Score2" in mock_state.manual_df.columns
@@ -331,8 +320,6 @@ def test_steps_add_score_column():
 
 def test_steps_render_1_failure_paths():
     """Verify Step 1 error messages for invalid data."""
-    from src.ui import steps
-
     mock_state = MagicMock()
     with (
         patch("streamlit.header"),
@@ -356,8 +343,6 @@ def test_steps_render_1_failure_paths():
 
 def test_steps_render_2_navigation():
     """Verify navigation buttons in Step 2."""
-    from src.ui import steps
-
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = MagicMock()
     mock_state.participants_df = mock_df
@@ -402,8 +387,6 @@ def test_steps_render_2_navigation():
 
 def test_steps_render_1_success():
     """Verify Step 1 successful 'Next' navigation."""
-    from src.ui import steps
-
     df = pd.DataFrame(
         {
             config.COL_NAME: ["A"],
@@ -446,8 +429,6 @@ def test_steps_load_uploaded_file_excel():
         patch("streamlit.session_state", mock_state),
         patch("streamlit.toast"),
     ):
-        from src.ui import steps
-
         steps._load_uploaded_file()
         mock_read.assert_called_once()
         mock_clean.assert_called_once()
@@ -458,15 +439,11 @@ def test_steps_load_uploaded_file_none():
     mock_state = MagicMock()
     mock_state.u_file = None
     with patch("streamlit.session_state", mock_state):
-        from src.ui import steps
-
         steps._load_uploaded_file()  # Should just return
 
 
 def test_steps_render_3_interactive():
     """Verify interactive elements in Step 3."""
-    from src.ui import steps
-
     mock_df = pd.DataFrame(
         {config.COL_NAME: ["P1"], config.COL_GROUP: [1], "Score1": [10.0]}
     )
@@ -502,12 +479,7 @@ def test_steps_render_3_interactive():
 
 
 def test_data_loader_invalid_columns_check():
-    """Verify that load_data returns None when required columns are missing.
-
-    Mocks path validation to return a valid string and CSV loading to return
-    a dataframe with incorrect columns, ensuring the validation logic
-    identifies the failure.
-    """
+    """Verify that load_data returns None when required columns are missing."""
     from src.core import data_loader
 
     df = pd.DataFrame({"Wrong": ["A"]})
@@ -520,8 +492,6 @@ def test_data_loader_invalid_columns_check():
 
 def test_steps_start_over():
     """Verify 'Start Over' button logic."""
-    from src.ui import steps
-
     mock_state = MagicMock()
     with (
         patch("streamlit.button", return_value=True),
@@ -536,13 +506,7 @@ def test_steps_start_over():
 
 
 def test_steps_render_2_clamped_groups():
-    """Verify that the number of groups is correctly clamped to the participant count.
-
-    Ensures that when only one participant is present, the default group count
-    does not exceed the participant count, preventing Streamlit widget errors.
-    """
-    from src.ui import steps
-
+    """Verify that the number of groups is correctly clamped to the participant count."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})  # total_p = 1
     mock_state = MagicMock()
     mock_state.participants_df = mock_df
@@ -581,8 +545,195 @@ def test_steps_render_2_clamped_groups():
         ]
 
         steps.render_step_2()
-
-        # Check the call to number_input for "Groups"
-        # num_groups = int(c1.number_input("Groups", 1, total_p, min(2, total_p)))
-        # For total_p=1, it should be c1.number_input("Groups", 1, 1, 1)
         c1.number_input.assert_any_call("Groups", 1, 1, 1, key="groups_input")
+
+
+def test_ui_steps_load_uploaded_file_exception():
+    """Cover the exception branches in _load_uploaded_file."""
+    mock_file = MagicMock()
+    with patch("streamlit.session_state", MagicMock()) as mock_state:
+        mock_state.u_file = mock_file
+        with patch("pandas.read_csv", side_effect=Exception("Read error")):
+            with patch("streamlit.error") as mock_err:
+                mock_file.name = "test.csv"
+                steps._load_uploaded_file()
+                mock_err.assert_called_with("Error reading file: Read error")
+
+def test_render_step_2_initialization_fail():
+    """Cover render_step_2 initialization."""
+    mock_state = MagicMock()
+    mock_state.get.side_effect = lambda key, default=None: {"participants_df": None}.get(key, default)
+    
+    class StopException(Exception): pass
+
+    with patch("streamlit.session_state", mock_state), patch("streamlit.warning"), patch("streamlit.button", return_value=False), patch("streamlit.stop", side_effect=StopException):
+        with pytest.raises(StopException):
+            steps.render_step_2()
+
+def test_render_table_view_nan_std():
+    """Cover lines 292-293 in steps.py (NaN std_val)."""
+    df = pd.DataFrame({config.COL_NAME: ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
+    mock_state = MagicMock()
+    mock_state.interactive_df = df
+    mock_state.get.side_effect = lambda key, default=None: {"num_groups_target": 1}.get(key, default)
+
+    with (
+        patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]),
+        patch("streamlit.subheader"),
+        patch("streamlit.data_editor", return_value=df),
+        patch("streamlit.metric"),
+        patch("streamlit.dataframe"),
+        patch("streamlit.session_state", mock_state)
+    ):
+        steps._render_table_view(["S1"])
+
+def test_render_footer_reset_hit_proper_mock():
+    """Properly mock columns and button to hit reset logic."""
+    df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
+    
+    mock_state = MagicMock()
+    mock_state.results_df = df_orig
+    
+    with patch("pandas.DataFrame.copy", return_value=df_orig.copy()):
+        c_back = MagicMock()
+        c_reset = MagicMock()
+        c_back.button.return_value = False
+        c_reset.button.return_value = True
+
+        with (
+            patch("src.ui.steps.st") as mock_st_in_steps,
+            patch("streamlit.session_state", mock_state)
+        ):
+            mock_st_in_steps.columns.return_value = [c_back, c_reset]
+            steps._render_footer_actions(["S1"])
+            mock_st_in_steps.rerun.assert_called()
+
+def test_steps_render_2_solver_failure_surface():
+    """Cover the failure branch in render_step_2 when result_df is None."""
+    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
+    mock_state = MagicMock()
+    mock_state.participants_df = mock_df
+    mock_state.get.side_effect = lambda key, default=None: {"participants_df": mock_df, "score_cols": ["Score1"]}.get(key, default)
+
+    with (
+        patch("streamlit.header"),
+        patch("streamlit.subheader"),
+        patch("streamlit.columns") as mock_cols,
+        patch("streamlit.number_input", return_value=1),
+        patch("streamlit.radio", side_effect=["advanced", "groupers"]),
+        patch("streamlit.slider", return_value=10),
+        patch("streamlit.button", side_effect=[False, True]),
+        patch("streamlit.expander"),
+        patch("streamlit.empty"),
+        patch("src.core.services.OptimizationService.run") as mock_run,
+        patch("src.ui.session_manager.go_to_step") as mock_go,
+        patch("streamlit.session_state", mock_state),
+    ):
+        mock_run.return_value = (None, {"status": "INFEASIBLE", "elapsed": 0.5, "error": "No solution"})
+
+        c1, c2 = MagicMock(), MagicMock()
+        g_col = MagicMock()
+        c_back, c_go = MagicMock(), MagicMock()
+        c_back.button.return_value = False
+        c_go.button.return_value = True
+
+        mock_cols.side_effect = [[c1, c2], [g_col], [c_back, c_go]]
+
+        steps.render_step_2()
+
+        assert mock_state.results_df is None
+        assert mock_state.solver_error == "No solution"
+        mock_go.assert_called_with(3)
+
+def test_results_renderer_std_else():
+    """Cover results_renderer.py line 48 else branch."""
+    df = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
+    with patch("streamlit.subheader"), patch("streamlit.dataframe"), patch("streamlit.metric"):
+        results_renderer.render_global_stats(df, ["S1"])
+
+def test_ui_steps_load_uploaded_file_exception():
+    """Cover lines 39-41."""
+    mock_file = MagicMock()
+    mock_file.name = "test.csv"
+    with patch("streamlit.session_state") as mock_state:
+        mock_state.u_file = mock_file
+        with patch("pandas.read_csv", side_effect=Exception("Read error")):
+            with patch("streamlit.error") as mock_err:
+                steps._load_uploaded_file()
+                mock_err.assert_called_with("Error reading file: Read error")
+
+def test_render_step_2_initialization_fail():
+    """Cover line 134."""
+    mock_state = MagicMock()
+    mock_state.get.side_effect = lambda key, default=None: {"participants_df": None}.get(key, default)
+    
+    class StopException(Exception): pass
+
+    with patch("streamlit.session_state", mock_state), patch("streamlit.warning"), patch("streamlit.button", return_value=False), patch("streamlit.stop", side_effect=StopException):
+        with pytest.raises(StopException):
+            steps.render_step_2()
+
+def test_steps_render_2_solver_failure_surface():
+    """Cover lines 200-206."""
+    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
+    mock_state = MagicMock()
+    mock_state.participants_df = mock_df
+    mock_state.get.side_effect = lambda key, default=None: {"participants_df": mock_df, "score_cols": ["Score1"]}.get(key, default)
+
+    with (
+        patch("streamlit.header"),
+        patch("streamlit.subheader"),
+        patch("streamlit.columns") as mock_cols,
+        patch("streamlit.number_input", return_value=1),
+        patch("streamlit.radio", side_effect=["advanced", "groupers"]),
+        patch("streamlit.slider", return_value=10),
+        patch("streamlit.button", side_effect=[False, True]),
+        patch("streamlit.expander"),
+        patch("streamlit.empty"),
+        patch("src.core.services.OptimizationService.run") as mock_run,
+        patch("src.ui.session_manager.go_to_step") as mock_go,
+        patch("streamlit.session_state", mock_state),
+    ):
+        mock_run.return_value = (None, {"status": "INFEASIBLE", "elapsed": 0.5, "error": "No solution"})
+
+        c1, c2 = MagicMock(), MagicMock()
+        g_col = MagicMock()
+        c_back, c_go = MagicMock(), MagicMock()
+        c_back.button.return_value = False
+        c_go.button.return_value = True
+
+        mock_cols.side_effect = [[c1, c2], [g_col], [c_back, c_go]]
+
+        steps.render_step_2()
+        mock_go.assert_called_with(3)
+
+
+
+def test_render_table_view_nan_std():
+    """Cover lines 292-293."""
+    df = pd.DataFrame({config.COL_NAME: ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
+    mock_state = MagicMock()
+    mock_state.interactive_df = df
+    mock_state.get.side_effect = lambda key, default=None: {"num_groups_target": 1}.get(key, default)
+
+    with (
+        patch("streamlit.columns", return_value=[MagicMock(), MagicMock()]),
+        patch("streamlit.subheader"),
+        patch("streamlit.data_editor", return_value=df),
+        patch("streamlit.metric"),
+        patch("streamlit.dataframe"),
+        patch("streamlit.session_state", mock_state)
+    ):
+        steps._render_table_view(["S1"])
+
+def test_results_renderer_empty_global_stats():
+    """Cover line 27 in results_renderer.py."""
+    results_renderer.render_global_stats(None, ["S1"])
+    results_renderer.render_global_stats(pd.DataFrame(), ["S1"])
+
+def test_results_renderer_single_card_no_members():
+    """Cover line 156 in results_renderer.py."""
+    group = {"id": 1, "averages": {}, "members": []}
+    with patch("streamlit.caption") as mock_cap, patch("streamlit.container"):
+        results_renderer._render_single_card(group, ["S1"])
+        mock_cap.assert_called_with("No members assigned.")

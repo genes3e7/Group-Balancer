@@ -76,3 +76,9 @@ def test_generate_excel_bytes_multiple_members():
         config.COL_NAME,
     )
     assert isinstance(excel_bytes, bytes)
+
+def test_exporter_no_groups_edge():
+    """Cover 'if not groups' branch in exporter."""
+    df = pd.DataFrame()
+    res = exporter.generate_excel_bytes(df, "Group", ["S1"], "Name")
+    assert isinstance(res, bytes)

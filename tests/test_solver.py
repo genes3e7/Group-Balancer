@@ -6,7 +6,8 @@ Updated to match the professional standards refactor (models and result formats)
 from ortools.sat.python import cp_model
 
 from src.core import config, solver
-from src.core.models import ConflictPriority, OptimizationMode, SolverConfig
+from src.core.models import ConflictPriority, OptimizationMode, SolverConfig, Participant
+from unittest.mock import patch
 
 SCORE_COL = f"{config.SCORE_PREFIX}1"
 
@@ -163,3 +164,47 @@ def test_solver_conflict_resolution():
     res_s, _, _ = solver.solve_with_ortools(p, cfg_s)
     gids_s = {p[config.COL_GROUP] for p in res_s if "X" in p[config.COL_SEPARATOR]}
     assert len(gids_s) == 2
+
+def test_solver_rounding_extreme():
+    """Cover edge cases in solver.py rounding."""
+    participants = [Participant(name="P1", scores={"S1": 10.0})]
+    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 0.00000000001})
+    from src.core.solver import AdvancedScoring
+    strategy = AdvancedScoring()
+    vectors = strategy.get_score_vectors(participants, cfg)
+    assert vectors[0][2] == 1
+
+def test_circular_conflict_edge():
+    """Test solver behavior with circular or contradictory constraints."""
+    from src.core.solver_interface import run_optimization
+    # A groupers B, B groupers C, C separators A
+    participants = [
+        Participant(name="A", scores={"S": 10}, groupers="X", separators="Z"),
+        Participant(name="B", scores={"S": 10}, groupers="X", separators=""),
+        Participant(name="C", scores={"S": 10}, groupers="Y", separators="X"),
+    ]
+
+    from src.core.models import OptimizationMode, ConflictPriority
+    config = SolverConfig(
+        num_groups=2,
+        group_capacities=[2, 1],
+        score_weights={"S": 1.0},
+        opt_mode=OptimizationMode.SIMPLE,
+        conflict_priority=ConflictPriority.GROUPERS,
+    )
+
+    df, metrics = run_optimization(participants, config)
+    assert df is not None
+    assert len(df) == 3
+    assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
+
+def test_empty_tags_handling_edge():
+    """Ensure empty tag strings don't crash the solver."""
+    from src.core.solver_interface import run_optimization
+    participants = [
+        Participant(name="A", scores={"S": 10}, groupers="", separators=""),
+        Participant(name="B", scores={"S": 10}, groupers=" ", separators="  "),
+    ]
+    config = SolverConfig(num_groups=2, group_capacities=[1, 1], score_weights={"S": 1.0})
+    df, metrics = run_optimization(participants, config)
+    assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
