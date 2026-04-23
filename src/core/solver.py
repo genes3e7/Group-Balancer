@@ -321,7 +321,7 @@ class ConstraintBuilder:
 
 def _clean_tag_cell(value: object) -> str:
     """Coerces a raw tag cell to a string, treating NaN/None as empty."""
-    if value is None or (isinstance(value, float) and pd.isna(value)):
+    if value is None or pd.isna(value):
         return ""
     return str(value)
 

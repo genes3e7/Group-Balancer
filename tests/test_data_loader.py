@@ -249,6 +249,8 @@ def test_load_data_coerce(tmp_path):
     with patch("src.core.data_loader.validate_file_path", return_value=str(f)):
         data = data_loader.load_data(str(f))
     assert data[0][f"{config.SCORE_PREFIX}1"] == 0.0
+    assert data[0][config.COL_GROUPER] == ""
+    assert data[0][config.COL_SEPARATOR] == ""
 
 
 def test_load_data_empty_records_empty_dataframe(tmp_path):

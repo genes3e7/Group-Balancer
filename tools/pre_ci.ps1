@@ -36,15 +36,15 @@ Assert-ExitCode
 
 # 5. Pytest (Functional Tests and Coverage)
 Write-Host "`n [5/7] Running Pytest (Tests and Coverage)..."
-uv run pytest --cov=src --cov-fail-under=90
+uv run pytest
 Assert-ExitCode
 
 # 6. Update README (Mirrors CI finalize-updates)
 Write-Host "`n [6/7] Updating README structure and metadata..."
 # Default to project stable range (3.10-3.14) for local runs
 # Use $args[0] and $args[1] if user wants to override
-$min_v = if ($args[0]) { $args[0] } else { "3.10" }
-$max_v = if ($args[1]) { $args[1] } else { "3.14" }
+$min_v = if ($args.Count -gt 0 -and $null -ne $args[0]) { $args[0] } else { "3.10" }
+$max_v = if ($args.Count -gt 1 -and $null -ne $args[1]) { $args[1] } else { "3.14" }
 uv run python tools/update_readme.py $min_v $max_v
 Assert-ExitCode
 

@@ -21,7 +21,8 @@ def _load_uploaded_file() -> None:
     uploaded = st.session_state.u_file
     if uploaded is not None:
         try:
-            if uploaded.name.endswith(".csv"):
+            ext = uploaded.name.split(".")[-1].lower()
+            if ext == "csv":
                 df_new = pd.read_csv(uploaded)
             else:
                 df_new = pd.read_excel(uploaded)
