@@ -102,6 +102,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── tests/
 │   ├── __init__.py
 │   ├── test_config.py
+│   ├── test_coverage_boost.py
 │   ├── test_coverage_edge_cases.py
 │   ├── test_data_loader.py
 │   ├── test_edge_cases.py
