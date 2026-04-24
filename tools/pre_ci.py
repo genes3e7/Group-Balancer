@@ -38,14 +38,20 @@ class PreCIPipeline:
         self.min_ver = min_ver
         self.max_ver = max_ver
 
-    def record_result(self, description: str, passed: bool | str) -> None:
+    def record_result(
+        self,
+        description: str,
+        passed: bool | str,
+        outputs: dict[str, str] | None = None,
+    ) -> None:
         """Records the outcome of a specific step for the final summary.
 
         Args:
             description (str): A brief description of the step.
             passed (bool | str): True/False for success/failure, or "SKIPPED".
+            outputs (dict[str, str] | None): Optional dict with 'stdout' and 'stderr'.
         """
-        self._results.append((description, passed))
+        self._results.append((description, passed, outputs))
 
     def run_command(
         self, command: list[str], description: str, fail_fast: bool = False
@@ -93,13 +99,15 @@ class PreCIPipeline:
                 sys.stderr.write(e.stderr)
 
             # Attach captured outputs to the failure record
-            self.record_result(description, False)
+            self.record_result(
+                description, False, {"stdout": e.stdout, "stderr": e.stderr}
+            )
             if fail_fast:
                 sys.exit(e.returncode)
             return False
         except (subprocess.SubprocessError, OSError) as e:
             print(f"\n❌ FATAL: '{description}' generated an exception: {e}")
-            self.record_result(description, False)
+            self.record_result(description, False, {"stdout": str(e), "stderr": ""})
             if fail_fast:
                 sys.exit(1)
             return False
@@ -148,17 +156,25 @@ class PreCIPipeline:
 
                     if result.returncode == 0:
                         print(f"✅ {desc} completed successfully.")
-                        self.record_result(desc, True)
+                        self.record_result(
+                            desc,
+                            True,
+                            {"stdout": result.stdout, "stderr": result.stderr},
+                        )
                     else:
                         print(
                             f"❌ FATAL: '{desc}' failed with exit code "
                             f"{result.returncode}"
                         )
-                        self.record_result(desc, False)
+                        self.record_result(
+                            desc,
+                            False,
+                            {"stdout": result.stdout, "stderr": result.stderr},
+                        )
                         success_overall = False
                 except (subprocess.SubprocessError, OSError) as exc:
                     print(f"\n❌ FATAL: '{desc}' generated an exception: {exc}")
-                    self.record_result(desc, False)
+                    self.record_result(desc, False, {"stdout": str(exc), "stderr": ""})
                     success_overall = False
 
         return success_overall
@@ -169,7 +185,7 @@ class PreCIPipeline:
         Returns:
             bool: True iff every result is exactly True.
         """
-        return all(passed is True for _, passed in self._results)
+        return all(passed is True for _, passed, _ in self._results)
 
     def print_summary(self, title: str = "📋 PRE-CI SUMMARY") -> bool:
         """Prints a summary of all executed checks.
@@ -183,7 +199,7 @@ class PreCIPipeline:
         print("\n" + "=" * 60)
         print(title)
         print("=" * 60)
-        for desc, passed in self._results:
+        for desc, passed, _ in self._results:
             status = self.STATUS_MAP.get(passed, "❓ UNKNOWN")
             print(f"{status} - {desc}")
         print("=" * 60)
@@ -204,7 +220,7 @@ class PreCIPipeline:
         print("\n>>> [Cleanup] Removing build artifacts and caches...")
 
         # Define base folders to remove if they exist at root
-        base_targets = [".coverage", "dist", "build"]
+        base_targets = [".coverage", "dist", "build", ".ruff_cache", ".pytest_cache"]
         for target_name in base_targets:
             target = pathlib.Path(target_name)
             if target.exists():
