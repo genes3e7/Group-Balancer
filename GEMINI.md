@@ -3,6 +3,7 @@
 This file documents architectural decisions, framework-specific quirks, and lessons learned during development to ensure consistency and avoid repeating mistakes.
 
 ## 🚀 Post-Change Validation Workflow (Local Pre-CI & CI Pipeline)
+
 This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` or `git push` operation. It serves as a mandatory local Pre-CI check to ensure technical integrity and minimize redundant CI failures.
 
 1.  **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
@@ -22,6 +23,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
     -   Build integrity is verified.
 
 ### 💡 CI/CD & Pipeline Learnings
+
 - **Pre-CI Refactoring**: The validation pipeline utilizes a cross-platform, object-oriented `PreCIPipeline` Python class orchestrated via `uv` instead of a legacy PowerShell script. This prevents state leakage, natively integrates with the `uv` toolchain, and provides deterministic execution and clear `PASS/FAIL/SKIP` summary reporting.
 - **Compute Optimization**: To drastically reduce CI runtimes, testing runs in parallel using `pytest-xdist` (`pytest -n auto`). The unified final CI job detects its environment (`CI=true`) and skips redundant `pytest` execution because it safely leverages the pass artifacts from the preceding parallel test matrix.
 - **Least Privilege Configuration**: CI workflows (`ci.yml`) should never grant global `permissions: contents: write`. Instead, write permissions are scoped exclusively to the specific job (e.g., `finalize-updates`) that needs to push automated commits back to the branch.

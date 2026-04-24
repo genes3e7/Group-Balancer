@@ -63,7 +63,7 @@ jobs:
       contents: write
     if: |
       needs.test-matrix.result == 'success' &&
-      (github.event_name == 'push' || github.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
     steps:
     - uses: actions/checkout@v4
       with:
@@ -89,11 +89,13 @@ jobs:
     - name: Run Final CI Gate
       run: uv run python tools/pre_ci.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"
     - name: Commit and Push
+      env:
+        REF_TO_PUSH: ${{ github.head_ref || github.ref_name }}
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add -u
         if ! git diff --staged --quiet; then
           git commit -m "chore: professional standards updates and CI maintenance"
-          git push origin HEAD:${{ github.head_ref || github.ref_name }}
+          git push origin HEAD:"$REF_TO_PUSH"
         fi

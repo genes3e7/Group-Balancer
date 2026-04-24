@@ -2,15 +2,23 @@
 
 import argparse
 import concurrent.futures
-import glob
 import os
+import pathlib
 import shutil
 import subprocess
 import sys
 
 
 class PreCIPipeline:
-    """Orchestrates the local and CI validation checks for the project."""
+    """Orchestrates the local and CI validation checks for the project.
+
+    Attributes:
+        STATUS_MAP (dict): Maps boolean or string outcomes to visual status labels.
+        _results (list): Internal log of (description, status) tuples for all steps.
+        is_ci (bool): True if executing within a remote CI environment.
+        min_ver (str): Minimum supported Python version for README updates.
+        max_ver (str): Maximum supported Python version for README updates.
+    """
 
     STATUS_MAP = {
         True: "✅ PASS",
@@ -19,20 +27,39 @@ class PreCIPipeline:
     }
 
     def __init__(self, min_ver: str = "3.10", max_ver: str = "3.14"):
-        """Initializes the PreCIPipeline with Python version bounds."""
+        """Initializes the PreCIPipeline with Python version bounds.
+
+        Args:
+            min_ver (str): Minimum supported Python version. Defaults to "3.10".
+            max_ver (str): Maximum supported Python version. Defaults to "3.14".
+        """
         self._results = []
         self.is_ci = os.environ.get("CI", "").lower() in ("true", "1", "yes")
         self.min_ver = min_ver
         self.max_ver = max_ver
 
     def record_result(self, description: str, passed: bool | str) -> None:
-        """Records the outcome of a specific step for the final summary."""
+        """Records the outcome of a specific step for the final summary.
+
+        Args:
+            description (str): A brief description of the step.
+            passed (bool | str): True/False for success/failure, or "SKIPPED".
+        """
         self._results.append((description, passed))
 
     def run_command(
         self, command: list[str], description: str, fail_fast: bool = False
     ) -> bool:
-        """Executes a single shell command and prints the status."""
+        """Executes a single shell command and prints the status.
+
+        Args:
+            command (list[str]): The command to run as a list of strings.
+            description (str): A brief description of the step for logging.
+            fail_fast (bool): If True, exits the script immediately on failure.
+
+        Returns:
+            bool: True if the command succeeded (exit code 0), False otherwise.
+        """
         print(f"\n>>> [Step: {description}]")
         try:
             subprocess.run(command, check=True)
@@ -47,7 +74,19 @@ class PreCIPipeline:
             return False
 
     def run_commands_parallel(self, tasks: list[tuple[list[str], str]]) -> bool:
-        """Executes multiple shell commands concurrently and captures output."""
+        """Executes multiple shell commands concurrently and captures output.
+
+        This method leverages a ThreadPoolExecutor to run independent checks
+        (like linting, testing, and dead-code analysis) in parallel to optimize
+        execution speed.
+
+        Args:
+            tasks (list[tuple[list[str], str]]): A list of (command, description)
+                tuples to be executed concurrently.
+
+        Returns:
+            bool: True if all parallel tasks succeeded, False if any failed.
+        """
         print("\n>>> [Parallel Execution] Starting concurrent checks...")
         success_overall = True
 
@@ -79,15 +118,31 @@ class PreCIPipeline:
                         )
                         self.record_result(desc, False)
                         success_overall = False
-                except Exception as exc:
+                except (subprocess.SubprocessError, OSError) as exc:
                     print(f"\n❌ FATAL: '{desc}' generated an exception: {exc}")
                     self.record_result(desc, False)
                     success_overall = False
 
         return success_overall
 
+    def all_passed(self) -> bool:
+        """Predicate to check if all recorded results are passing.
+
+        Returns:
+            bool: True if no failures were recorded, False otherwise.
+            Note: "SKIPPED" does not count as a failure.
+        """
+        return all(passed is not False for _, passed in self._results)
+
     def print_summary(self, title: str = "📋 PRE-CI SUMMARY") -> bool:
-        """Prints a summary of all executed checks and returns overall success."""
+        """Prints a summary of all executed checks.
+
+        Args:
+            title (str): The header title for the summary block.
+
+        Returns:
+            bool: True if all checks passed, False if any failed.
+        """
         print("\n" + "=" * 60)
         print(title)
         print("=" * 60)
@@ -95,13 +150,13 @@ class PreCIPipeline:
         for desc, passed in self._results:
             status = self.STATUS_MAP.get(passed, "❓ UNKNOWN")
             print(f"{status} - {desc}")
-            if passed is not True:
+            if passed is False:
                 all_passed = False
         print("=" * 60)
         return all_passed
 
     def cleanup(self) -> None:
-        """Removes temporary cache directories and artifacts."""
+        """Removes temporary cache directories and artifacts recursively."""
         if self.is_ci:
             print(
                 "\n>>> [Cleanup] Skipped: CI environment detected "
@@ -110,22 +165,28 @@ class PreCIPipeline:
             return
 
         print("\n>>> [Cleanup] Removing build artifacts and caches...")
-        folders = [
-            ".coverage",
-            ".ruff_cache",
-            ".pytest_cache",
-            "dist",
-            "build",
-            "__pycache__",
-        ]
-        folders.extend(glob.glob("*.egg-info"))
 
-        for folder in folders:
-            if os.path.exists(folder):
-                if os.path.isdir(folder):
-                    shutil.rmtree(folder, ignore_errors=True)
-                else:
-                    os.remove(folder)
+        # Define base folders and recursive patterns
+        targets = [
+            pathlib.Path(".coverage"),
+            pathlib.Path("dist"),
+            pathlib.Path("build"),
+        ]
+
+        # Recursively find __pycache__ and *.egg-info
+        root = pathlib.Path(".")
+        targets.extend(root.rglob("__pycache__"))
+        targets.extend(root.rglob("*.egg-info"))
+
+        for target in targets:
+            if target.exists():
+                try:
+                    if target.is_dir():
+                        shutil.rmtree(target, ignore_errors=True)
+                    else:
+                        target.unlink()
+                except OSError as e:
+                    print(f"⚠️ Warning: Could not remove {target}: {e}")
 
     def execute(self) -> None:
         """Main execution path for the Pre-CI suite."""
@@ -134,11 +195,14 @@ class PreCIPipeline:
         print(f"🚀 GROUP BALANCER {mode} GATE")
         print("=" * 60)
 
+        # 1. Sync Dependencies (Fail-fast as subsequent steps depend on it)
         self.run_command(
             ["uv", "sync", "--all-extras", "--frozen"],
             "Syncing Project Environment",
+            fail_fast=True,
         )
 
+        # 2. Update README
         self.run_command(
             [
                 "uv",
@@ -151,27 +215,36 @@ class PreCIPipeline:
             "Updating README structure",
         )
 
-        # Formatting runs unconditionally.
+        # 3. Formatting and Linting (Run unconditionally so CI can push diffs)
         self.run_command(["uv", "run", "ruff", "check", ".", "--fix"], "Ruff Linting")
         self.run_command(["uv", "run", "ruff", "format", "."], "Ruff Formatting")
 
+        # 4. Parallel Checks (Vulture, Interrogate, Pytest)
+        # Use --no-sync to avoid lock contention during parallel uv run calls
         parallel_tasks = [
             (
-                ["uv", "run", "vulture", "src/", "--min-confidence", "80"],
+                ["uv", "run", "--no-sync", "vulture", "src/", "--min-confidence", "80"],
                 "Dead Code Analysis (Vulture)",
             ),
-            (["uv", "run", "interrogate", "."], "Docstring Coverage Enforcement"),
+            (
+                ["uv", "run", "--no-sync", "interrogate", "."],
+                "Docstring Coverage Enforcement",
+            ),
         ]
 
-        # Pytest executes in the test-matrix. Prevent redundant compute in CI.
+        # Pytest executes in the remote test-matrix job. Prevent redundancy in CI.
         if not self.is_ci:
             parallel_tasks.append(
-                (["uv", "run", "pytest"], "Unit Tests & Coverage Enforcement")
+                (
+                    ["uv", "run", "--no-sync", "pytest"],
+                    "Unit Tests & Coverage Enforcement",
+                )
             )
 
         self.run_commands_parallel(parallel_tasks)
 
-        if self.print_summary():
+        # 5. Build Verification Gate
+        if self.all_passed():
             self.run_command(
                 ["uv", "run", "python", "build.py"], "Verifying Build Integrity"
             )
@@ -180,6 +253,7 @@ class PreCIPipeline:
 
         self.cleanup()
 
+        # 6. Final Report
         if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
             print("\n✨ ALL CHECKS PASSED.\n")
         else:
