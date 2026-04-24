@@ -77,17 +77,15 @@ jobs:
     - name: Determine Supported Range
       id: versions
       run: |
-        cat artifacts/*.txt | sort -V > sorted_versions.txt
-        echo "MIN_VER=$(head -n 1 sorted_versions.txt)" >> $GITHUB_ENV
-        echo "MAX_VER=$(tail -n 1 sorted_versions.txt)" >> $GITHUB_ENV
+        cat artifacts/*.txt | sort -V > "$RUNNER_TEMP/sorted_versions.txt"
+        echo "MIN_VER=$(head -n 1 "$RUNNER_TEMP/sorted_versions.txt")" >> $GITHUB_ENV
+        echo "MAX_VER=$(tail -n 1 "$RUNNER_TEMP/sorted_versions.txt")" >> $GITHUB_ENV
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
       with:
         enable-cache: true
-    - name: Install dependencies
-      run: uv sync --all-extras --frozen --no-compile
     - name: Run Final CI Gate
-      run: uv run python tools/pre_ci.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"
+      run: uv run python tools/pre_ci.py "$MIN_VER" "$MAX_VER"
     - name: Commit and Push
       env:
         REF_TO_PUSH: ${{ github.head_ref || github.ref_name }}

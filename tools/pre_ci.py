@@ -26,7 +26,7 @@ class PreCIPipeline:
         "SKIPPED": "⏭️  SKIP",
     }
 
-    def __init__(self, min_ver: str = "3.10", max_ver: str = "3.14"):
+    def __init__(self, min_ver: str = "3.10", max_ver: str = "3.14") -> None:
         """Initializes the PreCIPipeline with Python version bounds.
 
         Args:
@@ -61,16 +61,47 @@ class PreCIPipeline:
             bool: True if the command succeeded (exit code 0), False otherwise.
         """
         print(f"\n>>> [Step: {description}]")
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
         try:
-            subprocess.run(command, check=True)
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                check=True,
+                encoding="utf-8",
+                env=env,
+            )
+
+            # Stream stdout/stderr back since we captured it successfully
+            if result.stdout:
+                sys.stdout.write(result.stdout)
+            if result.stderr:
+                sys.stderr.write(result.stderr)
+
             print(f"✅ {description} completed successfully.")
             self.record_result(description, True)
             return True
+
         except subprocess.CalledProcessError as e:
             print(f"\n❌ FATAL: '{description}' failed with exit code {e.returncode}")
+            if e.stdout:
+                print("--- STDOUT ---")
+                sys.stdout.write(e.stdout)
+            if e.stderr:
+                print("--- STDERR ---")
+                sys.stderr.write(e.stderr)
+
+            # Attach captured outputs to the failure record
             self.record_result(description, False)
             if fail_fast:
                 sys.exit(e.returncode)
+            return False
+        except (subprocess.SubprocessError, OSError) as e:
+            print(f"\n❌ FATAL: '{description}' generated an exception: {e}")
+            self.record_result(description, False)
+            if fail_fast:
+                sys.exit(1)
             return False
 
     def run_commands_parallel(self, tasks: list[tuple[list[str], str]]) -> bool:
@@ -89,11 +120,18 @@ class PreCIPipeline:
         """
         print("\n>>> [Parallel Execution] Starting concurrent checks...")
         success_overall = True
+        env = os.environ.copy()
+        env["PYTHONIOENCODING"] = "utf-8"
 
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future_to_desc = {
                 executor.submit(
-                    subprocess.run, cmd, capture_output=True, text=True
+                    subprocess.run,
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    env=env,
                 ): desc
                 for cmd, desc in tasks
             }
@@ -126,13 +164,12 @@ class PreCIPipeline:
         return success_overall
 
     def all_passed(self) -> bool:
-        """Predicate to check if all recorded results are passing.
+        """Predicate to check if every recorded result is a strict PASS.
 
         Returns:
-            bool: True if no failures were recorded, False otherwise.
-            Note: "SKIPPED" does not count as a failure.
+            bool: True iff every result is exactly True.
         """
-        return all(passed is not False for _, passed in self._results)
+        return all(passed is True for _, passed in self._results)
 
     def print_summary(self, title: str = "📋 PRE-CI SUMMARY") -> bool:
         """Prints a summary of all executed checks.
@@ -146,17 +183,17 @@ class PreCIPipeline:
         print("\n" + "=" * 60)
         print(title)
         print("=" * 60)
-        all_passed = True
         for desc, passed in self._results:
             status = self.STATUS_MAP.get(passed, "❓ UNKNOWN")
             print(f"{status} - {desc}")
-            if passed is False:
-                all_passed = False
         print("=" * 60)
-        return all_passed
+        return self.all_passed()
 
     def cleanup(self) -> None:
-        """Removes temporary cache directories and artifacts recursively."""
+        """Removes temporary cache directories and artifacts recursively.
+
+        Explicitly skips hidden directories and virtual environments.
+        """
         if self.is_ci:
             print(
                 "\n>>> [Cleanup] Skipped: CI environment detected "
@@ -166,27 +203,33 @@ class PreCIPipeline:
 
         print("\n>>> [Cleanup] Removing build artifacts and caches...")
 
-        # Define base folders and recursive patterns
-        targets = [
-            pathlib.Path(".coverage"),
-            pathlib.Path("dist"),
-            pathlib.Path("build"),
-        ]
-
-        # Recursively find __pycache__ and *.egg-info
-        root = pathlib.Path(".")
-        targets.extend(root.rglob("__pycache__"))
-        targets.extend(root.rglob("*.egg-info"))
-
-        for target in targets:
+        # Define base folders to remove if they exist at root
+        base_targets = [".coverage", "dist", "build"]
+        for target_name in base_targets:
+            target = pathlib.Path(target_name)
             if target.exists():
-                try:
-                    if target.is_dir():
-                        shutil.rmtree(target, ignore_errors=True)
-                    else:
-                        target.unlink()
-                except OSError as e:
-                    print(f"⚠️ Warning: Could not remove {target}: {e}")
+                self._remove_path(target)
+
+        # Recursively find __pycache__ and *.egg-info, skipping venvs and hidden dirs
+        venv_names = {".venv", "venv", "env"}
+        for root, dirs, _files in os.walk("."):
+            # Skip hidden directories and venvs
+            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in venv_names]
+
+            for d in dirs:
+                if d == "__pycache__" or d.endswith(".egg-info"):
+                    path = pathlib.Path(root) / d
+                    self._remove_path(path)
+
+    def _remove_path(self, path: pathlib.Path) -> None:
+        """Helper to remove a directory or file."""
+        try:
+            if path.is_dir():
+                shutil.rmtree(path, ignore_errors=True)
+            else:
+                path.unlink(missing_ok=True)
+        except OSError as e:
+            print(f"⚠️ Warning: Could not remove {path}: {e}")
 
     def execute(self) -> None:
         """Main execution path for the Pre-CI suite."""
@@ -207,6 +250,7 @@ class PreCIPipeline:
             [
                 "uv",
                 "run",
+                "--no-sync",
                 "python",
                 "tools/update_readme.py",
                 self.min_ver,
@@ -216,8 +260,12 @@ class PreCIPipeline:
         )
 
         # 3. Formatting and Linting (Run unconditionally so CI can push diffs)
-        self.run_command(["uv", "run", "ruff", "check", ".", "--fix"], "Ruff Linting")
-        self.run_command(["uv", "run", "ruff", "format", "."], "Ruff Formatting")
+        self.run_command(
+            ["uv", "run", "--no-sync", "ruff", "check", ".", "--fix"], "Ruff Linting"
+        )
+        self.run_command(
+            ["uv", "run", "--no-sync", "ruff", "format", "."], "Ruff Formatting"
+        )
 
         # 4. Parallel Checks (Vulture, Interrogate, Pytest)
         # Use --no-sync to avoid lock contention during parallel uv run calls
@@ -246,7 +294,8 @@ class PreCIPipeline:
         # 5. Build Verification Gate
         if self.all_passed():
             self.run_command(
-                ["uv", "run", "python", "build.py"], "Verifying Build Integrity"
+                ["uv", "run", "--no-sync", "python", "build.py"],
+                "Verifying Build Integrity",
             )
         else:
             self.record_result("Verifying Build Integrity", "SKIPPED")

@@ -115,7 +115,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   └── test_utils.py
 ├── tools/
 │   ├── __init__.py
-│   ├── pre_ci.ps1
+│   ├── pre_ci.py
 │   └── update_readme.py
 └── uv.lock
 ```
