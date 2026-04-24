@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [6.0.0] - 2026-04-22
 
 ### Added
+- **Pre-CI Refactoring:** Replaced legacy `tools/pre_ci.ps1` with a cross-platform Python orchestrator using `uv` (`tools/pre_ci.py`).
+- **Parallel Testing:** Added `pytest-xdist` to development dependencies to enable parallel execution of tests via `pytest -n auto`.
 - **Detailed Solver Error Reporting:** The UI now surfaces specific optimization failure reasons (e.g., `INFEASIBLE`, `MODEL_INVALID`) with actionable troubleshooting tips.
 - **GitHub CLI Integration (GEMINI.md):** Added a mandate for using the GitHub CLI (`gh`) to check PR reviews and CI status before starting work.
 - **Workflow Refinement (GEMINI.md):** Introduced an exception to skip the mandatory pre-CI validation if changes are strictly limited to non-code/non-config files (e.g., CHANGELOG). Note: `README.md` and configuration files still trigger full validation.

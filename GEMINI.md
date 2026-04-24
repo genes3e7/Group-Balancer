@@ -2,7 +2,7 @@
 
 This file documents architectural decisions, framework-specific quirks, and lessons learned during development to ensure consistency and avoid repeating mistakes.
 
-## 🚀 Post-Change Validation Workflow (Local Pre-CI)
+## 🚀 Post-Change Validation Workflow (Local Pre-CI & CI Pipeline)
 This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` or `git push` operation. It serves as a mandatory local Pre-CI check to ensure technical integrity and minimize redundant CI failures.
 
 1.  **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
@@ -10,16 +10,21 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 3.  **Documentation & Changelog Update**: 
     -   Review and update all related documentation (README, help text, etc.) to reflect the changes.
     -   **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
-4.  **Automated Technical Validation**: Run `powershell.exe -File tools/pre_ci.ps1`. This script is the **final gate** and ensures:
+4.  **Automated Technical Validation**: Run `uv run python tools/pre_ci.py`. This script is the **final gate** and ensures:
     -   **EXCEPTION**: If the changes are strictly limited to non-code and non-configuration files (e.g., `.txt`, `CHANGELOG.md`), this step may be skipped.
     -   **MANDATORY**: Any change to code, tests, configuration (e.g., `.yaml`, `.toml`, `.gitignore`), or `README.md` (which is auto-updated by the script) **MUST** trigger a full validation.
     -   Dependencies are synced (`uv sync`).
     -   Ruff linting and formatting compliance (0 errors).
-    -   Dead code analysis (`vulture` > 80% confidence).
-    -   Docstring coverage (`interrogate` > 80%).
-    -   Functional test coverage (`pytest-cov` > 80%).
+    -   Dead code analysis (`vulture` > 80% confidence, ensuring effectively 0 dead code).
+    -   Docstring coverage (`interrogate` == 100%).
+    -   Functional test coverage (`pytest-cov` >= 90%).
     -   README tree and metadata are updated.
     -   Build integrity is verified.
+
+### 💡 CI/CD & Pipeline Learnings
+- **Pre-CI Refactoring**: The validation pipeline utilizes a cross-platform, object-oriented `PreCIPipeline` Python class orchestrated via `uv` instead of a legacy PowerShell script. This prevents state leakage, natively integrates with the `uv` toolchain, and provides deterministic execution and clear `PASS/FAIL/SKIP` summary reporting.
+- **Compute Optimization**: To drastically reduce CI runtimes, testing runs in parallel using `pytest-xdist` (`pytest -n auto`). The unified final CI job detects its environment (`CI=true`) and skips redundant `pytest` execution because it safely leverages the pass artifacts from the preceding parallel test matrix.
+- **Least Privilege Configuration**: CI workflows (`ci.yml`) should never grant global `permissions: contents: write`. Instead, write permissions are scoped exclusively to the specific job (e.g., `finalize-updates`) that needs to push automated commits back to the branch.
 
 ## 💻 Environment & Syntax
 - **Preferred Shell**: Windows PowerShell.

@@ -10,9 +10,6 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-
 jobs:
   check-changes:
     runs-on: ubuntu-latest
@@ -20,7 +17,7 @@ jobs:
       python: ${{ steps.filter.outputs.python }}
     steps:
     - uses: actions/checkout@v4
-    - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
+    - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36
       id: filter
       with:
         filters: |
@@ -38,7 +35,6 @@ jobs:
       matrix:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
       fail-fast: false
-
     steps:
     - uses: actions/checkout@v4
     - name: Set up uv
@@ -46,12 +42,10 @@ jobs:
       with:
         enable-cache: true
         python-version: ${{ matrix.python-version }}
-        activate-environment: true
     - name: Install dependencies
-      run: uv sync --all-extras --frozen
-
+      run: uv sync --all-extras --frozen --no-compile
     - name: Test with Pytest
-      run: uv run --frozen pytest tests/
+      run: uv run --frozen pytest -n auto tests/
     - name: Record Success
       if: success()
       run: echo "${{ matrix.python-version }}" > python_version_${{ matrix.python-version }}.txt
@@ -69,12 +63,11 @@ jobs:
       contents: write
     if: |
       needs.test-matrix.result == 'success' &&
-      (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+      (github.event_name == 'push' || github.pull_request.head.repo.full_name == github.repository)
     steps:
     - uses: actions/checkout@v4
       with:
         fetch-depth: 0
-        ref: ${{ github.event.pull_request.head.ref || github.ref }}
     - name: Download all artifacts
       uses: actions/download-artifact@v4
       with:
@@ -84,38 +77,23 @@ jobs:
     - name: Determine Supported Range
       id: versions
       run: |
-        if [ -z "$(ls -A artifacts)" ]; then
-           exit 1
-        fi
-        cat artifacts/*.txt | sort -V > artifacts/sorted_versions.txt
-        
-        echo "MIN_VER=$(head -n 1 artifacts/sorted_versions.txt)" >> $GITHUB_ENV
-        echo "MAX_VER=$(tail -n 1 artifacts/sorted_versions.txt)" >> $GITHUB_ENV
+        cat artifacts/*.txt | sort -V > sorted_versions.txt
+        echo "MIN_VER=$(head -n 1 sorted_versions.txt)" >> $GITHUB_ENV
+        echo "MAX_VER=$(tail -n 1 sorted_versions.txt)" >> $GITHUB_ENV
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
       with:
         enable-cache: true
-        activate-environment: true
     - name: Install dependencies
-      run: uv sync --all-extras --frozen
-    - name: Update README Tree & Versions
-      run: |
-        uv run python tools/update_readme.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"
-    - name: Ruff Format & Fix
-      run: |
-        uv run ruff check . --fix
-        uv run ruff format .
-    - name: Verify Builder
-      run: |
-        uv run python build.py
-    - name: Commit and Push changes
-      env:
-        REF_NAME: ${{ github.head_ref || github.ref_name }}
+      run: uv sync --all-extras --frozen --no-compile
+    - name: Run Final CI Gate
+      run: uv run python tools/pre_ci.py "${{ env.MIN_VER }}" "${{ env.MAX_VER }}"
+    - name: Commit and Push
       run: |
         git config --global user.name "github-actions[bot]"
         git config --global user.email "github-actions[bot]@users.noreply.github.com"
         git add -u
         if ! git diff --staged --quiet; then
           git commit -m "chore: professional standards updates and CI maintenance"
-          git push origin HEAD:"$REF_NAME"
+          git push origin HEAD:${{ github.head_ref || github.ref_name }}
         fi
