@@ -160,7 +160,7 @@ def test_get_file_path_from_user_success(mock_val, mock_input):
     mock_val.return_value = "C:/abs/test.csv"
 
     # All these should be sanitized to "test.csv" before calling validator
-    for _ in range(4):
+    for _ in range(5):
         path = data_loader.get_file_path_from_user()
         assert path == "C:/abs/test.csv"
         mock_val.assert_called_with("test.csv")

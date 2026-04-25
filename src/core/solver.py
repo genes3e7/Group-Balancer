@@ -121,6 +121,9 @@ class AdvancedScoring(ScoringStrategy):
         """Generates independent score vectors for each weight mapping."""
         vectors = []
         for col, weight in cfg.score_weights.items():
+            if weight == 0:
+                continue
+
             scores = [
                 int(round(p.scores.get(col, 0.0) * config.SCALE_FACTOR))
                 for p in participants
@@ -310,6 +313,15 @@ class ConstraintBuilder:
                 cap_penalty = self.cfg.group_capacities[g] * 10
                 raw_penalty = (base_penalty + cap_penalty) * weight
                 penalty = min(raw_penalty, per_term_cap)
+
+                if raw_penalty > per_term_cap:
+                    logger.warning(
+                        "Clamping cohesion penalty for tag %s (G%d): %d -> %d",
+                        tag,
+                        g,
+                        raw_penalty,
+                        per_term_cap,
+                    )
 
                 self.objectives.append(used * penalty)
                 self.max_objective_bound += penalty

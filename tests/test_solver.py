@@ -217,7 +217,7 @@ def test_scoring_strategy_pass():
 
     with patch.multiple(ScoringStrategy, __abstractmethods__=frozenset()):
         strategy = ScoringStrategy()
-        strategy.get_score_vectors([], None)
+        assert strategy.get_score_vectors([], None) is None
 
 
 def test_solver_extreme_value_error():
