@@ -110,6 +110,12 @@ def render_step_2() -> None:
     total_p = len(df)
     score_cols = st.session_state.get("score_cols", [])
 
+    # Clamp stale groups_input if total_p shrank since last visit
+    if isinstance(st.session_state.get("groups_input"), (int, float)):
+        st.session_state["groups_input"] = min(
+            int(st.session_state["groups_input"]), total_p
+        )
+
     c1, c2 = st.columns(2)
     num_groups = int(
         c1.number_input("Groups", 1, total_p, min(2, total_p), key="groups_input")
