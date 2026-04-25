@@ -62,7 +62,7 @@ def test_optimization_service_run_fail_branch():
     """Cover line 41 (res is None)."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     with patch(
-        "src.core.services.run_optimization",
+        "src.core.services.solver_interface.run_optimization",
         return_value=(None, {"status": "INFEASIBLE"}),
     ):
         res, metrics = OptimizationService.run(
@@ -103,7 +103,8 @@ def test_optimization_service_error_handling_hit_108():
     """Cover line 108 (Exception branch)."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     with patch(
-        "src.core.services.run_optimization", side_effect=RuntimeError("Fail")
+        "src.core.services.solver_interface.run_optimization",
+        side_effect=RuntimeError("Fail"),
     ):
         res, metrics = OptimizationService.run(
             df,
