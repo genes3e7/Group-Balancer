@@ -31,8 +31,8 @@ class PreCIPipeline:
         """Initializes the PreCIPipeline with Python version bounds.
 
         Args:
-            min_ver (str): Minimum supported Python version. Defaults to "3.10".
-            max_ver (str): Maximum supported Python version. Defaults to "3.14".
+            min_ver: The minimum supported Python version string (e.g. "3.10").
+            max_ver: The maximum supported Python version string (e.g. "3.14").
         """
         self._results: list[tuple[str, bool | str, dict[str, str] | None]] = []
         self.is_ci = os.environ.get("CI", "").lower() in ("true", "1", "yes")
@@ -45,27 +45,33 @@ class PreCIPipeline:
         passed: bool | str,
         outputs: dict[str, str] | None = None,
     ) -> None:
-        """Records the outcome of a specific step for the final summary.
+        """Records the outcome of a specific pipeline step.
 
         Args:
-            description (str): A brief description of the step.
-            passed (bool | str): True/False for success/failure, or "SKIPPED".
-            outputs (dict[str, str] | None): Optional dict with 'stdout' and 'stderr'.
+            description: Human-readable label for the step being recorded.
+            passed: ``True`` on success, ``False`` on failure, or ``"SKIPPED"``
+                when a step is intentionally bypassed.
+            outputs: Optional dict with 'stdout' and 'stderr' captured content.
+
+        Returns:
+            None
         """
         self._results.append((description, passed, outputs))
 
     def run_command(
         self, command: list[str], description: str, fail_fast: bool = False
     ) -> bool:
-        """Executes a single shell command and prints the status.
+        """Executes a single shell command and records its pass/fail status.
 
         Args:
-            command (list[str]): The command to run as a list of strings.
-            description (str): A brief description of the step for logging.
-            fail_fast (bool): If True, exits the script immediately on failure.
+            command: The command and its arguments as a list of strings,
+                e.g. ``["uv", "run", "ruff", "check", "."]``.
+            description: Human-readable label printed before and after execution.
+            fail_fast: When ``True``, calls ``sys.exit`` immediately on non-zero
+                return code instead of returning ``False``.
 
         Returns:
-            bool: True if the command succeeded (exit code 0), False otherwise.
+            ``True`` if the command exits with code 0, ``False`` otherwise.
         """
         print(f"\n>>> [Step: {description}]")
         env = os.environ.copy()
@@ -114,18 +120,19 @@ class PreCIPipeline:
             return False
 
     def run_commands_parallel(self, tasks: list[tuple[list[str], str]]) -> bool:
-        """Executes multiple shell commands concurrently and captures output.
+        """Executes multiple shell commands concurrently via a thread pool.
 
-        This method leverages a ThreadPoolExecutor to run independent checks
-        (like linting, testing, and dead-code analysis) in parallel to optimize
-        execution speed.
+        Each task is submitted to a ``ThreadPoolExecutor``. stdout/stderr from
+        every subprocess is captured and printed after all futures complete.
+        Failures are aggregated; no individual failure short-circuits the others.
 
         Args:
-            tasks (list[tuple[list[str], str]]): A list of (command, description)
-                tuples to be executed concurrently.
+            tasks: A list of ``(command, description)`` tuples where ``command``
+                is a list of strings (as in ``run_command``) and ``description``
+                is the human-readable step label.
 
         Returns:
-            bool: True if all parallel tasks succeeded, False if any failed.
+            ``True`` if every task exits with code 0, ``False`` if any task fails.
         """
         print("\n>>> [Parallel Execution] Starting concurrent checks...")
         success_overall = True
@@ -189,13 +196,13 @@ class PreCIPipeline:
         return all(passed is True for _, passed, _ in self._results)
 
     def print_summary(self, title: str = "📋 PRE-CI SUMMARY") -> bool:
-        """Prints a summary of all executed checks.
+        """Prints a formatted table of all recorded step results.
 
         Args:
-            title (str): The header title for the summary block.
+            title: The heading printed above the summary table.
 
         Returns:
-            bool: True if all checks passed, False if any failed.
+            ``True`` if every recorded result is ``True``; ``False`` otherwise.
         """
         print("\n" + "=" * 60)
         print(title)
@@ -212,7 +219,14 @@ class PreCIPipeline:
         return all_passed
 
     def cleanup(self) -> None:
-        """Recursively removes build artifacts and caches from project roots."""
+        """Removes build artifacts and caches from the local workspace.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
         print("\n>>> [Cleanup] Purging caches and build artifacts...")
         root = pathlib.Path(".")
 
@@ -258,7 +272,10 @@ class PreCIPipeline:
         """Removes a file or directory, suppressing errors.
 
         Args:
-            path (pathlib.Path): The path to the file or directory to remove.
+            path: The path to the file or directory to remove.
+
+        Returns:
+            None
         """
         try:
             if path.is_dir():
@@ -269,7 +286,18 @@ class PreCIPipeline:
             print(f"⚠️ Warning: Could not remove {path}: {e}")
 
     def execute(self) -> None:
-        """Main execution path for the Pre-CI suite."""
+        """Runs the full Pre-CI gate sequence and exits non-zero on failure.
+
+        Execution order: environment sync → README update → Ruff lint/format →
+        parallel (Vulture + Interrogate [+ Pytest if not CI]) → summary →
+        optional build verification → cleanup → final summary.
+
+        Args:
+            None
+
+        Returns:
+            None
+        """
         print("\n" + "=" * 60)
         mode = "CI PIPELINE" if self.is_ci else "LOCAL PRE-CI"
         print(f"🚀 GROUP BALANCER {mode} GATE")
