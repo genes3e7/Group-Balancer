@@ -73,7 +73,7 @@ class PreCIPipeline:
         Returns:
             ``True`` if the command exits with code 0, ``False`` otherwise.
         """
-        print(f"\n>>> [Step: {description}]")
+        print(f"\n>>> [Step: {description}]", flush=True)
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
         try:
@@ -88,22 +88,27 @@ class PreCIPipeline:
 
             # Stream stdout/stderr back since we captured it successfully
             if result.stdout:
-                sys.stdout.write(result.stdout)
+                print(result.stdout, end="", file=sys.stdout, flush=True)
             if result.stderr:
-                sys.stderr.write(result.stderr)
+                print(result.stderr, end="", file=sys.stderr, flush=True)
 
-            print(f"✅ {description} completed successfully.")
-            self.record_result(description, True)
+            print(f"✅ {description} completed successfully.", flush=True)
+            self.record_result(
+                description, True, {"stdout": result.stdout, "stderr": result.stderr}
+            )
             return True
 
         except subprocess.CalledProcessError as e:
-            print(f"\n❌ FATAL: '{description}' failed with exit code {e.returncode}")
+            print(
+                f"\n❌ FATAL: '{description}' failed with exit code {e.returncode}",
+                flush=True,
+            )
             if e.stdout:
-                print("--- STDOUT ---")
-                sys.stdout.write(e.stdout)
+                print("--- STDOUT ---", flush=True)
+                print(e.stdout, end="", file=sys.stdout, flush=True)
             if e.stderr:
-                print("--- STDERR ---")
-                sys.stderr.write(e.stderr)
+                print("--- STDERR ---", flush=True)
+                print(e.stderr, end="", file=sys.stderr, flush=True)
 
             # Attach captured outputs to the failure record
             self.record_result(
@@ -113,8 +118,9 @@ class PreCIPipeline:
                 sys.exit(e.returncode)
             return False
         except (subprocess.SubprocessError, OSError) as e:
-            print(f"\n❌ FATAL: '{description}' generated an exception: {e}")
+            print(f"\n❌ FATAL: '{description}' error: {e}", flush=True)
             self.record_result(description, False, {"stdout": "", "stderr": str(e)})
+
             if fail_fast:
                 sys.exit(1)
             return False
@@ -134,7 +140,7 @@ class PreCIPipeline:
         Returns:
             ``True`` if every task exits with code 0, ``False`` if any task fails.
         """
-        print("\n>>> [Parallel Execution] Starting concurrent checks...")
+        print("\n>>> [Parallel Execution] Starting concurrent checks...", flush=True)
         success_overall = True
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
@@ -156,14 +162,14 @@ class PreCIPipeline:
                 desc = future_to_desc[future]
                 try:
                     result = future.result()
-                    print(f"\n--- Output from {desc} ---")
+                    print(f"\n--- Output from {desc} ---", flush=True)
                     if result.stdout:
-                        print(result.stdout.strip())
+                        print(result.stdout.strip(), flush=True)
                     if result.stderr:
-                        print(result.stderr.strip())
+                        print(result.stderr.strip(), flush=True)
 
                     if result.returncode == 0:
-                        print(f"✅ {desc} completed successfully.")
+                        print(f"✅ {desc} completed successfully.", flush=True)
                         self.record_result(
                             desc,
                             True,
@@ -172,7 +178,8 @@ class PreCIPipeline:
                     else:
                         print(
                             f"❌ FATAL: '{desc}' failed with exit code "
-                            f"{result.returncode}"
+                            f"{result.returncode}",
+                            flush=True,
                         )
                         self.record_result(
                             desc,
@@ -181,7 +188,10 @@ class PreCIPipeline:
                         )
                         success_overall = False
                 except (subprocess.SubprocessError, OSError) as exc:
-                    print(f"\n❌ FATAL: '{desc}' generated an exception: {exc}")
+                    print(
+                        f"\n❌ FATAL: '{desc}' generated an exception: {exc}",
+                        flush=True,
+                    )
                     self.record_result(desc, False, {"stdout": "", "stderr": str(exc)})
                     success_overall = False
 
@@ -204,18 +214,18 @@ class PreCIPipeline:
         Returns:
             ``True`` if every recorded result is ``True``; ``False`` otherwise.
         """
-        print("\n" + "=" * 60)
-        print(title)
-        print("=" * 60)
+        print("\n" + "=" * 60, flush=True)
+        print(title, flush=True)
+        print("=" * 60, flush=True)
 
         all_passed = True
         for description, passed, _ in self._results:
             status_label = self.STATUS_MAP.get(passed, "❓ UNKNOWN")
-            print(f"{status_label.ljust(10)} | {description}")
+            print(f"{status_label.ljust(10)} | {description}", flush=True)
             if passed is False:
                 all_passed = False
 
-        print("=" * 60)
+        print("=" * 60, flush=True)
         return all_passed
 
     def cleanup(self) -> None:
@@ -227,7 +237,7 @@ class PreCIPipeline:
         Returns:
             None
         """
-        print("\n>>> [Cleanup] Purging caches and build artifacts...")
+        print("\n>>> [Cleanup] Purging caches and build artifacts...", flush=True)
         root = pathlib.Path(".")
 
         # Standard top-level targets that we want to remove explicitly
@@ -258,12 +268,11 @@ class PreCIPipeline:
                 dirnames[:] = []  # Don't recurse into these
                 continue
 
-            # Identify artifacts in the current (non-skipped) directory
-            for d in dirnames:
-                if d == "__pycache__":
+            # Identify and prune artifacts in the current (non-skipped) directory
+            for d in list(dirnames):
+                if d == "__pycache__" or d.endswith(".egg-info"):
                     folders.append(path / d)
-                if d.endswith(".egg-info"):
-                    folders.append(path / d)
+                    dirnames.remove(d)
 
         for target in sorted(set(folders)):
             self._remove_path(target)
@@ -283,7 +292,7 @@ class PreCIPipeline:
             else:
                 path.unlink(missing_ok=True)
         except OSError as e:
-            print(f"⚠️ Warning: Could not remove {path}: {e}")
+            print(f"⚠️ Warning: Could not remove {path}: {e}", flush=True)
 
     def execute(self) -> None:
         """Runs the full Pre-CI gate sequence and exits non-zero on failure.
@@ -298,10 +307,10 @@ class PreCIPipeline:
         Returns:
             None
         """
-        print("\n" + "=" * 60)
+        print("\n" + "=" * 60, flush=True)
         mode = "CI PIPELINE" if self.is_ci else "LOCAL PRE-CI"
-        print(f"🚀 GROUP BALANCER {mode} GATE")
-        print("=" * 60)
+        print(f"🚀 GROUP BALANCER {mode} GATE", flush=True)
+        print("=" * 60, flush=True)
 
         # 1. Sync Dependencies (Fail-fast as subsequent steps depend on it)
         self.run_command(
@@ -369,9 +378,9 @@ class PreCIPipeline:
 
         # 6. Final Report
         if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
-            print("\n✨ ALL CHECKS PASSED.\n")
+            print("\n✨ ALL CHECKS PASSED.\n", flush=True)
         else:
-            print("\n❌ Pipeline failed. See logs above.\n")
+            print("\n❌ Pipeline failed. See logs above.\n", flush=True)
             sys.exit(1)
 
 
