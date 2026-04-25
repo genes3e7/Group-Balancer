@@ -24,11 +24,8 @@ def mock_file(tmp_path):
 
 @pytest.fixture(autouse=True)
 def mock_project_root(tmp_path):
-    """Mocks getcwd and realpath to use tmp_path as project root."""
-    with (
-        patch("os.getcwd", return_value=str(tmp_path)),
-        patch("os.path.realpath", side_effect=lambda x: x),
-    ):
+    """Mocks getcwd to use tmp_path as project root."""
+    with patch("os.getcwd", return_value=str(tmp_path)):
         yield
 
 
@@ -137,17 +134,6 @@ def test_load_data_participant_limit(mock_file):
         assert data is None
 
 
-def test_load_data_empty_records(tmp_path):
-    """Test empty records handling."""
-    f = tmp_path / "empty.csv"
-    pd.DataFrame(columns=[config.COL_NAME, f"{config.SCORE_PREFIX}1"]).to_csv(
-        f,
-        index=False,
-    )
-    data = data_loader.load_data(str(f))
-    assert data is None
-
-
 def test_load_data_missing_constraint_cols(tmp_path):
     """Test that missing constraint cols are gracefully filled."""
     f = tmp_path / "noconstraints.csv"
@@ -171,21 +157,13 @@ def test_get_file_path_from_user_success(mock_val, mock_input):
         "& 'test.csv'",
         '""test.csv""',
     ]
-    mock_val.side_effect = [
-        "C:/abs/test.csv",
-        "C:/abs/test.csv",
-        "C:/abs/test.csv",
-        "C:/abs/test.csv",
-    ]
+    mock_val.return_value = "C:/abs/test.csv"
 
-    path1 = data_loader.get_file_path_from_user()
-    path2 = data_loader.get_file_path_from_user()
-    path3 = data_loader.get_file_path_from_user()
-    path4 = data_loader.get_file_path_from_user()
-    assert path1 == "C:/abs/test.csv"
-    assert path2 == "C:/abs/test.csv"
-    assert path3 == "C:/abs/test.csv"
-    assert path4 == "C:/abs/test.csv"
+    # All these should be sanitized to "test.csv" before calling validator
+    for _ in range(4):
+        path = data_loader.get_file_path_from_user()
+        assert path == "C:/abs/test.csv"
+        mock_val.assert_called_with("test.csv")
 
 
 @patch("builtins.input")
@@ -256,8 +234,10 @@ def test_load_data_coerce(tmp_path):
 def test_load_data_empty_records_empty_dataframe(tmp_path):
     """Return None when the file contains only a header row."""
     f = tmp_path / "test.csv"
-    with open(f, "w") as fw:
-        fw.write(f"{config.COL_NAME},{config.SCORE_PREFIX}1\n")
+    pd.DataFrame(columns=[config.COL_NAME, f"{config.SCORE_PREFIX}1"]).to_csv(
+        f,
+        index=False,
+    )
     with patch("src.core.data_loader.validate_file_path", return_value=str(f)):
         data = data_loader.load_data(str(f))
     assert data is None

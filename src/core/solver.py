@@ -188,8 +188,8 @@ class ConstraintBuilder:
             separators: Mapping of separator tags to sets of participant indices.
         """
         total_p = self.num_people
-        for tag, s_set in separators.items():
-            if not s_set or not tag.strip():
+        for _, s_set in separators.items():
+            if not s_set:
                 continue
 
             n_tag = len(s_set)
@@ -294,7 +294,8 @@ class ConstraintBuilder:
         # Prevent 64-bit integer overflow in CP-SAT.
         # aggregate_cap (e.g. 1 << 60) must fit all objectives.
         aggregate_cap = 1 << 60
-        per_term_cap = aggregate_cap // max(1, len(groupers) * self.num_groups)
+        active_tags = sum(1 for g_set in groupers.values() if len(g_set) > 1)
+        per_term_cap = aggregate_cap // max(1, active_tags * self.num_groups)
         base_penalty = min(self.max_objective_bound * 10 + 1000, per_term_cap)
 
         for tag, g_set in groupers.items():
@@ -319,11 +320,33 @@ class ConstraintBuilder:
         return self.model
 
 
+def _is_missing(value: object) -> bool:
+    """Returns True for None and any pandas/NumPy scalar missing value."""
+    if value is None:
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
+
+
 def _clean_tag_cell(value: object) -> str:
     """Coerces a raw tag cell to a string, treating NaN/None as empty."""
-    if value is None or pd.isna(value):
+    if _is_missing(value):
         return ""
     return str(value)
+
+
+def _clean_score_cell(value: object) -> float:
+    """Coerces a raw score cell to float, treating missing/blank as 0.0."""
+    if _is_missing(value):
+        return 0.0
+    if isinstance(value, str) and not value.strip():
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def solve_with_ortools(
@@ -343,7 +366,7 @@ def solve_with_ortools(
         Participant(
             name=str(p.get(config.COL_NAME, f"P{i}")),
             scores={
-                str(k): float(v)
+                str(k): _clean_score_cell(v)
                 for k, v in p.items()
                 if str(k).startswith(config.SCORE_PREFIX)
             },

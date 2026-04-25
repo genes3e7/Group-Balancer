@@ -81,7 +81,18 @@ jobs:
     - name: Determine Supported Range
       id: versions
       run: |
-        cat artifacts/*.txt | sort -V > "$RUNNER_TEMP/sorted_versions.txt"
+        if [ -z "$(ls -A artifacts 2>/dev/null)" ]; then
+           echo "No artifacts found."
+           exit 1
+        fi
+        # Exclude experimental/allowed-failure versions from the stable badge range
+        cat artifacts/*.txt | (grep -v "3.15-dev" || true) | sort -V > "$RUNNER_TEMP/sorted_versions.txt"
+        
+        if [ ! -s "$RUNNER_TEMP/sorted_versions.txt" ]; then
+          echo "No stable versions found. Skipping badge update."
+          exit 0
+        fi
+        
         echo "MIN_VER=$(head -n 1 "$RUNNER_TEMP/sorted_versions.txt")" >> $GITHUB_ENV
         echo "MAX_VER=$(tail -n 1 "$RUNNER_TEMP/sorted_versions.txt")" >> $GITHUB_ENV
     - name: Set up uv
