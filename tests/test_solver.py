@@ -197,7 +197,7 @@ def test_circular_conflict_edge():
         Participant(name="C", scores={"S": 10}, groupers="Y", separators="X"),
     ]
 
-    cfg = SolverConfig(
+    solver_config = SolverConfig(
         num_groups=2,
         group_capacities=[2, 1],
         score_weights={"S": 1.0},
@@ -205,7 +205,7 @@ def test_circular_conflict_edge():
         conflict_priority=ConflictPriority.GROUPERS,
     )
 
-    df, metrics = run_optimization(participants, cfg)
+    df, metrics = run_optimization(participants, solver_config)
     assert df is not None
     assert len(df) == 3
     assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
