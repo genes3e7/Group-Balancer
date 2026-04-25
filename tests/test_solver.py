@@ -226,7 +226,7 @@ def test_solver_extreme_value_error():
     # A huge weight so weight_m > 2**60
     # weight_m is weight * 100, so weight > 2**60 / 100
     huge_weight = (2**61) / 100.0
-    with patch("src.core.models.SolverConfig.__post_init__"):
+    with patch("src.core.models.SolverConfig.validate_safety_bounds"):
         cfg = SolverConfig(
             num_groups=1, group_capacities=[1], score_weights={"S1": huge_weight}
         )
@@ -241,7 +241,19 @@ def test_solver_extreme_value_error():
 
 def test_solver_objective_generation_edge():
     """Cover lines 230 (min_sum==0, max_sum==0), 234-244, and 250."""
-    participants = [Participant(name="P1", scores={"S1": 1e12, "S2": 0.0})]
+    # We want weighted_bound to be > 2**60 but <= 2**61 so that one scaling pass
+    # (dividing by 2) brings it back to <= 2**60.
+    # Logic in solver.py for 1 participant:
+    # scaled_score = float_score * SCALE_FACTOR
+    # diff_bound = scaled_score * 1 * 2
+    # weighted_bound = diff_bound * 100 (for weight 1.0)
+    # => weighted_bound = float_score * SCALE_FACTOR * 200
+
+    # Target: weighted_bound = 2**60 + 1000
+    target_weighted = (2**60) + 1000
+    float_score = target_weighted / (config.SCALE_FACTOR * 200.0)
+    participants = [Participant(name="P1", scores={"S1": float_score, "S2": 0.0})]
+
     cfg = SolverConfig(
         num_groups=2, group_capacities=[1, 1], score_weights={"S1": 1.0, "S2": 1.0}
     )

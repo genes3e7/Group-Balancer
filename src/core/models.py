@@ -91,6 +91,14 @@ class SolverConfig:
             self, "score_weights", MappingProxyType(dict(self.score_weights))
         )
 
+        self.validate_safety_bounds()
+
+    def validate_safety_bounds(self) -> None:
+        """Enforces architectural and performance safety limits.
+
+        Raises:
+            ValueError: If any parameter exceeds defined safety thresholds.
+        """
         if self.num_groups <= 0:
             raise ValueError("Number of groups must be positive.")
         if self.num_groups > config.MAX_GROUPS:

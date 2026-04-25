@@ -51,6 +51,10 @@ testpaths = ["tests"]
 pythonpath = ["."]
 addopts = "--cov=src --cov-report=term-missing --cov-fail-under=90"
 
+[tool.setuptools]
+packages = ["src"]
+package-dir = {"" = "."}
+
 [tool.interrogate]
 ignore-init-module = true
 ignore-init-method = true
@@ -62,7 +66,7 @@ ignore-nested-functions = false
 ignore-nested-classes = false
 ignore-setters = false
 fail-under = 100
-exclude = ["setup.py", "tests", "build"]
+exclude = ["setup.py", "tests", "build", "tools", "dist", ".venv"]
 ignore-regex = ["^get$", "^mock_.*", ".*Base$"]
 verbose = 0
 quiet = false

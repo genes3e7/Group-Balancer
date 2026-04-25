@@ -156,6 +156,7 @@ def test_get_file_path_from_user_success(mock_val, mock_input):
         "&test.csv",
         "& 'test.csv'",
         '""test.csv""',
+        "test.csv",
     ]
     mock_val.return_value = "C:/abs/test.csv"
 

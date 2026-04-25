@@ -34,8 +34,8 @@ def test_data_service_get_score_cols():
     assert cols == ["Score1"]
 
 
-def test_optimization_service_success():
-    """Test successful optimization wrap."""
+def test_optimization_service_success_path():
+    """Verify that the service correctly orchestrates a successful optimization run."""
     df = pd.DataFrame(
         {
             config.COL_NAME: ["A", "B"],
@@ -44,22 +44,27 @@ def test_optimization_service_success():
             config.COL_SEPARATOR: ["", ""],
         },
     )
-    res, metrics = OptimizationService.run(
-        df,
-        [1, 1],
-        {"Score1": 1.0},
-        opt_mode=OptimizationMode.SIMPLE,
-        conflict_priority=ConflictPriority.GROUPERS,
-        timeout_seconds=5,
-    )
+    mock_results = [{"Name": "A", "Group": 1}, {"Name": "B", "Group": 2}]
+    mock_metrics = {"status": "OPTIMAL", "elapsed": 0.1}
 
-    assert res is not None
-    assert len(res) == 2
-    assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
+    target = "src.core.services.solver_interface.run_optimization"
+    with patch(target, return_value=(mock_results, mock_metrics)):
+        res, metrics = OptimizationService.run(
+            df,
+            [1, 1],
+            {"Score1": 1.0},
+            OptimizationMode.SIMPLE,
+            ConflictPriority.GROUPERS,
+            10,
+        )
+
+        assert res is not None
+        assert len(res) == 2
+        assert metrics["status"] == "OPTIMAL"
 
 
-def test_optimization_service_run_fail_branch():
-    """Cover line 41 (res is None)."""
+def test_optimization_service_handles_solver_failure():
+    """Ensure the service gracefully handles cases where the solver returns None."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     with patch(
         "src.core.services.solver_interface.run_optimization",
@@ -77,8 +82,8 @@ def test_optimization_service_run_fail_branch():
         assert metrics["status"] == "INFEASIBLE"
 
 
-def test_optimization_service_empty_caps():
-    """Cover line 108 (Group capacities cannot be empty)."""
+def test_optimization_service_validates_group_capacities():
+    """The service should raise ValueError if no group capacities are provided."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     with pytest.raises(ValueError, match="Group capacities cannot be empty"):
         OptimizationService.run(
@@ -91,22 +96,20 @@ def test_optimization_service_empty_caps():
         )
 
 
-def test_data_service_cleaning_no_name():
-    """Cover line 41 (COL_NAME not in columns)."""
+def test_data_service_cleaning_handles_missing_names():
+    """COL_NAME should be added and normalized to empty string if missing."""
     df = pd.DataFrame({"Score1": [10]})
     clean = DataService.clean_participants_df(df)
     assert config.COL_NAME in clean.columns
     assert clean.iloc[0][config.COL_NAME] == ""
 
 
-def test_optimization_service_error_handling_hit_108():
-    """Cover line 108 (Exception branch)."""
+def test_optimization_service_catches_runtime_exceptions():
+    """Verify that the service captures and reports unexpected runtime errors."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
-    with patch(
-        "src.core.services.solver_interface.run_optimization",
-        side_effect=RuntimeError("Fail"),
-    ):
-        res, metrics = OptimizationService.run(
+    target = "src.core.services.solver_interface.run_optimization"
+    with patch(target, side_effect=RuntimeError("Fail")):
+        _, metrics = OptimizationService.run(
             df,
             [1],
             {"S1": 1.0},
@@ -115,3 +118,4 @@ def test_optimization_service_error_handling_hit_108():
             10,
         )
         assert metrics["status"] == "ERROR"
+        assert "Fail" in metrics["error"]

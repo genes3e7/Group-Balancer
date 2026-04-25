@@ -125,14 +125,14 @@ class AdvancedScoring(ScoringStrategy):
                 continue
 
             scores = [
-                int(round(p.scores.get(col, 0.0) * config.SCALE_FACTOR))
+                round(p.scores.get(col, 0.0) * config.SCALE_FACTOR)
                 for p in participants
             ]
             # Ensure tiny positive weights are not rounded to 0
             if weight > 0:
-                weight_m = max(1, int(round(weight * 100)))
+                weight_m = max(1, round(weight * 100))
             else:
-                weight_m = int(round(weight * 100))
+                weight_m = round(weight * 100)
             vectors.append((col, scores, weight_m))
         return vectors
 
@@ -150,7 +150,7 @@ class SimpleScoring(ScoringStrategy):
                 p.scores.get(c, 0.0) * cfg.score_weights.get(c, 1.0)
                 for c in cfg.score_weights
             )
-            scores.append(int(round(total * config.SCALE_FACTOR)))
+            scores.append(round(total * config.SCALE_FACTOR))
         return [("simple_total", scores, 100)]
 
 
@@ -374,20 +374,27 @@ def solve_with_ortools(
         Tuple: (grouped_participants, solver_status, elapsed_time)
     """
     # Convert raw dicts to Participant models
-    participants = [
-        Participant(
-            name=str(p.get(config.COL_NAME, f"P{i}")),
-            scores={
-                str(k): _clean_score_cell(v)
-                for k, v in p.items()
-                if str(k).startswith(config.SCORE_PREFIX)
-            },
-            groupers=_clean_tag_cell(p.get(config.COL_GROUPER)),
-            separators=_clean_tag_cell(p.get(config.COL_SEPARATOR)),
-            original_index=p.get("_original_index", i),
+    participants = []
+    for i, p in enumerate(participants_raw):
+        raw_name = p.get(config.COL_NAME)
+        name = str(raw_name) if not _is_missing(raw_name) else f"P{i}"
+
+        raw_idx = p.get("_original_index")
+        orig_idx = int(raw_idx) if not _is_missing(raw_idx) else i
+
+        participants.append(
+            Participant(
+                name=name,
+                scores={
+                    str(k): _clean_score_cell(v)
+                    for k, v in p.items()
+                    if str(k).startswith(config.SCORE_PREFIX)
+                },
+                groupers=_clean_tag_cell(p.get(config.COL_GROUPER)),
+                separators=_clean_tag_cell(p.get(config.COL_SEPARATOR)),
+                original_index=orig_idx,
+            )
         )
-        for i, p in enumerate(participants_raw)
-    ]
 
     start_time = time.time()
 

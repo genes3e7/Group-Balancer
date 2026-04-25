@@ -25,7 +25,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 ### 💡 CI/CD & Pipeline Learnings
 
 - **Pre-CI Refactoring**: The validation pipeline utilizes a cross-platform, object-oriented `PreCIPipeline` Python class orchestrated via `uv` instead of a legacy PowerShell script. This prevents state leakage, natively integrates with the `uv` toolchain, and provides deterministic execution and clear `PASS/FAIL/SKIP` summary reporting.
-- **Compute Optimization**: To drastically reduce CI runtimes, testing runs in parallel using `pytest-xdist` (`pytest -n auto`). The unified final CI job detects its environment (`CI=true`) and skips redundant `pytest` execution because it safely leverages the pass artifacts from the preceding parallel test matrix.
+- **Compute Optimization**: To drastically reduce CI runtimes, the remote test-matrix runs `pytest -n auto` (via `pytest-xdist`). The unified local Pre-CI gate (`tools/pre_ci.py`) executes tests sequentially to ensure stable coverage merging and provide a clear progress breakdown.
 - **Least Privilege Configuration**: CI workflows (`ci.yml`) should never grant global `permissions: contents: write`. Instead, write permissions are scoped exclusively to the specific job (e.g., `finalize-updates`) that needs to push automated commits back to the branch.
 
 ## 💻 Environment & Syntax
@@ -56,13 +56,13 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Lesson:** UI widgets (e.g., `st.number_input`) must have explicit, stable keys based on data identity (e.g., `key=f"cap_{num_groups}_{i}"`) or scale (e.g., incorporating `total_p`) rather than relying on positional rendering.
 - **Risk:** Without stable keys, changing participant counts or reordering groups can cause Streamlit to attach stale values to the wrong inputs or trigger `StreamlitAPIException`.
 
-### 5. Defensive State Clamping
-- **Lesson**: When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
-- **Risk**: Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
-
 ### 4. Decoupling Logic from Display Text
 - **Lesson:** UI controls (like radio buttons) should map to stable tokens (e.g., `"simple"` or `"advanced"`) for backend logic, rather than forwarding full display labels.
 - **Risk:** Forwarding display strings into the core solver makes the logic brittle; changing a UI label could silently break `startswith` branching.
+
+### 5. Defensive State Clamping
+- **Lesson**: When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
+- **Risk**: Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
 
 ## Optimization & Solver (OR-Tools)
 
@@ -96,13 +96,13 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
   - Score columns normalize to `0.0`.
 - **Risk:** OR-Tools solvers and pandas operations can crash or produce non-deterministic results when encountering mixed-type missing scalars.
 
-### 4. Path Sanitization
-- **Lesson**: CLI path inputs must be stripped of shell artifacts (quotes, ampersands) before validation.
-- **Implementation**: `get_file_path_from_user` uses a regex to sanitize raw input before passing it to `validate_file_path`.
-
 ### 3. Coercion Warnings
 - **Lesson:** When using `pd.to_numeric(errors="coerce")`, distinguish between originally missing data (blank cells) and truly invalid strings.
 - **Risk:** Failing to separate these cases leads to false-positive warnings that confuse users about "invalid" data.
+
+### 4. Path Sanitization
+- **Lesson**: CLI path inputs must be stripped of shell artifacts (quotes, ampersands) before validation.
+- **Implementation**: `get_file_path_from_user` uses a regex to sanitize raw input before passing it to `validate_file_path`.
 
 ## 🛡️ Defensive Programming & Data Safety
 
