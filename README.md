@@ -1,6 +1,7 @@
 # ⚖️ Group Balancer V6
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app/)
+[![Documentation](https://img.shields.io/badge/Docs-GitBook-blue.svg)](https://genes3e7.gitbook.io/group-balancer-docs/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.10 - 3.14](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
