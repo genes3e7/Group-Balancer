@@ -87,10 +87,16 @@ jobs:
         if [ -z "$(ls -A artifacts)" ]; then
            exit 1
         fi
-        cat artifacts/*.txt | sort -V > artifacts/sorted_versions.txt
+        # Exclude experimental/allowed-failure versions from the stable badge range
+        cat artifacts/*.txt | grep -v "3.15-dev" | sort -V > sorted_versions.txt
         
-        echo "MIN_VER=$(head -n 1 artifacts/sorted_versions.txt)" >> $GITHUB_ENV
-        echo "MAX_VER=$(tail -n 1 artifacts/sorted_versions.txt)" >> $GITHUB_ENV
+        if [ ! -s sorted_versions.txt ]; then
+          echo "No stable versions found. Skipping badge update."
+          exit 0
+        fi
+        
+        echo "MIN_VER=$(head -n 1 sorted_versions.txt)" >> $GITHUB_ENV
+        echo "MAX_VER=$(tail -n 1 sorted_versions.txt)" >> $GITHUB_ENV
     - name: Set up uv
       uses: astral-sh/setup-uv@v5
       with:
