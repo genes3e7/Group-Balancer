@@ -212,7 +212,9 @@ class PreCIPipeline:
             title: The heading printed above the summary table.
 
         Returns:
-            ``True`` if every recorded result is ``True``; ``False`` otherwise.
+            ``True`` if there are no explicit ``False`` results (i.e., ``True``
+            and ``"SKIPPED"`` entries are treated as non-failures);
+            ``False`` otherwise.
         """
         print("\n" + "=" * 60, flush=True)
         print(title, flush=True)
