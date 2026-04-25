@@ -7,6 +7,7 @@ import pathlib
 import shutil
 import subprocess
 import sys
+from typing import ClassVar
 
 
 class PreCIPipeline:
@@ -14,13 +15,13 @@ class PreCIPipeline:
 
     Attributes:
         STATUS_MAP (dict): Maps boolean or string outcomes to visual status labels.
-        _results (list): Internal log of (description, status) tuples for all steps.
+        _results (list): Internal log of (description, status, outputs) tuples.
         is_ci (bool): True if executing within a remote CI environment.
         min_ver (str): Minimum supported Python version for README updates.
         max_ver (str): Maximum supported Python version for README updates.
     """
 
-    STATUS_MAP = {
+    STATUS_MAP: ClassVar[dict[bool | str, str]] = {
         True: "✅ PASS",
         False: "❌ FAIL",
         "SKIPPED": "⏭️  SKIP",
@@ -33,7 +34,7 @@ class PreCIPipeline:
             min_ver (str): Minimum supported Python version. Defaults to "3.10".
             max_ver (str): Maximum supported Python version. Defaults to "3.14".
         """
-        self._results = []
+        self._results: list[tuple[str, bool | str, dict[str, str] | None]] = []
         self.is_ci = os.environ.get("CI", "").lower() in ("true", "1", "yes")
         self.min_ver = min_ver
         self.max_ver = max_ver
@@ -70,7 +71,7 @@ class PreCIPipeline:
         env = os.environ.copy()
         env["PYTHONIOENCODING"] = "utf-8"
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # noqa: S603
                 command,
                 capture_output=True,
                 text=True,
@@ -107,7 +108,7 @@ class PreCIPipeline:
             return False
         except (subprocess.SubprocessError, OSError) as e:
             print(f"\n❌ FATAL: '{description}' generated an exception: {e}")
-            self.record_result(description, False, {"stdout": str(e), "stderr": ""})
+            self.record_result(description, False, {"stdout": "", "stderr": str(e)})
             if fail_fast:
                 sys.exit(1)
             return False
@@ -134,7 +135,7 @@ class PreCIPipeline:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future_to_desc = {
                 executor.submit(
-                    subprocess.run,
+                    subprocess.run,  # noqa: S603
                     cmd,
                     capture_output=True,
                     text=True,
@@ -174,7 +175,7 @@ class PreCIPipeline:
                         success_overall = False
                 except (subprocess.SubprocessError, OSError) as exc:
                     print(f"\n❌ FATAL: '{desc}' generated an exception: {exc}")
-                    self.record_result(desc, False, {"stdout": str(exc), "stderr": ""})
+                    self.record_result(desc, False, {"stdout": "", "stderr": str(exc)})
                     success_overall = False
 
         return success_overall
@@ -199,49 +200,69 @@ class PreCIPipeline:
         print("\n" + "=" * 60)
         print(title)
         print("=" * 60)
-        for desc, passed, _ in self._results:
-            status = self.STATUS_MAP.get(passed, "❓ UNKNOWN")
-            print(f"{status} - {desc}")
+
+        all_passed = True
+        for description, passed, _ in self._results:
+            status_label = self.STATUS_MAP.get(passed, "❓ UNKNOWN")
+            print(f"{status_label.ljust(10)} | {description}")
+            if passed is False:
+                all_passed = False
+
         print("=" * 60)
-        return self.all_passed()
+        return all_passed
 
     def cleanup(self) -> None:
-        """Removes temporary cache directories and artifacts recursively.
+        """Recursively removes build artifacts and caches from project roots."""
+        print("\n>>> [Cleanup] Purging caches and build artifacts...")
+        root = pathlib.Path(".")
 
-        Explicitly skips hidden directories and virtual environments.
-        """
-        if self.is_ci:
-            print(
-                "\n>>> [Cleanup] Skipped: CI environment detected "
-                "(preserving artifacts)."
-            )
-            return
+        # Standard top-level targets that we want to remove explicitly
+        base_targets = [
+            "build",
+            "dist",
+            ".ruff_cache",
+            ".pytest_cache",
+            ".coverage",
+            "python_version_*.txt",
+            "artifacts",
+        ]
 
-        print("\n>>> [Cleanup] Removing build artifacts and caches...")
+        # Dynamically find nested artifacts, explicitly skipping venvs and hidden dirs
+        venv_names = {"venv", ".venv", "env"}
+        if os.environ.get("VIRTUAL_ENV"):
+            venv_names.add(pathlib.Path(os.environ["VIRTUAL_ENV"]).name)
 
-        # Define base folders to remove if they exist at root
-        base_targets = [".coverage", "dist", "build", ".ruff_cache", ".pytest_cache"]
-        for target_name in base_targets:
-            target = pathlib.Path(target_name)
-            if target.exists():
-                self._remove_path(target)
+        folders = []
+        for base in base_targets:
+            folders.extend(root.glob(base))
 
-        # Recursively find __pycache__ and *.egg-info, skipping venvs and hidden dirs
-        venv_names = {".venv", "venv", "env"}
-        for root, dirs, _files in os.walk("."):
-            # Skip hidden directories and venvs
-            dirs[:] = [d for d in dirs if not d.startswith(".") and d not in venv_names]
+        for dirpath, dirnames, _filenames in os.walk(root):
+            path = pathlib.Path(dirpath)
 
-            for d in dirs:
-                if d == "__pycache__" or d.endswith(".egg-info"):
-                    path = pathlib.Path(root) / d
-                    self._remove_path(path)
+            # Skip common environment and hidden directories
+            if path.name in venv_names or path.name.startswith("."):
+                dirnames[:] = []  # Don't recurse into these
+                continue
+
+            # Identify artifacts in the current (non-skipped) directory
+            for d in dirnames:
+                if d == "__pycache__":
+                    folders.append(path / d)
+                if d.endswith(".egg-info"):
+                    folders.append(path / d)
+
+        for target in sorted(set(folders)):
+            self._remove_path(target)
 
     def _remove_path(self, path: pathlib.Path) -> None:
-        """Helper to remove a directory or file."""
+        """Removes a file or directory, suppressing errors.
+
+        Args:
+            path (pathlib.Path): The path to the file or directory to remove.
+        """
         try:
             if path.is_dir():
-                shutil.rmtree(path, ignore_errors=True)
+                shutil.rmtree(path)
             else:
                 path.unlink(missing_ok=True)
         except OSError as e:
