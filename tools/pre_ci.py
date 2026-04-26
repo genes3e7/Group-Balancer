@@ -81,7 +81,6 @@ class PreCIPipeline:
             subprocess.run(  # noqa: S603
                 command,
                 check=True,
-                encoding="utf-8",
                 env=env,
             )
 

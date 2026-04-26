@@ -330,20 +330,22 @@ def _render_table_view(score_cols: list[str]) -> None:
 
 @st.cache_data(show_spinner=False)
 def _build_excel_bytes(
-    df_hash: int, _df: pd.DataFrame, score_cols: tuple[str, ...]
+    df_key: tuple[int, int, tuple[str, ...]],
+    _df: pd.DataFrame,
+    score_cols: tuple[str, ...],
 ) -> bytes:
     """Memoized Excel generation to avoid redundant recomputes.
 
     Args:
-        df_hash: Sum of pandas object hashes for cache keying.
+        df_key: Tuple of hash sum, length, and columns for cache keying.
         _df: The result dataframe to export (excluded from cache hashing).
         score_cols: Tuple of score columns to include.
 
     Returns:
         bytes: The generated Excel file as a byte stream.
     """
-    # Use hash explicitly to satisfy Vulture and reinforce cache keying intent
-    _ = df_hash
+    # Use key explicitly to satisfy Vulture and reinforce cache keying intent
+    _ = df_key
     return exporter.generate_excel_bytes(
         _df, config.COL_GROUP, list(score_cols), config.COL_NAME
     )
@@ -356,11 +358,13 @@ def _render_footer_actions(score_cols: list[str]) -> None:
         score_cols: List of score columns to include in export.
     """
     df = st.session_state.interactive_df
-    excel_data = _build_excel_bytes(
-        pd.util.hash_pandas_object(df, index=True).sum(),
-        df,
-        tuple(score_cols),
+    row_hashes = pd.util.hash_pandas_object(df, index=True)
+    df_key = (
+        int(row_hashes.sum()),
+        len(df),
+        tuple(map(str, df.columns)),
     )
+    excel_data = _build_excel_bytes(df_key, df, tuple(score_cols))
     st.download_button(
         "📥 Download Excel",
         excel_data,
