@@ -294,9 +294,9 @@ class PreCIPipeline:
     def execute(self) -> None:
         """Runs the full Pre-CI gate sequence and exits non-zero on failure.
 
-        Execution order: environment sync → README update → Ruff lint/format →
-        parallel (Vulture + Interrogate [+ Pytest if not CI]) → summary →
-        optional build verification → cleanup → final summary.
+        Execution order: environment sync → README update → parallel checks
+        (Vulture + Interrogate) → sequential Pytest (local only) →
+        Ruff lint/format → optional build verification → cleanup → final report.
 
         Args:
             None
