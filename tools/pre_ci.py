@@ -170,6 +170,23 @@ class PreCIPipeline:
                         f"\n❌ FATAL: '{desc}' generated an exception: {exc}",
                         flush=True,
                     )
+                    # Surface any partial output captured before timeout/error.
+                    partial_stdout = getattr(exc, "stdout", None)
+                    partial_stderr = getattr(exc, "stderr", None)
+                    if partial_stdout:
+                        print(
+                            partial_stdout
+                            if isinstance(partial_stdout, str)
+                            else partial_stdout.decode(errors="replace"),
+                            flush=True,
+                        )
+                    if partial_stderr:
+                        print(
+                            partial_stderr
+                            if isinstance(partial_stderr, str)
+                            else partial_stderr.decode(errors="replace"),
+                            flush=True,
+                        )
                     self.record_result(desc, False)
                     success_overall = False
 
