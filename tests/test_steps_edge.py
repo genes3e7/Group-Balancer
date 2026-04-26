@@ -85,6 +85,7 @@ def test_footer_reset_direct():
     df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
     mock_state = MagicMock()
     mock_state.results_df = df_orig
+    mock_state.interactive_df = df_orig
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state = mock_state
         mock_st.columns.return_value = [MagicMock(), MagicMock()]

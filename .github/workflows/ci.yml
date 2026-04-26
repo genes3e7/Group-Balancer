@@ -97,12 +97,15 @@ jobs:
         echo "MIN_VER=$(head -n 1 "$RUNNER_TEMP/sorted_versions.txt")" >> $GITHUB_ENV
         echo "MAX_VER=$(tail -n 1 "$RUNNER_TEMP/sorted_versions.txt")" >> $GITHUB_ENV
     - name: Set up uv
+      if: env.MIN_VER != ''
       uses: astral-sh/setup-uv@1edb52594c857e2b5b13128931090f0640537287 # v5.3.0
       with:
         enable-cache: true
     - name: Run Final CI Gate
+      if: env.MIN_VER != ''
       run: uv run --no-sync python tools/pre_ci.py "$MIN_VER" "$MAX_VER"
     - name: Commit and Push
+      if: env.MIN_VER != ''
       env:
         REF_TO_PUSH: ${{ github.head_ref || github.ref_name }}
       run: |

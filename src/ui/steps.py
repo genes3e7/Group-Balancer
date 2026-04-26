@@ -228,6 +228,10 @@ def render_step_3() -> None:
         session_manager.go_to_step(2)
     st.header("Step 3: Results")
 
+    if st.session_state.get("interactive_df") is None:
+        st.error("No results found.")
+        return
+
     status_name = st.session_state.get("solver_status")
     elapsed = st.session_state.get("solver_elapsed", 0.0)
     error_msg = st.session_state.get("solver_error")
@@ -246,10 +250,6 @@ def render_step_3() -> None:
         )
     else:
         st.warning(f"⏳ Solver stopped in {elapsed:.2f}s (Status: {status_name})")
-
-    if st.session_state.get("interactive_df") is None:
-        st.error("No results found.")
-        return
 
     score_cols = st.session_state.get("score_cols", [])
     results_renderer.render_global_stats(st.session_state.interactive_df, score_cols)
@@ -326,17 +326,38 @@ def _render_table_view(score_cols: list[str]) -> None:
             )
 
 
+@st.cache_data(show_spinner=False)
+def _build_excel_bytes(
+    df_hash: int, df: pd.DataFrame, score_cols: tuple[str, ...]
+) -> bytes:
+    """Memoized Excel generation to avoid redundant recomputes.
+
+    Args:
+        df_hash: Sum of pandas object hashes for cache keying.
+        df: The result dataframe to export.
+        score_cols: Tuple of score columns to include.
+
+    Returns:
+        bytes: The generated Excel file as a byte stream.
+    """
+    # Use hash explicitly to satisfy Vulture and reinforce cache keying intent
+    _ = df_hash
+    return exporter.generate_excel_bytes(
+        df, config.COL_GROUP, list(score_cols), config.COL_NAME
+    )
+
+
 def _render_footer_actions(score_cols: list[str]) -> None:
     """Footer buttons.
 
     Args:
         score_cols: List of score columns to include in export.
     """
-    excel_data = exporter.generate_excel_bytes(
-        st.session_state.interactive_df,
-        config.COL_GROUP,
-        score_cols,
-        config.COL_NAME,
+    df = st.session_state.interactive_df
+    excel_data = _build_excel_bytes(
+        pd.util.hash_pandas_object(df, index=True).sum(),
+        df,
+        tuple(score_cols),
     )
     st.download_button(
         "📥 Download Excel",

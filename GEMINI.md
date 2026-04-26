@@ -64,6 +64,10 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Lesson**: When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
 - **Risk**: Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
 
+### 6. Performance: UI Caching
+- **Lesson**: Memoize heavy binary generation (e.g., `exporter.generate_excel_bytes`) using `@st.cache_data` to ensure the UI remains responsive during rapid reassignments.
+- **Risk**: Without caching, the entire Excel file is re-generated on every streamlit rerun, causing significant lag.
+
 ## Optimization & Solver (OR-Tools)
 
 ### 1. Symmetry Breaking
@@ -110,6 +114,13 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Idempotency**: Ensure solver operations and file exports are idempotent; multiple runs with the same input should yield deterministic results.
 - **Supply Chain Security**: All GitHub Actions in `.github/workflows/` MUST be pinned to 40-character **immutable commit SHAs** rather than mutable version tags (e.g., `@v4`). This prevents supply-chain attacks via tag-shifting and ensures deterministic CI behavior.
 
+## 🧪 Testing Standards
+
+### 1. Mocking Streamlit Cache
+- **Lesson**: When testing functions decorated with `@st.cache_data` (or `@st.cache_resource`), ensure all mocked arguments are serializable (no `MagicMock`).
+- **Risk**: Streamlit's caching mechanism attempts to hash/pickle arguments; passing a `MagicMock` triggers `UnserializableReturnValueError` or `TypeError`.
+- **Mitigation**: Mock the cached function itself rather than its internal dependencies when unit testing UI logic, or provide real but minimal data objects (e.g., small DataFrames).
+
 ## 🗒️ Complex Change Management (Planning & State)
 
 For large-scale refactorings or multi-phase integrations, follow this integrated lifecycle:
@@ -122,8 +133,8 @@ For large-scale refactorings or multi-phase integrations, follow this integrated
     -   **Update the Spec**: Explicitly mark tasks as completed in the spec sheet file only after a successful `pre_ci.py` pass.
 4.  **Finalization & Cleanup**:
     -   **Update Learnings**: Before closing the task, review the changes for new architectural insights, quirks, or standard shifts and document them in `GEMINI.md`.
-    -   **Final Validation**: Run a final, full pass of `tools/pre_ci.py`.
-    -   **Cleanup**: Delete the ephemeral spec sheet (`REFACTOR_PLAN.md`). It MUST NOT be part of the final commit.
+    -   **Cleanup**: Delete the ephemeral spec sheet (`REFACTOR_PLAN.md`).
+    -   **Final Validation**: Run a final, full pass of `tools/pre_ci.py` **AFTER** deleting the spec sheet to ensure the `README.md` project tree is accurate for the final push.
     -   **Commit**: Push the finalized code and updated learnings.
 
 

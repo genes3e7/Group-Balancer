@@ -167,6 +167,7 @@ class ConstraintBuilder:
         self.x = {}  # (p_idx, g_idx) -> BoolVar
         self.objectives = []
         self.max_objective_bound = 0
+        self._symmetry_broken = False
 
     def build_variables(self) -> None:
         """Initializes assignment variables and basic partitioning constraints."""
@@ -242,7 +243,7 @@ class ConstraintBuilder:
                     name,
                     extra_scale,
                 )
-                scores = [int(round(s / extra_scale)) for s in scores]
+                scores = [round(s / extra_scale) for s in scores]
                 total_score = sum(scores)
                 min_sum = sum(s for s in scores if s < 0)
                 max_sum = sum(s for s in scores if s > 0)
@@ -261,7 +262,7 @@ class ConstraintBuilder:
             # Advanced Symmetry Breaking: Enforce ordering for identical capacity
             # groups on at most one canonical dimension. This prunes G! search
             # branches without over-constraining multi-dimensional weights.
-            if weight_m > 0 and not getattr(self, "_symmetry_broken", False):
+            if weight_m > 0 and not self._symmetry_broken:
                 self._symmetry_broken = True
                 for g1 in range(self.num_groups):
                     for g2 in range(g1 + 1, self.num_groups):

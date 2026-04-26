@@ -503,11 +503,13 @@ def test_data_loader_invalid_columns_check():
 
 def test_steps_start_over():
     """Verify 'Start Over' button logic."""
+    df = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "Score1": [10.0]})
     mock_state = MagicMock()
+    mock_state.interactive_df = df
     with (
         patch("streamlit.button", return_value=True),
         patch("streamlit.download_button"),
-        patch("src.utils.exporter.generate_excel_bytes"),
+        patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"),
         patch("streamlit.rerun") as mock_rerun,
         patch("streamlit.session_state", mock_state),
     ):
@@ -617,6 +619,7 @@ def test_render_footer_reset_hit_proper_mock():
 
     mock_state = MagicMock()
     mock_state.results_df = df_orig
+    mock_state.interactive_df = df_orig
 
     with patch("pandas.DataFrame.copy", return_value=df_orig.copy()):
         c_back = MagicMock()
@@ -626,9 +629,12 @@ def test_render_footer_reset_hit_proper_mock():
 
         with (
             patch("src.ui.steps.st") as mock_st_in_steps,
+            patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"),
             patch("streamlit.session_state", mock_state),
         ):
+            mock_st_in_steps.session_state.interactive_df = df_orig
             mock_st_in_steps.columns.return_value = [c_back, c_reset]
+
             steps._render_footer_actions(["S1"])
             mock_st_in_steps.rerun.assert_called()
 

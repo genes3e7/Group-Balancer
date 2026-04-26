@@ -4,6 +4,7 @@ import argparse
 import concurrent.futures
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -308,7 +309,7 @@ class PreCIPipeline:
             "Updating README structure",
         )
 
-        # 4. Parallel Checks (Vulture, Interrogate)
+        # 3. Parallel Checks (Vulture, Interrogate)
         # These are lightweight enough to run concurrently.
         parallel_tasks = [
             (
@@ -323,7 +324,7 @@ class PreCIPipeline:
 
         self.run_commands_parallel(parallel_tasks)
 
-        # 5. Unit Tests (Run sequentially to avoid xdist hangs and see clear progress)
+        # 4. Unit Tests (Run sequentially to avoid xdist hangs and see clear progress)
         # Pytest executes in the remote test-matrix job. Prevent redundancy in CI.
         if not self.is_ci:
             self.run_command(
@@ -331,9 +332,19 @@ class PreCIPipeline:
                 "Unit Tests & Coverage Enforcement",
             )
 
-        # 6. Linting and Formatting (Apply only if checks passed, or if local)
-        # In CI, we only want to fix/format if the logic itself is sound.
-        if not self.is_ci or self.all_passed():
+        # 5. Linting and Formatting (Apply only if checks passed, or if local)
+        if self.is_ci:
+            # In CI, fail-fast on style drift instead of auto-fixing.
+            self.run_command(
+                ["uv", "run", "--no-sync", "ruff", "check", "."],
+                "Ruff Linting",
+            )
+            self.run_command(
+                ["uv", "run", "--no-sync", "ruff", "format", "--check", "."],
+                "Ruff Formatting",
+            )
+        elif self.all_passed():
+            # Locally, allow auto-fixing if logic is sound.
             self.run_command(
                 ["uv", "run", "--no-sync", "ruff", "check", ".", "--fix"],
                 "Ruff Linting",
@@ -354,11 +365,12 @@ class PreCIPipeline:
         else:
             self.record_result("Verifying Build Integrity", "SKIPPED")
 
+        # 7. Cleanup
         # cleanup() intentionally removes build artifacts (including "build" and "dist")
         # produced by the preceding build step to keep the local workspace clean.
         self.cleanup()
 
-        # 7. Final Report
+        # 8. Final Report
         if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
             print("\n✨ ALL CHECKS PASSED.\n", flush=True)
         else:
@@ -375,8 +387,6 @@ if __name__ == "__main__":
         "max_ver", nargs="?", default="3.14", help="Maximum supported Python version"
     )
     args = parser.parse_args()
-
-    import re
 
     # Regex for semantic-ish versions like 3.10 or 3.14-dev
     _ver_re = re.compile(r"^\d+\.\d+(?:-[a-zA-Z0-9]+)?$")
