@@ -10,6 +10,9 @@ import subprocess
 import sys
 from typing import ClassVar
 
+DEFAULT_MIN_PY = "3.10"
+DEFAULT_MAX_PY = "3.14"
+
 
 class PreCIPipeline:
     """Orchestrates the local and CI validation checks for the project.
@@ -28,7 +31,9 @@ class PreCIPipeline:
         "SKIPPED": "⏭️  SKIP",
     }
 
-    def __init__(self, min_ver: str = "3.10", max_ver: str = "3.14") -> None:
+    def __init__(
+        self, min_ver: str = DEFAULT_MIN_PY, max_ver: str = DEFAULT_MAX_PY
+    ) -> None:
         """Initializes the PreCIPipeline with Python version bounds.
 
         Args:
@@ -380,10 +385,16 @@ class PreCIPipeline:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Group Balancer Pre-CI Gate")
     parser.add_argument(
-        "min_ver", nargs="?", default="3.10", help="Minimum supported Python version"
+        "min_ver",
+        nargs="?",
+        default=DEFAULT_MIN_PY,
+        help="Minimum supported Python version",
     )
     parser.add_argument(
-        "max_ver", nargs="?", default="3.14", help="Maximum supported Python version"
+        "max_ver",
+        nargs="?",
+        default=DEFAULT_MAX_PY,
+        help="Maximum supported Python version",
     )
     args = parser.parse_args()
 
@@ -394,7 +405,7 @@ if __name__ == "__main__":
 
     for label, val in [("min_ver", args.min_ver), ("max_ver", args.max_ver)]:
         if not val or not _ver_re.match(val):
-            fallback = "3.10" if label == "min_ver" else "3.14"
+            fallback = DEFAULT_MIN_PY if label == "min_ver" else DEFAULT_MAX_PY
             print(
                 f"⚠️ Warning: {label}={val!r} is invalid/empty. "
                 f"Falling back to {fallback}.",
@@ -414,10 +425,10 @@ if __name__ == "__main__":
     if _ver_tuple(validated_min) > _ver_tuple(validated_max):
         print(
             f"⚠️ Warning: min_ver={validated_min!r} > max_ver={validated_max!r}. "
-            f"Falling back to defaults 3.10/3.14.",
+            f"Falling back to defaults {DEFAULT_MIN_PY}/{DEFAULT_MAX_PY}.",
             flush=True,
         )
-        validated_min, validated_max = "3.10", "3.14"
+        validated_min, validated_max = DEFAULT_MIN_PY, DEFAULT_MAX_PY
 
     pipeline = PreCIPipeline(validated_min, validated_max)
     pipeline.execute()

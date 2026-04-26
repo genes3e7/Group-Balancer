@@ -29,8 +29,8 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Least Privilege Configuration**: CI workflows (`ci.yml`) should never grant global `permissions: contents: write`. Instead, write permissions are scoped exclusively to the specific job (e.g., `finalize-updates`) that needs to push automated commits back to the branch.
 
 ## 💻 Environment & Syntax
-- **Preferred Shell**: Windows PowerShell.
-- **Syntax Strategy**: Always attempt Windows PowerShell syntax first to minimize token usage and execution errors.
+- **Maintainer's local shell**: PowerShell — examples may use PowerShell syntax.
+- **POSIX Equivalents**: POSIX equivalents apply on Linux/macOS, and CI runners (e.g., `runs-on: ubuntu-latest`) should use POSIX syntax. The `PreCIPipeline` orchestrator and `uv` toolchain are designed to be strictly cross-platform.
 
 ## 🧠 AI Behavioral Mandates
 - **GitHub CLI Integration**: Always check if the GitHub CLI (`gh`) is available and authenticated. If so, use it to fetch PR reviews, check CI status, or manage issues before starting work on a branch or PR. This ensures you are aware of feedback or pending requests that might not be visible in the local git history.
