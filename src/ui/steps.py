@@ -228,19 +228,11 @@ def render_step_3() -> None:
         session_manager.go_to_step(2)
     st.header("Step 3: Results")
 
-    if st.session_state.get("interactive_df") is None:
-        st.error("No results found.")
-        return
-
     status_name = st.session_state.get("solver_status")
     elapsed = st.session_state.get("solver_elapsed", 0.0)
     error_msg = st.session_state.get("solver_error")
 
-    if status_name == "OPTIMAL":
-        st.success(f"🎯 Optimal Solution found in {elapsed:.2f}s")
-    elif status_name == "FEASIBLE":
-        st.warning(f"⏳ Best solution found in {elapsed:.2f}s (Status: {status_name})")
-    elif error_msg:
+    if error_msg:
         st.error(f"❌ {error_msg}")
         st.info(
             "💡 **Tips to resolve:**\n"
@@ -248,6 +240,16 @@ def render_step_3() -> None:
             "- Ensure group capacities are large enough for the number of tags.\n"
             "- Try increasing the timeout or using 'Simple' mode."
         )
+        return
+
+    if st.session_state.get("interactive_df") is None:
+        st.error("No results found.")
+        return
+
+    if status_name == "OPTIMAL":
+        st.success(f"🎯 Optimal Solution found in {elapsed:.2f}s")
+    elif status_name == "FEASIBLE":
+        st.warning(f"⏳ Best solution found in {elapsed:.2f}s (Status: {status_name})")
     else:
         st.warning(f"⏳ Solver stopped in {elapsed:.2f}s (Status: {status_name})")
 

@@ -78,7 +78,7 @@ class PreCIPipeline:
         try:
             # capture_output=False (default) streams directly to our stdout/stderr
             # preventing pipe deadlocks for large output volumes (like Pytest).
-            subprocess.run(
+            subprocess.run(  # noqa: S603
                 command,
                 check=True,
                 encoding="utf-8",
@@ -194,15 +194,15 @@ class PreCIPipeline:
         print(title, flush=True)
         print("=" * 60, flush=True)
 
-        all_passed = True
+        no_failures = True
         for description, passed in self._results:
             status_label = self.STATUS_MAP.get(passed, "❓ UNKNOWN")
             print(f"{status_label.ljust(10)} | {description}", flush=True)
             if passed is False:
-                all_passed = False
+                no_failures = False
 
         print("=" * 60, flush=True)
-        return all_passed
+        return no_failures
 
     def cleanup(self) -> None:
         """Removes build artifacts and caches from the local workspace.
@@ -239,10 +239,10 @@ class PreCIPipeline:
         for dirpath, dirnames, _filenames in os.walk(root):
             path = pathlib.Path(dirpath)
 
-            # Skip common environment and hidden directories
-            if path.name in venv_names or path.name.startswith("."):
-                dirnames[:] = []  # Don't recurse into these
-                continue
+            # Prune common environment and hidden directories before descending
+            dirnames[:] = [
+                d for d in dirnames if d not in venv_names and not d.startswith(".")
+            ]
 
             # Identify and prune artifacts in the current (non-skipped) directory
             for d in list(dirnames):
@@ -405,6 +405,20 @@ if __name__ == "__main__":
                 validated_min = fallback
             else:
                 validated_max = fallback
+
+    def _ver_tuple(v: str) -> tuple[int, int]:
+        """Parses a version string into a (major, minor) integer tuple."""
+        # Handles 3.10 and 3.14-dev
+        parts = v.split("-", 1)[0].split(".")
+        return int(parts[0]), int(parts[1])
+
+    if _ver_tuple(validated_min) > _ver_tuple(validated_max):
+        print(
+            f"⚠️ Warning: min_ver={validated_min!r} > max_ver={validated_max!r}. "
+            f"Falling back to defaults 3.10/3.14.",
+            flush=True,
+        )
+        validated_min, validated_max = "3.10", "3.14"
 
     pipeline = PreCIPipeline(validated_min, validated_max)
     pipeline.execute()
