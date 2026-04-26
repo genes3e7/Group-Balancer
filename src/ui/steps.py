@@ -328,13 +328,13 @@ def _render_table_view(score_cols: list[str]) -> None:
 
 @st.cache_data(show_spinner=False)
 def _build_excel_bytes(
-    df_hash: int, df: pd.DataFrame, score_cols: tuple[str, ...]
+    df_hash: int, _df: pd.DataFrame, score_cols: tuple[str, ...]
 ) -> bytes:
     """Memoized Excel generation to avoid redundant recomputes.
 
     Args:
         df_hash: Sum of pandas object hashes for cache keying.
-        df: The result dataframe to export.
+        _df: The result dataframe to export (excluded from cache hashing).
         score_cols: Tuple of score columns to include.
 
     Returns:
@@ -343,7 +343,7 @@ def _build_excel_bytes(
     # Use hash explicitly to satisfy Vulture and reinforce cache keying intent
     _ = df_hash
     return exporter.generate_excel_bytes(
-        df, config.COL_GROUP, list(score_cols), config.COL_NAME
+        _df, config.COL_GROUP, list(score_cols), config.COL_NAME
     )
 
 

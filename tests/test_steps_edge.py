@@ -81,20 +81,20 @@ def test_render_step_2_solver_fail_metrics():
 
 
 def test_footer_reset_direct():
-    """Cover steps.py line 253."""
+    """Verify that 'Start Over' clears state and reruns."""
     df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
     mock_state = MagicMock()
-    mock_state.results_df = df_orig
     mock_state.interactive_df = df_orig
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state = mock_state
-        mock_st.columns.return_value = [MagicMock(), MagicMock()]
-        # Reset button is index 1
-        mock_st.columns.return_value[1].button.return_value = True
-        mock_st.columns.return_value[0].button.return_value = False
-        with patch("pandas.DataFrame.copy", return_value=df_orig.copy()):
+        # Force the 'Start Over' button branch
+        mock_st.button.side_effect = lambda label, **kwargs: label == "🔄 Start Over"
+
+        with patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"):
             steps._render_footer_actions(["S1"])
-            mock_st.rerun.assert_called()
+
+        mock_state.clear.assert_called_once()
+        mock_st.rerun.assert_called_once()
 
 
 def test_render_table_view_nan_std_direct():

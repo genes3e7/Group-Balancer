@@ -86,8 +86,8 @@ jobs:
            echo "No artifacts found."
            exit 1
         fi
-        # Exclude experimental/allowed-failure versions from the stable badge range
-        cat artifacts/*.txt | (grep -v "3.15-dev" || true) | sort -V > "$RUNNER_TEMP/sorted_versions.txt"
+        # Identify the range of successfully tested Python versions
+        cat artifacts/*.txt | sort -V > "$RUNNER_TEMP/sorted_versions.txt"
         
         if [ ! -s "$RUNNER_TEMP/sorted_versions.txt" ]; then
           echo "No stable versions found. Skipping badge update."

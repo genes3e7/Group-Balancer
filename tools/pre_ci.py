@@ -395,13 +395,13 @@ if __name__ == "__main__":
 
     for label, val in [("min_ver", args.min_ver), ("max_ver", args.max_ver)]:
         if not val or not _ver_re.match(val):
-            fallback = "3.10" if "min" in label else "3.14"
+            fallback = "3.10" if label == "min_ver" else "3.14"
             print(
                 f"⚠️ Warning: {label}={val!r} is invalid/empty. "
                 f"Falling back to {fallback}.",
                 flush=True,
             )
-            if "min" in label:
+            if label == "min_ver":
                 validated_min = fallback
             else:
                 validated_max = fallback
