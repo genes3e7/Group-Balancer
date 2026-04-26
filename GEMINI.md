@@ -68,6 +68,10 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Lesson**: Memoize heavy binary generation (e.g., `exporter.generate_excel_bytes`) using `@st.cache_data` to ensure the UI remains responsive during rapid reassignments.
 - **Risk**: Without caching, the entire Excel file is re-generated on every streamlit rerun, causing significant lag.
 
+### 7. Import Hygiene
+- **Lesson**: Move all third-party imports (like `re`) to the top-level module block to comply with E402 and ensure consistent initialization.
+- **Risk**: Local imports can lead to redundant overhead or confusing dependency cycles in long-running processes like `pre_ci.py`.
+
 ## Optimization & Solver (OR-Tools)
 
 ### 1. Symmetry Breaking
@@ -131,10 +135,11 @@ For large-scale refactorings or multi-phase integrations, follow this integrated
     -   Perform work in distinct phases.
     -   **Post-Phase Validation**: After every phase, you MUST execute the **Post-Change Validation Workflow** (`uv run python tools/pre_ci.py`). This is a mandatory gate to prevent regression accumulation.
     -   **Update the Spec**: Explicitly mark tasks as completed in the spec sheet file only after a successful `pre_ci.py` pass.
-4.  **Finalization & Cleanup**:
+4.  **Finalization & Landing**:
     -   **Update Learnings**: Before closing the task, review the changes for new architectural insights, quirks, or standard shifts and document them in `GEMINI.md`.
     -   **Cleanup**: Delete the ephemeral spec sheet (`REFACTOR_PLAN.md`).
     -   **Final Validation**: Run a final, full pass of `tools/pre_ci.py` **AFTER** deleting the spec sheet to ensure the `README.md` project tree is accurate for the final push.
-    -   **Commit**: Push the finalized code and updated learnings.
+    -   **Commit & Push**: Push the finalized code and updated learnings.
+    -   **Review Scheduling**: By default, schedule the next review in **60 minutes** using the `@coderabbitai review` command (NEVER `@coderabbitai resume` as it triggers mass replies and immediate rate throttling). Using `review` while paused ensures the system remains paused for future manual triggers.
 
 
