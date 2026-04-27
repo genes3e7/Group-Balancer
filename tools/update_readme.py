@@ -112,7 +112,7 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
 
     if not os.path.exists(readme_path):
         logger.error(f"{readme_path} not found.")
-        return
+        sys.exit(1)
 
     with open(readme_path, encoding="utf-8") as f:
         content = f.read()

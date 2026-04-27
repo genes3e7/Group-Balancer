@@ -331,7 +331,8 @@ class PreCIPipeline:
         )
 
         # 2. Update README
-        self.run_command(
+        print("\n>>> [Step: Updating README structure]", flush=True)
+        res = subprocess.run(
             [
                 "uv",
                 "run",
@@ -341,8 +342,27 @@ class PreCIPipeline:
                 self.min_ver,
                 self.max_ver,
             ],
-            "Updating README structure",
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=os.environ.copy(),
         )
+        if res.stdout:
+            print(res.stdout.strip(), flush=True)
+        if res.stderr:
+            print(res.stderr.strip(), flush=True)
+
+        # Fail fast if script returned non-zero or output contains ERROR/FAILED
+        if res.returncode != 0 or re.search(r"ERROR|FAILED", res.stdout + res.stderr):
+            print(
+                "\n❌ FATAL: 'Updating README structure' failed or contains errors.",
+                flush=True,
+            )
+            self.record_result("Updating README structure", False)
+            sys.exit(1)
+
+        print("✅ Updating README structure completed successfully.", flush=True)
+        self.record_result("Updating README structure", True)
 
         # 3. Parallel Checks (Vulture, Interrogate)
         # These are lightweight enough to run concurrently.
@@ -455,11 +475,12 @@ if __name__ == "__main__":
 
     if _ver_tuple(validated_min) > _ver_tuple(validated_max):
         print(
-            f"⚠️ Warning: min_ver={validated_min!r} > max_ver={validated_max!r}. "
-            f"Falling back to defaults {DEFAULT_MIN_PY}/{DEFAULT_MAX_PY}.",
+            f"❌ FATAL: min_ver={validated_min!r} > max_ver={validated_max!r} "
+            "is an invalid range.",
+            file=sys.stderr,
             flush=True,
         )
-        validated_min, validated_max = DEFAULT_MIN_PY, DEFAULT_MAX_PY
+        sys.exit(1)
 
     pipeline = PreCIPipeline(validated_min, validated_max)
     pipeline.execute()
