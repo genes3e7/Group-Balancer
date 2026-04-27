@@ -139,7 +139,6 @@ class PreCIPipeline:
                     text=True,
                     encoding="utf-8",
                     env=env,
-                    timeout=300,
                 ): desc
                 for cmd, desc in tasks
             }
