@@ -417,21 +417,19 @@ if __name__ == "__main__":
 
     # Regex for semantic-ish versions like 3.10 or 3.14-dev
     _ver_re = re.compile(r"^\d+\.\d+(?:-[a-zA-Z0-9]+)?$")
-    validated_min = args.min_ver
-    validated_max = args.max_ver
 
-    for label, val in [("min_ver", args.min_ver), ("max_ver", args.max_ver)]:
+    def _validate(label: str, val: str, fallback: str) -> str:
         if not val or not _ver_re.match(val):
-            fallback = DEFAULT_MIN_PY if label == "min_ver" else DEFAULT_MAX_PY
             print(
                 f"⚠️ Warning: {label}={val!r} is invalid/empty. "
                 f"Falling back to {fallback}.",
                 flush=True,
             )
-            if label == "min_ver":
-                validated_min = fallback
-            else:
-                validated_max = fallback
+            return fallback
+        return val
+
+    validated_min = _validate("min_ver", args.min_ver, DEFAULT_MIN_PY)
+    validated_max = _validate("max_ver", args.max_ver, DEFAULT_MAX_PY)
 
     def _ver_tuple(v: str) -> tuple[int, int]:
         """Parses a version string into a (major, minor) integer tuple."""
