@@ -251,12 +251,14 @@ class PreCIPipeline:
         # Dynamically find nested artifacts, explicitly skipping venvs, hidden dirs,
         # and the top-level base_targets we will rmtree wholesale.
         venv_names = {"venv", ".venv", "env"}
+        # Pruneable directory names = literal (non-glob) entries from base_targets,
+        # excluding hidden ones (already filtered via startswith(".")) and files.
         base_target_names = {
-            "build",
-            "dist",
-            ".ruff_cache",
-            ".pytest_cache",
-            "artifacts",
+            t
+            for t in base_targets
+            if not any(c in t for c in "*?[")
+            and not t.startswith(".")
+            and not pathlib.Path(t).suffix
         }
         if os.environ.get("VIRTUAL_ENV"):
             venv_names.add(pathlib.Path(os.environ["VIRTUAL_ENV"]).name)
