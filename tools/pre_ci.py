@@ -19,7 +19,7 @@ class PreCIPipeline:
 
     Attributes:
         STATUS_MAP (dict): Maps boolean or string outcomes to visual status labels.
-        _results (list): Internal log of (description, status, outputs) tuples.
+        _results (list): Internal log of (description, passed) tuples.
         is_ci (bool): True if executing within a remote CI environment.
         min_ver (str): Minimum supported Python version for README updates.
         max_ver (str): Maximum supported Python version for README updates.
@@ -169,7 +169,7 @@ class PreCIPipeline:
                         f"\n❌ FATAL: '{desc}' generated an exception: {exc}",
                         flush=True,
                     )
-                    # Surface any partial output captured before timeout/error.
+                    # Surface any partial output captured on the failing process.
                     partial_stdout = getattr(exc, "stdout", None)
                     partial_stderr = getattr(exc, "stderr", None)
                     if partial_stdout:
@@ -418,13 +418,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "min_ver",
         nargs="?",
-        default=DEFAULT_MIN_PY,
+        default=None,
         help="Minimum supported Python version",
     )
     parser.add_argument(
         "max_ver",
         nargs="?",
-        default=DEFAULT_MAX_PY,
+        default=None,
         help="Maximum supported Python version",
     )
     args = parser.parse_args()
@@ -432,14 +432,16 @@ if __name__ == "__main__":
     # Regex for semantic-ish versions like 3.10 or 3.14-dev
     _ver_re = re.compile(r"^\d+\.\d+(?:-[a-zA-Z0-9]+)?$")
 
-    def _validate(label: str, val: str, fallback: str) -> str:
-        if not val or not _ver_re.match(val):
+    def _validate(label: str, val: str | None, fallback: str) -> str:
+        if val is None:
+            return fallback
+        if not _ver_re.match(val):
             print(
-                f"⚠️ Warning: {label}={val!r} is invalid/empty. "
-                f"Falling back to {fallback}.",
+                f"❌ FATAL: {label}={val!r} is not a valid version "
+                f"(expected e.g. '3.10' or '3.14-dev').",
                 flush=True,
             )
-            return fallback
+            sys.exit(2)
         return val
 
     validated_min = _validate("min_ver", args.min_ver, DEFAULT_MIN_PY)
