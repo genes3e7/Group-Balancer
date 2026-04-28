@@ -87,7 +87,14 @@ def generate_tree(startpath: str, spec: pathspec.PathSpec) -> str:
             is_last = i == len(valid_items) - 1
             connector = "└── " if is_last else "├── "
 
-            display_name = item + "/" if os.path.isdir(full_path) else item
+            if os.path.islink(full_path):
+                target = os.readlink(full_path)
+                display_name = f"{item} -> {target}"
+            elif os.path.isdir(full_path):
+                display_name = f"{item}/"
+            else:
+                display_name = item
+
             tree_lines.append(f"{prefix}{connector}{display_name}")
 
             if os.path.isdir(full_path) and not os.path.islink(full_path):
@@ -130,20 +137,22 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
     # 2. Update Version Badge
     if min_ver and max_ver:
         # Matches badge URL part: python-3.10%20-%203.14-blue
-        badge_pattern = re.compile(r"python-3\.[0-9]+[^\s\[\]\(\)]*-blue")
+        badge_pattern = re.compile(r"python-\d+\.\d+[^\s\[\]\(\)]*-blue")
         new_badge_url = f"python-{min_ver}%20-%20{max_ver}-blue"
         content = badge_pattern.sub(new_badge_url, content)
 
         # Also update the Alt Text of the badge: [Python 3.10 - 3.14]
         alt_pattern = re.compile(
-            r"\[Python 3\.[0-9]+(?:-[^\]]+)?\s*-\s*3\.[0-9]+(?:-[^\]]+)?\]"
+            r"\[Python \d+\.\d+(?:-[^\]]+)?\s*-\s*\d+\.\d+(?:-[^\]]+)?\]"
         )
         new_alt = f"[Python {min_ver} - {max_ver}]"
         content = alt_pattern.sub(new_alt, content)
 
-        # 3. Update Prerequisite Text (e.g., "Python 3.10 or higher")
-        prereq_pattern = re.compile(r"Python 3\.[0-9]+ or higher")
-        new_prereq = f"Python {min_ver} or higher"
+        # 3. Update Prerequisite Text (e.g., "Python 3.10 through 3.14")
+        prereq_pattern = re.compile(
+            r"Python \d+\.\d+(?:\s*(?:through|to|-|or higher)\s*\d+\.\d+\.?| or higher)"
+        )
+        new_prereq = f"Python {min_ver} through {max_ver}"
         content = prereq_pattern.sub(new_prereq, content)
 
         msg = f"Updated Python versions to {min_ver}-{max_ver} in badges/text."

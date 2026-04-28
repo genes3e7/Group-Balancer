@@ -2,7 +2,7 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app/)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10 - 3.14](https://img.shields.io/badge/python-3.10%20-%203.14-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10 through 3.14](https://img.shields.io/badge/python-3.10%20-%203.14-blue.svg)](https://www.python.org/downloads/)
 
 **Group Balancer** is an advanced mathematical partitioning tool designed to solve the "Fair Team" problem. Whether you are organizing a classroom, a corporate workshop, or a gaming tournament, this tool ensures your groups are balanced by skill, diverse by expertise, and respectful of social dynamics.
 
@@ -23,7 +23,7 @@
 ## Getting Started
 
 ### 1. Requirements
-*   Python 3.10 through 3.14.
+*   Python 3.10 through 3.14
 *   Git (to clone the repo).
 
 ### 2. Installation
@@ -127,4 +127,4 @@ The project follows high-quality engineering standards:
 - **SOLID & SRP:** Decoupled Service, UI, and Core layers.
 - **Type Safety:** Strong typing with `dataclasses` and `TypedDict`.
 - **Testing:** 90%+ functional coverage with isolated sandboxed test execution.
-- **CI/CD:** Automated testing across Python 3.10-3.14 using `uv`.
+- **CI/CD:** Automated testing across Python 3.10 through 3.14 using `uv`.

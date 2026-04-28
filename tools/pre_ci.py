@@ -249,7 +249,7 @@ class PreCIPipeline:
 
         # Dynamically find nested artifacts, explicitly skipping venvs, hidden dirs,
         # and the top-level base_targets we will rmtree wholesale.
-        venv_names = {"venv", ".venv", "env"}
+        venv_names = {"venv", ".venv"}
         # Pruneable directory names = literal (non-glob) entries from base_targets,
         # excluding hidden ones (already filtered via startswith(".")) and files.
         base_target_names = {
@@ -270,14 +270,26 @@ class PreCIPipeline:
             path = pathlib.Path(dirpath)
 
             # Prune common environment, hidden, and base target directories
-            # before descending
-            dirnames[:] = [
-                d
-                for d in dirnames
-                if d not in venv_names
-                and d not in base_target_names
-                and not d.startswith(".")
-            ]
+            # before descending.
+            # Only prune a directory matching venv_names if it contains venv markers.
+            pruned_dirnames = []
+            for d in dirnames:
+                if d in base_target_names or d.startswith("."):
+                    continue
+
+                if d in venv_names:
+                    d_path = path / d
+                    is_venv = (
+                        (d_path / "pyvenv.cfg").exists()
+                        or (d_path / "bin" / "activate").exists()
+                        or (d_path / "Scripts" / "activate").exists()
+                    )
+                    if is_venv:
+                        continue
+
+                pruned_dirnames.append(d)
+
+            dirnames[:] = pruned_dirnames
 
             # Identify and prune artifacts in the current (non-skipped) directory
             for d in list(dirnames):
@@ -346,14 +358,16 @@ class PreCIPipeline:
             text=True,
             encoding="utf-8",
             env=os.environ.copy(),
-        )
+        )  # noqa: S603
         if res.stdout:
             print(res.stdout.strip(), flush=True)
         if res.stderr:
             print(res.stderr.strip(), flush=True)
 
-        # Fail fast if script returned non-zero or output contains ERROR/FAILED
-        if res.returncode != 0 or re.search(r"ERROR|FAILED", res.stdout + res.stderr):
+        # Fail fast if script failed or output contains anchored ERROR/CRITICAL
+        if res.returncode != 0 or re.search(
+            r"^ERROR:|^CRITICAL:", res.stdout + res.stderr, re.MULTILINE
+        ):
             print(
                 "\n❌ FATAL: 'Updating README structure' failed or contains errors.",
                 flush=True,
