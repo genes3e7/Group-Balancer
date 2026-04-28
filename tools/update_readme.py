@@ -127,12 +127,17 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
     # 1. Update Tree
     start_marker = "<!-- PROJECT_TREE_START -->"
     end_marker = "<!-- PROJECT_TREE_END -->"
-    if start_marker in content and end_marker in content:
-        pattern = re.compile(
-            f"{re.escape(start_marker)}.*?{re.escape(end_marker)}", re.DOTALL
+    if start_marker not in content or end_marker not in content:
+        logger.error(
+            f"Missing markers '{start_marker}' or '{end_marker}' in {readme_path}."
         )
-        content = pattern.sub(f"{start_marker}\n{tree}\n{end_marker}", content)
-        logger.info("Updated project tree.")
+        sys.exit(1)
+
+    pattern = re.compile(
+        f"{re.escape(start_marker)}.*?{re.escape(end_marker)}", re.DOTALL
+    )
+    content = pattern.sub(f"{start_marker}\n{tree}\n{end_marker}", content)
+    logger.info("Updated project tree.")
 
     # 2. Update Version Badge
     if min_ver and max_ver:
@@ -143,14 +148,16 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
 
         # Also update the Alt Text of the badge: [Python 3.10 - 3.14]
         alt_pattern = re.compile(
-            r"\[Python \d+\.\d+(?:-[^\]]+)?\s*-\s*\d+\.\d+(?:-[^\]]+)?\]"
+            r"\[Python \d+\.\d+(?:-[^\]\s]+)?\s*"
+            r"(?:-|through|to)\s*\d+\.\d+(?:-[^\]\s]+)?\]"
         )
         new_alt = f"[Python {min_ver} - {max_ver}]"
         content = alt_pattern.sub(new_alt, content)
 
         # 3. Update Prerequisite Text (e.g., "Python 3.10 through 3.14")
         prereq_pattern = re.compile(
-            r"Python \d+\.\d+(?:\s*(?:through|to|-|or higher)\s*\d+\.\d+\.?| or higher)"
+            r"Python \d+\.\d+(?:-[A-Za-z0-9.]+)?(?:\s*(?:through|to|-|or higher)\s*"
+            r"\d+\.\d+(?:-[A-Za-z0-9.]+)?\.?|\s+or\s+higher)"
         )
         new_prereq = f"Python {min_ver} through {max_ver}"
         content = prereq_pattern.sub(new_prereq, content)
