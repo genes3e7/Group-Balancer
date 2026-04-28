@@ -94,6 +94,8 @@ class SolverConfig:
         object.__setattr__(
             self, "score_weights", MappingProxyType(dict(self.score_weights))
         )
+        if self.hints is not None:
+            object.__setattr__(self, "hints", MappingProxyType(dict(self.hints)))
 
         self.validate_safety_bounds()
 

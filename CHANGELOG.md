@@ -35,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dependency Management:** Removed legacy `requirements.in/txt` in favor of `pyproject.toml` and `uv`.
 
 ### Fixed
-- **Solver Stability:** Resolved CP-SAT integer overflow risks using dynamic bounds scaling and tightened symmetry-breaking rules to prevent over-constraining models.
+- **Solver Stability:** Resolved CP-SAT integer overflow risks using dynamic bounds scaling, fixed a heap corruption issue in theoretical bound calculations, and tightened symmetry-breaking rules to prevent over-constraining models.
 - **Data Ingestion:** Hardened file upload validation with column header normalization and robust numeric coercion for sparse data.
+- **Warm Start Reliability:** Implemented fingerprint validation for solution hints to prevent applying stale assignments after data modifications.
 - **UI State Corruption:** Fixed group assignment corruption by ensuring stable original row indices are preserved during aggregations.
 - **CI Integrity:** Fixed version sorting logic, added safety guards for README updates, and enforced secure workflow permissions (`contents: read`).
 - **Tooling:** Refined `.gitignore` parsing to handle symlinks safely and improved regex for Python version badges.
