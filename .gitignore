@@ -30,6 +30,7 @@ wheels/
 .pytest_cache/
 .ruff_cache/
 .coverage
+.coverage.*
 htmlcov/
 .mypy_cache/
 
@@ -49,3 +50,4 @@ Thumbs.db
 
 # CI Artifacts
 artifacts/
+sorted_versions.txt

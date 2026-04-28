@@ -1,288 +1,450 @@
 """
 Core optimization logic using Google OR-Tools.
 
-This module defines the Constraint Programming (CP) model used to partition
-participants into balanced groups using Simple/Advanced modes and Pigeonhole constraints.
-Tags are processed via raw character iteration.
+Refactored to use Builder and Strategy patterns for professional standards,
+SRP, and Open/Closed principles.
 """
 
 import math
-import sys
 import time
+from abc import ABC, abstractmethod
+
+import pandas as pd
 from ortools.sat.python import cp_model
+
+from src import logger
 from src.core import config
+from src.core.models import (
+    ConflictPriority,
+    OptimizationMode,
+    Participant,
+    SolverConfig,
+)
 
 
 class SolutionPrinter(cp_model.CpSolverSolutionCallback):
-    """Callback to print intermediate solutions found by the solver."""
+    """Callback to log intermediate solutions found by the solver."""
 
     def __init__(self, start_time: float):
-        """
-        Initializes the printer.
-
-        Args:
-            start_time (float): Timestamp when solving started.
-        """
+        """Initializes the printer with the solver start time."""
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.__start_time = start_time
         self.__solution_count = 0
-        self.__last_print_time = 0.0
+        self.__last_log_time = 0.0
 
     def on_solution_callback(self) -> None:
         """Called by the solver when a new valid solution is found."""
         self.__solution_count += 1
         current_time = time.time()
 
-        if current_time - self.__last_print_time >= 0.1:
+        if current_time - self.__last_log_time >= 1.0:
             obj = self.ObjectiveValue()
             elapsed = current_time - self.__start_time
-            sys.stdout.write(
-                f"\r  > Solutions Evaluated: {self.__solution_count} | "
-                f"Objective: {obj} | Time: {elapsed:.2f}s\033[K"
+            logger.info(
+                "Solver Progress: %d solutions | Objective: %d | Elapsed: %.1fs",
+                self.__solution_count,
+                obj,
+                elapsed,
             )
-            sys.stdout.flush()
-            self.__last_print_time = current_time
+            self.__last_log_time = current_time
 
 
-def build_partition_model(
-    participants: list[dict],
-    group_capacities: list[int],
-    score_columns: list[str],
-    score_weights: dict[str, float],
-    opt_mode: str = "Advanced",
-    conflict_priority: str = "Groupers",
-) -> tuple[cp_model.CpModel, dict, int, int]:
-    """
-    Constructs the Constraint Programming model for the group balancer.
+class TagProcessor:
+    """Handles tokenization and conflict resolution for constraint tags."""
 
-    Args:
-        participants (list[dict]): List of participant data.
-        group_capacities (list[int]): Exact capacity requirements for each group.
-        score_columns (list[str]): The continuous score dimensions to balance.
-        score_weights (dict[str, float]): Scalar multipliers for each score dimension.
-        opt_mode (str): 'Simple' (pre-aggregated) or 'Advanced' (multi-dimensional).
-        conflict_priority (str): 'Groupers' or 'Separators' resolution logic.
+    @staticmethod
+    def get_tags(val: str) -> set[str]:
+        """Extracts unique characters as tags, ignoring whitespace and commas."""
+        if not val or not isinstance(val, str):
+            return set()
+        return {c for c in val if not c.isspace() and c != ","}
 
-    Returns:
-        tuple: (model, x_vars, num_people, num_groups)
+    @classmethod
+    def process_participants(
+        cls, participants: list[Participant], priority: ConflictPriority
+    ) -> tuple[dict[str, set[int]], dict[str, set[int]]]:
+        """Generates grouper and separator sets with conflict resolution.
 
-    Raises:
-        ValueError: If capacities are invalid or mathematically contradictory.
-    """
-    if not group_capacities or any(cap < 0 for cap in group_capacities):
-        raise ValueError("group_capacities must be valid non-negative requirements.")
+        Args:
+            participants: List of strongly-typed Participant models.
+            priority: Logic to resolve tag collisions.
 
-    num_people = len(participants)
-    num_groups = len(group_capacities)
+        Returns:
+            Tuple of (grouper_sets, separator_sets).
+        """
+        groupers: dict[str, set[int]] = {}
+        separators: dict[str, set[int]] = {}
 
-    if sum(group_capacities) != num_people:
-        raise ValueError("Sum of group capacities must equal total participants.")
+        for i, p in enumerate(participants):
+            g_tags = cls.get_tags(p.groupers)
+            s_tags = cls.get_tags(p.separators)
 
-    model = cp_model.CpModel()
+            for tag in g_tags:
+                groupers.setdefault(tag, set()).add(i)
+            for tag in s_tags:
+                separators.setdefault(tag, set()).add(i)
 
-    # --- 1. Variable Initialization ---
-    x = {}
-    for i in range(num_people):
-        for g in range(num_groups):
-            x[(i, g)] = model.NewBoolVar(f"assign_p{i}_g{g}")
-        model.AddExactlyOne([x[(i, g)] for g in range(num_groups)])
+        # Conflict Resolution: Only resolve for the same tag key
+        common_tags = set(groupers.keys()) & set(separators.keys())
 
-    for g in range(num_groups):
-        model.Add(sum(x[(i, g)] for i in range(num_people)) == group_capacities[g])
+        for tag in common_tags:
+            g_set = groupers[tag]
+            s_set = separators[tag]
+            overlap = s_set & g_set
 
-    # --- 2. Tag Parsing (Raw Character Iteration) ---
-    # Commas and whitespace are explicitly ignored to maintain CSV integrity.
-    grouper_sets = {}
-    separator_sets = {}
-    for i, p in enumerate(participants):
-        g_val = p.get(config.COL_GROUPER, "")
-        s_val = p.get(config.COL_SEPARATOR, "")
-
-        # Normalize NaN/None from sparse data gracefully before tokenization
-        if g_val is None or (isinstance(g_val, float) and math.isnan(g_val)):
-            g_val = ""
-        if s_val is None or (isinstance(s_val, float) and math.isnan(s_val)):
-            s_val = ""
-
-        g_raw = str(g_val)
-        s_raw = str(s_val)
-
-        # Iterate over every character; treat each as an independent tag
-        g_tags = {c for c in g_raw if not c.isspace() and c != ","}
-        s_tags = {c for c in s_raw if not c.isspace() and c != ","}
-
-        for tag in g_tags:
-            grouper_sets.setdefault(tag, set()).add(i)
-        for tag in s_tags:
-            separator_sets.setdefault(tag, set()).add(i)
-
-    # Conflict Resolution based on exact token matches
-    if conflict_priority == "Groupers":
-        for s_tag, s_set in separator_sets.items():
-            for g_tag, g_set in grouper_sets.items():
-                overlap = s_set.intersection(g_set)
-                if len(overlap) > 1:
+            if len(overlap) > 1:
+                if priority == ConflictPriority.GROUPERS:
                     s_set.difference_update(overlap)
-    else:
-        for g_tag, g_set in list(grouper_sets.items()):
-            for s_tag, s_set in separator_sets.items():
-                overlap = g_set.intersection(s_set)
-                if len(overlap) > 1:
+                else:
                     g_set.difference_update(overlap)
 
-    # --- 3. Pigeonhole Spread (Separators) ---
-    for s_tag, s_set in separator_sets.items():
-        if not s_set:
-            continue
-        limit = math.ceil(len(s_set) / num_groups)
-        for g in range(num_groups):
-            model.Add(sum(x[(i, g)] for i in s_set) <= limit)
+        return groupers, separators
 
-    # --- 4. Scoring Mode Evaluation ---
-    abs_diffs = []
-    SIMPLE_TOTAL_SENTINEL = object()
-    active_score_cols = (
-        [SIMPLE_TOTAL_SENTINEL] if opt_mode == "Simple" else score_columns
-    )
 
-    first_non_skipped_col = True
-    max_total_w_diff = 0
+class ScoringStrategy(ABC):
+    """Abstract base for different optimization topologies."""
 
-    for col_idx, col in enumerate(active_score_cols):
-        if col is SIMPLE_TOTAL_SENTINEL:
+    @abstractmethod
+    def get_score_vectors(
+        self, participants: list[Participant], cfg: SolverConfig
+    ) -> list[tuple[str, list[int], int]]:
+        """Returns (name, scores, weight_multiplier) for each dimension."""
+        pass
+
+
+class AdvancedScoring(ScoringStrategy):
+    """Balances each score dimension independently."""
+
+    def get_score_vectors(
+        self, participants: list[Participant], cfg: SolverConfig
+    ) -> list[tuple[str, list[int], int]]:
+        """Generates independent score vectors for each weight mapping."""
+        vectors = []
+        for col, weight in cfg.score_weights.items():
+            if weight == 0:
+                continue
+
             scores = [
-                int(
-                    round(
-                        sum(
-                            float(p.get(c, 0)) * score_weights.get(c, 1.0)
-                            for c in score_columns
-                        )
-                        * config.SCALE_FACTOR
-                    )
+                round(p.scores.get(col, 0.0) * config.SCALE_FACTOR)
+                for p in participants
+            ]
+            # Ensure tiny positive weights are not rounded to 0
+            if weight > 0:
+                weight_m = max(1, round(weight * 100))
+            else:
+                weight_m = round(weight * 100)
+            vectors.append((col, scores, weight_m))
+        return vectors
+
+
+class SimpleScoring(ScoringStrategy):
+    """Balances a single weighted total score."""
+
+    def get_score_vectors(
+        self, participants: list[Participant], cfg: SolverConfig
+    ) -> list[tuple[str, list[int], int]]:
+        """Generates a single pre-aggregated score vector."""
+        scores = []
+        for p in participants:
+            total = sum(
+                p.scores.get(c, 0.0) * cfg.score_weights.get(c, 1.0)
+                for c in cfg.score_weights
+            )
+            scores.append(round(total * config.SCALE_FACTOR))
+        return [("simple_total", scores, 100)]
+
+
+class ConstraintBuilder:
+    """Stateful builder for constructing the CP-SAT partition model."""
+
+    def __init__(self, participants: list[Participant], cfg: SolverConfig):
+        """Initializes the model builder."""
+        self.participants = participants
+        self.cfg = cfg
+        self.num_people = len(participants)
+        self.num_groups = cfg.num_groups
+        self.model = cp_model.CpModel()
+        self.x = {}  # (p_idx, g_idx) -> BoolVar
+        self.objectives = []
+        self.max_objective_bound = 0
+        self._symmetry_broken = False
+
+    def build_variables(self) -> None:
+        """Initializes assignment variables and basic partitioning constraints."""
+        for i in range(self.num_people):
+            for g in range(self.num_groups):
+                self.x[(i, g)] = self.model.NewBoolVar(f"p{i}_g{g}")
+            self.model.AddExactlyOne([self.x[(i, g)] for g in range(self.num_groups)])
+
+        for g in range(self.num_groups):
+            self.model.Add(
+                sum(self.x[(i, g)] for i in range(self.num_people))
+                == self.cfg.group_capacities[g]
+            )
+
+    def add_pigeonhole_constraints(self, separators: dict[str, set[int]]) -> None:
+        """Ensures separator tags are spread across groups proportionally.
+
+        Calculates a dynamic upper bound for each group based on its relative
+        capacity to ensure feasibility while maintaining dispersion.
+
+        Args:
+            separators: Mapping of separator tags to sets of participant indices.
+        """
+        total_p = self.num_people
+        for _, s_set in separators.items():
+            if not s_set:
+                continue
+
+            n_tag = len(s_set)
+
+            for g in range(self.num_groups):
+                cap_g = self.cfg.group_capacities[g]
+                # To ensure feasibility: Sum of limits across all groups >= n_tag.
+                # Proportional share: (n_tag * group_cap) / total_cap.
+                # Baseline: ceil(proportional_share).
+                # For uniform groups, this equals ceil(n_tag / G).
+                # For non-uniform, it scales with group size.
+                limit = min(cap_g, math.ceil((n_tag * cap_g) / total_p))
+
+                # If the sum of these tight limits might be < n_tag due to rounding,
+                # we'd have infeasibility. However, sum(ceil(p_i)) >= sum(p_i) = n_tag.
+                # So math.ceil((n_tag * cap_g) / total_p) is the tightest feasible
+                # limit.
+                self.model.Add(sum(self.x[(i, g)] for i in s_set) <= limit)
+
+    def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
+        """Builds multi-objective minimization for group score variance.
+
+        Args:
+            strategy: The scoring strategy to use for vector generation.
+        """
+        vectors = strategy.get_score_vectors(self.participants, self.cfg)
+
+        # Performance optimization: Order by score vectors to break symmetry
+        # more effectively than just a single dimension.
+        for name, scores, weight_m in vectors:
+            total_score = sum(scores)
+            min_sum, max_sum = (
+                sum(s for s in scores if s < 0),
+                sum(s for s in scores if s > 0),
+            )
+
+            if min_sum == 0 and max_sum == 0:
+                continue
+
+            diff_bound = max(1, (max_sum - min_sum) * self.num_people * 2)
+            weighted_bound = diff_bound * weight_m
+
+            if weighted_bound > 2**60:
+                extra_scale = math.ceil(weighted_bound / 2**60)
+                logger.warning(
+                    "Extreme score range in %s risking overflow. Scaling by %d.",
+                    name,
+                    extra_scale,
                 )
-                for p in participants
+                scores = [round(s / extra_scale) for s in scores]
+                total_score = sum(scores)
+                min_sum = sum(s for s in scores if s < 0)
+                max_sum = sum(s for s in scores if s > 0)
+                diff_bound = max(1, (max_sum - min_sum) * self.num_people * 2)
+                weighted_bound = diff_bound * weight_m
+
+                if weighted_bound > 2**60:
+                    raise ValueError(
+                        f"Score range for {name} is too extreme even after scaling."
+                    )
+
+            g_sums = [
+                self.model.NewIntVar(min_sum, max_sum, f"sum_{name}_{g}")
+                for g in range(self.num_groups)
             ]
-            weight_m = 100
-            col_name_str = "simple_total"
-        else:
-            scores = [
-                int(round(float(p.get(col, 0)) * config.SCALE_FACTOR))
-                for p in participants
-            ]
-            weight_m = int(round(score_weights.get(col, 1.0) * 100))
-            col_name_str = str(col)
+            # Advanced Symmetry Breaking: Enforce ordering for identical capacity
+            # groups on at most one canonical dimension. This prunes G! search
+            # branches without over-constraining multi-dimensional weights.
+            if weight_m > 0 and not self._symmetry_broken:
+                self._symmetry_broken = True
+                for g1 in range(self.num_groups):
+                    for g2 in range(g1 + 1, self.num_groups):
+                        if (
+                            self.cfg.group_capacities[g1]
+                            == self.cfg.group_capacities[g2]
+                        ):
+                            self.model.Add(g_sums[g1] <= g_sums[g2])
 
-        total_score = sum(scores)
-        min_sum = sum(s for s in scores if s < 0)
-        max_sum = sum(s for s in scores if s > 0)
+            for g in range(self.num_groups):
+                self.model.Add(
+                    g_sums[g]
+                    == sum(self.x[(i, g)] * scores[i] for i in range(self.num_people))
+                )
+                target = total_score * self.cfg.group_capacities[g]
+                diff = self.model.NewIntVar(-diff_bound, diff_bound, f"diff_{name}_{g}")
+                self.model.Add(diff == g_sums[g] * self.num_people - target)
 
-        if min_sum == 0 and max_sum == 0:
-            continue
+                abs_diff = self.model.NewIntVar(0, diff_bound, f"abs_{name}_{g}")
+                self.model.AddAbsEquality(abs_diff, diff)
 
-        g_sums = [
-            model.NewIntVar(min_sum, max_sum, f"g_sum_{col_name_str}_{g}")
-            for g in range(num_groups)
-        ]
+                w_diff = self.model.NewIntVar(0, weighted_bound, f"w_{name}_{g}")
+                self.model.Add(w_diff == abs_diff * weight_m)
+                self.objectives.append(w_diff)
+                self.max_objective_bound += weighted_bound
 
-        if first_non_skipped_col:
-            for g1 in range(num_groups):
-                for g2 in range(g1 + 1, num_groups):
-                    if group_capacities[g1] == group_capacities[g2]:
-                        model.Add(g_sums[g1] <= g_sums[g2])
-            first_non_skipped_col = False
+    def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
+        """Adds penalties for splitting grouper tags.
 
-        diff_bound = max(1, (max_sum - min_sum) * num_people * 2)
+        Args:
+            groupers: Mapping of grouper tags to sets of participant indices.
+        """
+        # Prevent 64-bit integer overflow in CP-SAT.
+        # aggregate_cap (e.g. 1 << 60) must fit all objectives.
+        aggregate_cap = 1 << 60
+        active_tags = sum(1 for g_set in groupers.values() if len(g_set) > 1)
+        per_term_cap = aggregate_cap // max(1, active_tags * self.num_groups)
+        base_penalty = min(self.max_objective_bound * 10 + 1000, per_term_cap)
 
-        for g in range(num_groups):
-            model.Add(
-                g_sums[g] == sum(x[(i, g)] * scores[i] for i in range(num_people))
-            )
+        for tag, g_set in groupers.items():
+            if len(g_set) <= 1:
+                continue
+            for g in range(self.num_groups):
+                used = self.model.NewBoolVar(f"used_{tag}_{g}")
+                self.model.AddMaxEquality(used, [self.x[(i, g)] for i in g_set])
 
-            target_val = total_score * group_capacities[g]
-            actual_val = model.NewIntVar(
-                min_sum * num_people, max_sum * num_people, f"act_{col_name_str}_{g}"
-            )
-            model.Add(actual_val == g_sums[g] * num_people)
+                # Incorporate SolverConfig.grouper_weight and clamp per-term
+                weight = self.cfg.grouper_weight
+                cap_penalty = self.cfg.group_capacities[g] * 10
+                raw_penalty = (base_penalty + cap_penalty) * weight
+                penalty = min(raw_penalty, per_term_cap)
 
-            diff = model.NewIntVar(-diff_bound, diff_bound, f"diff_{col_name_str}_{g}")
-            model.Add(diff == actual_val - target_val)
+                if raw_penalty > per_term_cap:
+                    logger.warning(
+                        "Clamping cohesion penalty for tag %s (G%d): %d -> %d",
+                        tag,
+                        g,
+                        raw_penalty,
+                        per_term_cap,
+                    )
 
-            abs_diff = model.NewIntVar(0, diff_bound, f"abs_{col_name_str}_{g}")
-            model.AddAbsEquality(abs_diff, diff)
+                self.objectives.append(used * penalty)
+                self.max_objective_bound += penalty
 
-            w_diff_bound = max(1, diff_bound * weight_m)
-            w_diff = model.NewIntVar(0, w_diff_bound, f"w_diff_{col_name_str}_{g}")
-            model.Add(w_diff == abs_diff * weight_m)
-            abs_diffs.append(w_diff)
+    def get_model(self) -> cp_model.CpModel:
+        """Finalizes and returns the model."""
+        self.model.Minimize(sum(self.objectives))
+        return self.model
 
-        # Track the maximum possible objective contribution across all columns
-        max_total_w_diff += (max(1, diff_bound * weight_m)) * num_groups
 
-    # --- 5. Fractional Cohesion (Groupers) ---
-    cohesion_penalties = []
+def _is_missing(value: object) -> bool:
+    """Returns True for None and any pandas/NumPy scalar missing value."""
+    if value is None:
+        return True
+    try:
+        return bool(pd.isna(value))
+    except (TypeError, ValueError):
+        return False
 
-    # Dynamic base penalty derived from the maximum contribution of w_diff to
-    # ensure cohesion is enforced as a primary objective without overflowing bounds.
-    base_cohesion_penalty = max_total_w_diff * 10 + 1000
 
-    for g_tag, g_set in grouper_sets.items():
-        if len(g_set) <= 1:
-            continue
-        for g in range(num_groups):
-            used = model.NewBoolVar(f"used_{g_tag}_{g}")
-            model.AddMaxEquality(used, [x[(i, g)] for i in g_set])
-            # Greedy overflow: prioritize smaller groups to keep large ones open
-            capacity_penalty = group_capacities[g] * 10
-            cohesion_penalties.append(used * (base_cohesion_penalty + capacity_penalty))
+def _clean_tag_cell(value: object) -> str:
+    """Coerces a raw tag cell to a string, treating NaN/None as empty."""
+    if _is_missing(value):
+        return ""
+    return str(value)
 
-    model.Minimize(sum(abs_diffs) + sum(cohesion_penalties))
 
-    return model, x, num_people, num_groups
+def _clean_score_cell(value: object) -> float:
+    """Coerces a raw score cell to float, treating missing/blank as 0.0."""
+    if _is_missing(value):
+        return 0.0
+    if isinstance(value, str) and not value.strip():
+        return 0.0
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def solve_with_ortools(
-    participants: list[dict],
-    group_capacities: list[int],
-    score_columns: list[str],
-    score_weights: dict[str, float],
-    opt_mode: str = "Advanced",
-    conflict_priority: str = "Groupers",
-) -> tuple[list[dict], bool]:
-    """
-    Main orchestration function to execute the solver.
+    participants_raw: list[dict], cfg: SolverConfig
+) -> tuple[list[dict], int, float]:
+    """Primary entry point for the solver.
 
     Args:
-        participants (list[dict]): Participant data.
-        group_capacities (list[int]): Size constraints.
-        score_columns (list[str]): Dimensions to balance.
-        score_weights (dict[str, float]): Weights per dimension.
-        opt_mode (str): Optimization topology.
-        conflict_priority (str): Conflict resolution strategy.
+        participants_raw: List of dictionaries from input files.
+        cfg: The solver configuration parameters.
 
     Returns:
-        tuple[list[dict], bool]: Groupings and success flag.
+        Tuple: (grouped_participants, solver_status, elapsed_time)
     """
-    model, x, num_people, num_groups = build_partition_model(
-        participants,
-        group_capacities,
-        score_columns,
-        score_weights,
-        opt_mode,
-        conflict_priority,
+    # Convert raw dicts to Participant models
+    participants = []
+    for i, p in enumerate(participants_raw):
+        raw_name = p.get(config.COL_NAME)
+        name = str(raw_name) if not _is_missing(raw_name) else f"P{i}"
+
+        raw_idx = p.get("_original_index")
+        orig_idx = int(raw_idx) if not _is_missing(raw_idx) else i
+
+        participants.append(
+            Participant(
+                name=name,
+                scores={
+                    str(k): _clean_score_cell(v)
+                    for k, v in p.items()
+                    if str(k).startswith(config.SCORE_PREFIX)
+                },
+                groupers=_clean_tag_cell(p.get(config.COL_GROUPER)),
+                separators=_clean_tag_cell(p.get(config.COL_SEPARATOR)),
+                original_index=orig_idx,
+            )
+        )
+
+    start_time = time.time()
+
+    # Setup Builder and Strategy
+    builder = ConstraintBuilder(participants, cfg)
+    builder.build_variables()
+
+    groupers, separators = TagProcessor.process_participants(
+        participants, cfg.conflict_priority
     )
+    builder.add_pigeonhole_constraints(separators)
 
+    strategy = (
+        AdvancedScoring()
+        if cfg.opt_mode == OptimizationMode.ADVANCED
+        else SimpleScoring()
+    )
+    builder.add_scoring_objectives(strategy)
+    builder.add_cohesion_penalties(groupers)
+
+    model = builder.get_model()
+
+    # Solver Execution
     solver_inst = cp_model.CpSolver()
-    solver_inst.parameters.max_time_in_seconds = config.SOLVER_TIMEOUT
-    solver_inst.parameters.num_search_workers = config.SOLVER_NUM_WORKERS
+    solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
+    solver_inst.parameters.num_search_workers = cfg.num_workers
 
-    status = solver_inst.Solve(model, SolutionPrinter(time.time()))
+    status = solver_inst.Solve(model, SolutionPrinter(start_time))
+    elapsed = time.time() - start_time
 
+    results = []
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        result_groups = [{"id": g + 1, "members": []} for g in range(num_groups)]
-        for i in range(num_people):
-            for g in range(num_groups):
-                if solver_inst.Value(x[(i, g)]) == 1:
-                    result_groups[g]["members"].append(participants[i])
-        return result_groups, True
+        # Format results back to list of dicts for UI compatibility
+        for i, p in enumerate(participants):
+            assigned_group = -1
+            for g in range(cfg.num_groups):
+                if solver_inst.Value(builder.x[(i, g)]) == 1:
+                    assigned_group = g + 1
+                    break
 
-    return [], False
+            p_dict = {
+                config.COL_NAME: p.name,
+                config.COL_GROUP: assigned_group,
+                config.COL_GROUPER: p.groupers,
+                config.COL_SEPARATOR: p.separators,
+                "_original_index": p.original_index,
+            }
+            # Unpack MappingsProxyType for compatibility
+            p_dict.update(dict(p.scores))
+            results.append(p_dict)
+
+    return results, status, elapsed

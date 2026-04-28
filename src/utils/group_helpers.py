@@ -1,18 +1,21 @@
-"""
-Helper utilities for group data aggregation.
+"""Helper utilities for group data aggregation.
 
 This module provides shared logic for processing dataframe results into
 structured group dictionaries used by the UI and Exporter across multiple dimensions.
 """
 
+from typing import Any
+
 import pandas as pd
 
 
 def aggregate_groups(
-    df: pd.DataFrame, col_group: str, score_cols: list[str], col_name: str
-) -> list[dict]:
-    """
-    Aggregates a DataFrame of results into a list of group metadata dictionaries.
+    df: pd.DataFrame,
+    col_group: str,
+    score_cols: list[str],
+    col_name: str,
+) -> list[dict[str, Any]]:
+    """Aggregates a DataFrame of results into a list of group metadata dictionaries.
 
     Args:
         df (pd.DataFrame): The DataFrame containing group assignments.
@@ -21,10 +24,10 @@ def aggregate_groups(
         col_name (str): Column name for Participant Name.
 
     Returns:
-        list[dict]: A list of dictionaries, where each dict represents a group
-        and contains keys: 'id', 'members', 'count', 'averages', 'sums'.
+        list[dict[str, Any]]: A list of dictionaries, where each dict represents a group
+            and contains keys: 'id', 'members', 'count', 'averages', 'sums'.
     """
-    groups = []
+    groups: list[dict[str, Any]] = []
     if df is None or df.empty:
         return groups
 
@@ -34,7 +37,10 @@ def aggregate_groups(
     unique_groups = sorted(df[col_group].unique())
 
     for g_id in unique_groups:
-        members = df[df[col_group] == g_id].to_dict("records")
+        group_df = df[df[col_group] == g_id].copy()
+        if "_original_index" not in group_df.columns:
+            group_df["_original_index"] = group_df.index
+        members = group_df.to_dict("records")
         count = len(members)
         averages = {}
         sums = {}
@@ -58,7 +64,7 @@ def aggregate_groups(
                 "count": count,
                 "averages": averages,
                 "sums": sums,
-            }
+            },
         )
 
     return groups

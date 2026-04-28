@@ -1,14 +1,13 @@
-"""
-Unit tests/Sanity checks for config module.
-"""
+"""Unit tests/Sanity checks for config module."""
 
 from src.core import config
 
 
 def test_config_constants():
-    """Ensure critical constants are set explicitly."""
-    assert config.COL_NAME
+    """Verify that core constants are loaded."""
     assert config.SCORE_PREFIX == "Score"
-    assert config.COL_GROUP
-    assert config.OUTPUT_FILENAME.endswith(".xlsx")
-    assert isinstance(config.SOLVER_TIMEOUT, int)
+    assert config.COL_NAME == "Name"
+    assert config.SCALE_FACTOR == 100_000
+    assert config.COL_GROUP == "Group"
+    assert config.OUTPUT_FILENAME == "balanced_groups.xlsx"
+    assert config.SOLVER_TIMEOUT == 600

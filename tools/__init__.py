@@ -1,3 +1,1 @@
-"""
-Maintenance and development tools for the Group Balancer project.
-"""
+"""Maintenance and development tools for the Group Balancer project."""

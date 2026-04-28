@@ -1,9 +1,10 @@
 # .coderabbit.yaml
+language: "en-US"
+tone_instructions: "Act as a ruthless principal engineer. Zero tolerance for bugs, performance flaws, or architectural shortcuts. Enforce 100% Google-style docstrings, strict typing, and SOLID principles. Be brutal, direct, and uncompromising."
+
 reviews:
-  # Ensure auto-review is on
+  profile: "assertive"
   auto_review:
     enabled: true
-    # Target all base branches
     base_branches: [".*"]
-    # To ignore bot PRs (e.g., Dependabot), use this:
     ignore_usernames: ["dependabot[bot]"]

@@ -1,136 +1,185 @@
 """
-Data loading and sanitization utilities.
+Data loading and security-hardened sanitization utilities.
 
 This module handles the import of participant data from CSV and Excel files,
-ensuring that column names are normalized and data types are coerced correctly
-for multi-dimensional scoring and advanced constraints.
+ensuring strict path validation, size limits, and data type coercion.
 """
 
 import os
+from pathlib import Path
+
 import pandas as pd
+
+from src import logger
 from src.core import config
+
+
+def validate_file_path(path: str) -> str:
+    """
+    Validates that a file path exists, is a file, and stays within the project root.
+
+    Args:
+        path (str): The user-provided path.
+
+    Returns:
+        str: Validated absolute path.
+
+    Raises:
+        FileNotFoundError: If the path does not exist.
+        ValueError: If the path is not a file, fails security checks, or is too large.
+    """
+    # Normalize path and resolve symlinks
+    abs_path = os.path.realpath(os.path.abspath(path))
+    project_root = os.path.realpath(os.getcwd())
+
+    # Ensure path is within project root for traversal protection
+    try:
+        if os.path.commonpath([project_root, abs_path]) != project_root:
+            logger.error("File access attempted outside project root: %s", abs_path)
+            raise ValueError(
+                "Access denied: File must be within the project directory."
+            )
+    except Exception as e:
+        if isinstance(e, ValueError):
+            raise
+        logger.error("Path validation error: %s", e)
+        raise ValueError("Invalid path configuration.") from e
+
+    if not os.path.exists(abs_path):
+        raise FileNotFoundError(f"File not found: {abs_path}")
+
+    if not os.path.isfile(abs_path):
+        raise ValueError(f"Path is not a file: {abs_path}")
+
+    # Check file size
+    size_mb = os.path.getsize(abs_path) / (1024 * 1024)
+    if size_mb > config.MAX_FILE_SIZE_MB:
+        err = f"File size ({size_mb:.2f}MB) exceeds {config.MAX_FILE_SIZE_MB}MB."
+        raise ValueError(err)
+
+    return abs_path
 
 
 def get_file_path_from_user() -> str:
     """
     Prompts the user to input a file path via the command line.
 
-    Handles common artifacts from drag-and-drop operations, such as removing
-    surrounding quotes or PowerShell's '& ' prefix.
-
     Returns:
-        str: The absolute path to the file.
-
-    Raises:
-        SystemExit: If the user cancels the operation via KeyboardInterrupt.
+        str: Validated absolute path.
     """
+    logger.info("Awaiting user input for data file...")
     print("\n[INPUT REQUIRED]")
     print("Please drag and drop your Excel/CSV file here and press Enter:")
 
     while True:
         try:
             user_input = input(">> ").strip()
+            if not user_input:
+                continue
 
+            # Remove shell/terminal artifacts
             if user_input.startswith("& "):
                 user_input = user_input[2:]
             elif user_input.startswith("&"):
                 user_input = user_input[1:]
-
             user_input = user_input.strip('"').strip("'").strip()
 
-            if not user_input:
-                continue
-
-            if os.path.exists(user_input):
-                return os.path.abspath(user_input)
-            else:
-                print(f"Error: File not found at '{user_input}'. Please try again.")
+            return validate_file_path(user_input)
 
         except KeyboardInterrupt:
-            print("\nOperation cancelled by user.")
+            logger.warning("User cancelled file selection.")
             exit(0)
+        except (FileNotFoundError, ValueError) as e:
+            logger.error(str(e))
+            print(f"Error: {e}")
         except Exception as e:
-            print(f"An unexpected error occurred during input: {e}")
+            logger.exception("Unexpected error during file selection.")
+            print(f"An unexpected error occurred: {e}")
 
 
 def load_data(filepath: str) -> list[dict] | None:
     """
-    Loads participant data from a CSV or Excel file.
-
-    Dynamically detects all columns starting with the configured SCORE_PREFIX
-    and initializes constraint columns if missing. Issues warnings for missing
-    or non-numeric data before filling with zeroes.
+    Loads participant data with security checks and sanitization.
 
     Args:
         filepath (str): Path to the source file.
 
     Returns:
-        list[dict] | None: A list of participant records if successful,
-        or None if validation fails.
+        list[dict] | None: A list of participant records or None on failure.
     """
     if not filepath:
         return None
 
     try:
-        if filepath.lower().endswith(".csv"):
+        # Re-validate in case it was called directly
+        # For compatibility with tests returning Path objects
+        if isinstance(filepath, Path):
+            filepath = str(filepath)
+        filepath = validate_file_path(filepath)
+
+        ext = filepath.lower()
+        if ext.endswith(".csv"):
             df = pd.read_csv(filepath)
-        elif filepath.lower().endswith((".xls", ".xlsx")):
+        elif ext.endswith((".xls", ".xlsx")):
             df = pd.read_excel(filepath)
         else:
-            print("Error: Unsupported file format. Please use .csv or .xlsx")
+            logger.error("Unsupported file format: %s", filepath)
             return None
 
-        df.columns = df.columns.str.strip()
+        # Fix: Strip whitespace from column names BEFORE validation
+        df.columns = df.columns.astype(str).str.strip()
+
+        # Enforcement of participant limits
+        if len(df) > config.MAX_PARTICIPANTS:
+            logger.error(
+                "Participant count (%d) exceeds limit of %d.",
+                len(df),
+                config.MAX_PARTICIPANTS,
+            )
+            return None
 
         score_cols = [
             col for col in df.columns if str(col).startswith(config.SCORE_PREFIX)
         ]
 
         if config.COL_NAME not in df.columns or not score_cols:
-            print(
-                f"Error: Input file must contain column '{config.COL_NAME}' and at least one score column starting with '{config.SCORE_PREFIX}'."
+            logger.error(
+                "Missing required columns in %s. Found: %s",
+                filepath,
+                list(df.columns),
             )
-            print(f"Found columns: {list(df.columns)}")
             return None
 
-        df[config.COL_NAME] = df[config.COL_NAME].astype(str).str.strip()
+        # Data Cleaning
+        df[config.COL_NAME] = df[config.COL_NAME].fillna("").astype(str).str.strip()
 
+        # Handle missing constraint columns gracefully
         if config.COL_GROUPER not in df.columns:
             df[config.COL_GROUPER] = ""
+        else:
+            df[config.COL_GROUPER] = df[config.COL_GROUPER].fillna("").astype(str)
+
         if config.COL_SEPARATOR not in df.columns:
             df[config.COL_SEPARATOR] = ""
+        else:
+            df[config.COL_SEPARATOR] = df[config.COL_SEPARATOR].fillna("").astype(str)
 
         for col in score_cols:
-            original_scores = df[col].copy()
-            df[col] = pd.to_numeric(original_scores, errors="coerce")
-
-            missing_mask = original_scores.isna()
-            coerced_mask = df[col].isna() & original_scores.notna()
-
-            if missing_mask.any():
-                missing_names = df.loc[missing_mask, config.COL_NAME].tolist()
-                print(
-                    f"Warning: Missing scores in {col} for {missing_names} were set to 0."
-                )
-
-            if coerced_mask.any():
-                invalid_names = df.loc[coerced_mask, config.COL_NAME].tolist()
-                print(
-                    f"Warning: Non-numeric scores in {col} for {invalid_names} were set to 0."
-                )
-
-            df[col] = df[col].fillna(0)
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
 
         records = df.to_dict("records")
         if not records:
-            print("Error: The input file appears to be empty.")
+            logger.warning("File %s contains no data records.", filepath)
             return None
 
+        logger.info(
+            "Successfully loaded %d participants from %s.", len(records), filepath
+        )
         return records
 
-    except PermissionError:
-        print(f"Error: Permission denied accessing '{filepath}'. Is the file open?")
+    except (PermissionError, FileNotFoundError, ValueError) as e:
+        logger.error("Error accessing '%s': %s", filepath, e)
         return None
-    except Exception as e:
-        print(f"Error loading data: {e}")
+    except Exception:
+        logger.exception("Critical error loading data from %s", filepath)
         return None

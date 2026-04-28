@@ -1,24 +1,78 @@
-"""
-Visualization logic for displaying results.
+"""Results Rendering Logic.
 
-This module handles the 'Card View' rendering of groups, showing detailed
+This module provides functions to display the final grouping results and
 statistics for each group in a grid layout across multiple score dimensions,
 including categorical constraint tags.
 """
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
+
 from src.core import config
 from src.utils import group_helpers
 
 
-def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
-    """
-    Renders groups in a grid layout (cards).
+def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
+    """Renders a summary table of global balancing KPIs.
+
+    The global average is a participant-weighted average across all groups.
+    The reported dispersion is the standard deviation computed across the
+    group averages. Lower standard deviation indicates better balance.
 
     Args:
-        df (pd.DataFrame): The DataFrame containing group assignments.
-        score_cols (list[str]): The dimensions of scores to be rendered in the view.
+        df: The DataFrame containing group assignments.
+        score_cols: The list of score columns to calculate statistics for.
+    """
+    if df is None or df.empty:
+        return
+
+    st.subheader("📊 Global Balancing KPIs")
+
+    groups = group_helpers.aggregate_groups(
+        df, config.COL_GROUP, score_cols, config.COL_NAME
+    )
+
+    stats_data = []
+    total_p = sum(g["count"] for g in groups)
+    for col in score_cols:
+        group_avgs = [g["averages"].get(col, 0.0) for g in groups]
+        series = pd.Series(group_avgs)
+        # Participant-weighted global average
+        weighted_avg = (
+            sum(g["averages"].get(col, 0.0) * g["count"] for g in groups) / total_p
+            if total_p > 0
+            else 0.0
+        )
+        std_dev = series.std(ddof=0) if len(group_avgs) > 1 else 0.0
+        stats_data.append(
+            {
+                "Score Dimension": col,
+                "Global Avg": weighted_avg,
+                "Avg Std Dev (Balance)": std_dev,
+            }
+        )
+
+    stats_df = pd.DataFrame(stats_data)
+    st.dataframe(
+        stats_df,
+        hide_index=True,
+        width="stretch",
+        column_config={
+            "Global Avg": st.column_config.NumberColumn(format="%.2f"),
+            "Avg Std Dev (Balance)": st.column_config.NumberColumn(
+                format="%.4f",
+                help="Standard deviation between group averages. Lower is better.",
+            ),
+        },
+    )
+
+
+def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
+    """Renders groups in a grid layout (cards).
+
+    Args:
+        df: The DataFrame containing group assignments.
+        score_cols: The dimensions of scores to be rendered in the view.
     """
     if df is None or df.empty:
         st.warning("No groups to display.")
@@ -28,70 +82,75 @@ def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
         df, config.COL_GROUP, score_cols, config.COL_NAME
     )
 
-    for i in range(0, len(groups), 2):
-        g1 = groups[i]
-        g2 = groups[i + 1] if (i + 1) < len(groups) else None
+    # Use columns for a grid-like layout
+    num_cols = 2
+    cols = st.columns(num_cols)
 
-        c1, c2 = st.columns(2)
-
-        with c1:
-            _render_single_card(g1, score_cols)
-
-        with c2:
-            if g2:
-                _render_single_card(g2, score_cols)
-
-        st.markdown("---")
+    for i, group in enumerate(groups):
+        with cols[i % num_cols]:
+            _render_single_card(group, score_cols)
 
 
 def _render_single_card(group: dict, score_cols: list[str]) -> None:
-    """
-    Helper to render a single group card with metrics for all score dimensions
-    and a table containing members and their constraint tags.
+    """Helper to render a single group card.
 
     Args:
-        group (dict): Dictionary containing group metadata and members.
-        score_cols (list[str]): List of score dimensions to show averages for.
+        group: Dictionary containing group metadata and members.
+        score_cols: List of score dimensions to show averages for.
     """
     with st.container(border=True):
-        st.markdown(f"### Group {group['id']}")
+        c1, c2 = st.columns([3, 1])
+        c1.markdown(f"### 👥 Group {group['id']}")
+        c2.metric("Size", len(group["members"]))
 
-        # Header metrics: Count + dynamic average for every score column provided
-        num_metrics = 1 + len(score_cols)
-        cols = st.columns(num_metrics)
+        with st.expander("📊 Group Summary", expanded=True):
+            m_cols = st.columns(len(score_cols))
+            for j, col in enumerate(score_cols):
+                with m_cols[j]:
+                    avg = group["averages"].get(col, 0)
+                    st.metric(label=f"Avg {col}", value=f"{avg:.1f}")
 
-        cols[0].metric("Count", group["count"])
+        if group["members"]:
+            disp_df = pd.DataFrame(group["members"])
+            display_columns = [config.COL_NAME, config.COL_GROUP]
 
-        for i, col in enumerate(score_cols):
-            avg_val = group["averages"].get(col, 0.0)
-            cols[i + 1].metric(f"Avg {col}", f"{avg_val:.2f}")
+            # Add tags if they exist and are not empty
+            for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
+                if col in disp_df.columns and not disp_df[col].eq("").all():
+                    display_columns.append(col)
 
-        st.divider()
-
-        disp_df = pd.DataFrame(group["members"])
-        if not disp_df.empty:
-            # Dynamically build display columns based on available data
-            display_columns = [config.COL_NAME]
-
-            # Add constraint columns if they exist in the member data
-            if config.COL_GROUPER in disp_df.columns:
-                display_columns.append(config.COL_GROUPER)
-            if config.COL_SEPARATOR in disp_df.columns:
-                display_columns.append(config.COL_SEPARATOR)
-
-            # Append all score columns
             display_columns.extend(score_cols)
 
-            # Ensure score columns are formatted consistently with the metrics
+            max_groups = st.session_state.get("num_groups_target", 10)
             col_configs = {
-                col: st.column_config.NumberColumn(format="%.2f") for col in score_cols
+                config.COL_GROUP: st.column_config.NumberColumn(
+                    "Group", min_value=1, max_value=max_groups, format="%d"
+                ),
+                config.COL_NAME: st.column_config.TextColumn(disabled=True),
             }
+            for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
+                col_configs[col] = st.column_config.TextColumn(disabled=True)
+            for col in score_cols:
+                col_configs[col] = st.column_config.NumberColumn(
+                    format="%.2f", disabled=True
+                )
 
-            st.dataframe(
+            edited_df = st.data_editor(
                 disp_df[display_columns],
-                hide_index=True,
                 width="stretch",
                 column_config=col_configs,
+                key=f"editor_group_{group['id']}",
             )
+
+            if not edited_df.equals(disp_df[display_columns]):
+                # A group reassignment happened
+                interactive_df = st.session_state.interactive_df
+                for local_idx, row in edited_df.iterrows():
+                    orig_idx = disp_df.at[local_idx, "_original_index"]
+                    new_grp = row[config.COL_GROUP]
+                    if interactive_df.at[orig_idx, config.COL_GROUP] != new_grp:
+                        interactive_df.at[orig_idx, config.COL_GROUP] = new_grp
+                st.session_state.interactive_df = interactive_df
+                st.rerun()
         else:
             st.caption("No members assigned.")

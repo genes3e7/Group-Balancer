@@ -1,6 +1,0 @@
-# Core Dependencies
-pandas
-openpyxl
-numpy
-ortools
-streamlit

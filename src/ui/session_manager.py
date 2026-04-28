@@ -1,18 +1,18 @@
-"""
-Session State Management.
+"""Session State Management.
 
 Initializes the Streamlit session state and guarantees that missing keys
 (like the advanced constraints) are injected to prevent application crashes.
 """
 
-import streamlit as st
 import pandas as pd
+import streamlit as st
+
 from src.core import config
 
 
 def init_session() -> None:
-    """
-    Initializes all necessary session state variables.
+    """Initializes all necessary session state variables.
+
     Checks each key independently to prevent partial state corruption.
     """
     defaults = {
@@ -40,13 +40,13 @@ def init_session() -> None:
                 default_score_col: [80.0, 95.0, 60.0],
                 config.COL_GROUPER: ["A", "A", ""],
                 config.COL_SEPARATOR: ["", "X", "X"],
-            }
+            },
         )
 
 
 def go_to_step(target_step: int) -> None:
-    """
-    Updates the step state and reruns the app.
+    """Updates the step state and reruns the app.
+
     Input validation clamps the target_step between 1 and 3.
 
     Args:

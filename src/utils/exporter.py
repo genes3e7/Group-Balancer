@@ -1,24 +1,25 @@
-"""
-Excel export utility.
+"""Excel export utility.
 
 This module formats the results into a side-by-side 'Matrix View' structure
 and includes summary statistics in the generated Excel file for multiple dimensions.
 """
 
-import pandas as pd
 import io
+from typing import Any
+
+import pandas as pd
+
 from src.utils import group_helpers
 
 
 def _get_excel_column_name(n: int) -> str:
-    """
-    Converts a 0-indexed column number to an Excel column name (A, B, C...Z, AA, AB...).
+    """Converts a 0-indexed column number to an Excel column name.
 
     Args:
         n (int): The 0-indexed column position.
 
     Returns:
-        str: The corresponding Excel column label.
+        str: The corresponding Excel column label (e.g., A, B, ..., Z, AA, ...).
     """
     res = ""
     while n >= 0:
@@ -28,10 +29,12 @@ def _get_excel_column_name(n: int) -> str:
 
 
 def generate_excel_bytes(
-    df_results: pd.DataFrame, col_group: str, score_cols: list[str], col_name: str
+    df_results: pd.DataFrame,
+    col_group: str,
+    score_cols: list[str],
+    col_name: str,
 ) -> bytes:
-    """
-    Generates an Excel file in-memory matching the 'Matrix View' format.
+    """Generates an Excel file in-memory matching the 'Matrix View' format.
 
     Dynamically sizes column headers and data to accommodate N score dimensions.
 
@@ -46,7 +49,12 @@ def generate_excel_bytes(
     """
     output = io.BytesIO()
 
-    groups = group_helpers.aggregate_groups(df_results, col_group, score_cols, col_name)
+    groups = group_helpers.aggregate_groups(
+        df_results,
+        col_group,
+        score_cols,
+        col_name,
+    )
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         sheet_name = "Balanced_Groups"
@@ -54,12 +62,13 @@ def generate_excel_bytes(
         if not groups:
             pd.DataFrame().to_excel(writer, sheet_name=sheet_name)
         else:
-            rows = []
+            rows: list[dict[str, Any]] = []
 
             # Dynamically compute enough header columns for 2 groups + gaps + stats
             num_cols_per_group = 1 + len(score_cols)
             required_count = max(
-                50, (num_cols_per_group * 2) + 5 + (len(score_cols) * 3)
+                50,
+                (num_cols_per_group * 2) + 5 + (len(score_cols) * 3),
             )
             headers = [_get_excel_column_name(i) for i in range(required_count)]
 
@@ -73,7 +82,7 @@ def generate_excel_bytes(
                 g1 = groups[i]
                 g2 = groups[i + 1] if (i + 1) < len(groups) else None
 
-                row_header = {}
+                row_header: dict[str, Any] = {}
                 row_header[g1_cols[0]] = f"GROUP {g1['id']}"
                 for idx, col in enumerate(score_cols):
                     row_header[g1_cols[idx + 1]] = (
@@ -92,7 +101,7 @@ def generate_excel_bytes(
                         row_header[c] = ""
                 rows.append(row_header)
 
-                row_sub = {}
+                row_sub: dict[str, Any] = {}
                 row_sub[g1_cols[0]] = "Name"
                 for idx, col in enumerate(score_cols):
                     row_sub[g1_cols[idx + 1]] = col
@@ -115,7 +124,7 @@ def generate_excel_bytes(
                     m1 = g1["members"][k] if k < len1 else None
                     m2 = g2["members"][k] if g2 and k < len2 else None
 
-                    row_data = {}
+                    row_data: dict[str, Any] = {}
                     row_data[g1_cols[0]] = m1[col_name] if m1 else ""
                     for idx, col in enumerate(score_cols):
                         row_data[g1_cols[idx + 1]] = m1[col] if m1 else ""
@@ -134,7 +143,11 @@ def generate_excel_bytes(
                 rows.append({})
 
             pd.DataFrame(rows).to_excel(
-                writer, sheet_name=sheet_name, index=False, header=False, startcol=0
+                writer,
+                sheet_name=sheet_name,
+                index=False,
+                header=False,
+                startcol=0,
             )
 
             # Accurate dataset-wide global statistics for each dimension
