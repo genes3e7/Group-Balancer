@@ -263,8 +263,12 @@ class ConstraintBuilder:
 
             for g in range(self.num_groups):
                 cap = self.cfg.group_capacities[g]
-                t_min = sum(sorted_scores[:cap])
-                t_max = sum(sorted_scores[-cap:])
+                if cap == 0:
+                    t_min = 0
+                    t_max = 0
+                else:
+                    t_min = sum(sorted_scores[:cap])
+                    t_max = sum(sorted_scores[-cap:])
 
                 g_sums.append(self.model.NewIntVar(t_min, t_max, f"sum_{name}_{g}"))
                 theoretical_bounds.append((t_min, t_max))
@@ -350,7 +354,7 @@ class ConstraintBuilder:
                 penalty = min(raw_penalty, per_term_cap)
 
                 if raw_penalty > per_term_cap:
-                    logger.warning(
+                    logger.debug(
                         "Clamping cohesion penalty for tag %s (G%d): %d -> %d",
                         tag,
                         g,
@@ -371,9 +375,13 @@ class ConstraintBuilder:
         identity_map: dict[tuple, list[int]] = {}
 
         for i, p in enumerate(self.participants):
-            # Sort scores by key for stable hashing
+            # Sort scores and tags for stable, order-insensitive hashing
             sorted_scores = tuple(sorted(p.scores.items()))
-            identity = (sorted_scores, p.groupers, p.separators)
+            identity = (
+                sorted_scores,
+                tuple(sorted(TagProcessor.get_tags(p.groupers))),
+                tuple(sorted(TagProcessor.get_tags(p.separators))),
+            )
             identity_map.setdefault(identity, []).append(i)
 
         for _, indices in identity_map.items():

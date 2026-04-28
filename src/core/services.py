@@ -7,6 +7,7 @@ decoupling the UI from core internal logic and OR-Tools dependencies.
 
 import pandas as pd
 
+from src import logger
 from src.core import config, solver_interface
 from src.core.models import (
     ConflictPriority,
@@ -130,17 +131,24 @@ class OptimizationService:
 
         hints = None
         if previous_results is not None and not previous_results.empty:
+            # Validate snapshot against indices to prevent stale hints
             if (
                 config.COL_GROUP in previous_results.columns
                 and "_original_index" in previous_results.columns
             ):
-                hints = dict(
-                    zip(
-                        previous_results["_original_index"],
-                        previous_results[config.COL_GROUP],
-                        strict=False,
+                current_indices = sorted([p.original_index for p in participants])
+                prev_indices = sorted(previous_results["_original_index"].unique())
+
+                if current_indices == prev_indices:
+                    hints = dict(
+                        zip(
+                            previous_results["_original_index"],
+                            previous_results[config.COL_GROUP],
+                            strict=False,
+                        )
                     )
-                )
+                else:
+                    logger.info("Ignoring stale warm-start hints (indices mismatch).")
 
         cfg = SolverConfig(
             num_groups=len(group_capacities),
