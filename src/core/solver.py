@@ -255,10 +255,20 @@ class ConstraintBuilder:
                         f"Score range for {name} is too extreme even after scaling."
                     )
 
-            g_sums = [
-                self.model.NewIntVar(min_sum, max_sum, f"sum_{name}_{g}")
-                for g in range(self.num_groups)
-            ]
+            # Pre-calculate theoretical bounds for g_sums to tighten diff_bound
+            # For capacity C, sum is between sum(bottom C) and sum(top C)
+            sorted_scores = sorted(scores)
+            g_sums = []
+            theoretical_bounds = []
+
+            for g in range(self.num_groups):
+                cap = self.cfg.group_capacities[g]
+                t_min = sum(sorted_scores[:cap])
+                t_max = sum(sorted_scores[-cap:])
+
+                g_sums.append(self.model.NewIntVar(t_min, t_max, f"sum_{name}_{g}"))
+                theoretical_bounds.append((t_min, t_max))
+
             # Advanced Symmetry Breaking: Enforce ordering for identical capacity
             # groups on at most one canonical dimension. This prunes G! search
             # branches without over-constraining multi-dimensional weights.
@@ -278,10 +288,20 @@ class ConstraintBuilder:
                     == sum(self.x[(i, g)] * scores[i] for i in range(self.num_people))
                 )
                 target = total_score * self.cfg.group_capacities[g]
-                diff = self.model.NewIntVar(-diff_bound, diff_bound, f"diff_{name}_{g}")
+
+                # Calculate tightest possible diff bound for this specific group
+                # diff = g_sum * P - target
+                t_min, t_max = theoretical_bounds[g]
+                min_diff = t_min * self.num_people - target
+                max_diff = t_max * self.num_people - target
+                local_diff_bound = max(abs(min_diff), abs(max_diff))
+
+                diff = self.model.NewIntVar(
+                    -local_diff_bound, local_diff_bound, f"diff_{name}_{g}"
+                )
                 self.model.Add(diff == g_sums[g] * self.num_people - target)
 
-                abs_diff = self.model.NewIntVar(0, diff_bound, f"abs_{name}_{g}")
+                abs_diff = self.model.NewIntVar(0, local_diff_bound, f"abs_{name}_{g}")
                 self.model.AddAbsEquality(abs_diff, diff)
 
                 w_diff = self.model.NewIntVar(0, weighted_bound, f"w_{name}_{g}")
@@ -295,6 +315,20 @@ class ConstraintBuilder:
         Args:
             groupers: Mapping of grouper tags to sets of participant indices.
         """
+        if self.cfg.strict_groupers:
+            # Implement as hard constraints: all members of a tag must be in ONE group.
+            for tag, g_set in groupers.items():
+                if len(g_set) <= 1:
+                    continue
+                # For each group g, if any member is in g, ALL members must be in g.
+                # Simplest way: sum(x[i, g] for i in g_set) == len(g_set) * used_g
+                for g in range(self.num_groups):
+                    used = self.model.NewBoolVar(f"used_{tag}_{g}")
+                    self.model.Add(
+                        sum(self.x[(i, g)] for i in g_set) == len(g_set) * used
+                    )
+            return
+
         # Prevent 64-bit integer overflow in CP-SAT.
         # aggregate_cap (e.g. 1 << 60) must fit all objectives.
         aggregate_cap = 1 << 60
@@ -326,6 +360,51 @@ class ConstraintBuilder:
 
                 self.objectives.append(used * penalty)
                 self.max_objective_bound += penalty
+
+    def add_participant_symmetry_breaking(self) -> None:
+        """Enforces ordering for identical participants to reduce search space.
+
+        Identifies sets of participants with identical scores, groupers, and
+        separators, then forces them to be assigned to groups in a non-decreasing
+        index order. This prunes millions of redundant permutations.
+        """
+        identity_map: dict[tuple, list[int]] = {}
+
+        for i, p in enumerate(self.participants):
+            # Sort scores by key for stable hashing
+            sorted_scores = tuple(sorted(p.scores.items()))
+            identity = (sorted_scores, p.groupers, p.separators)
+            identity_map.setdefault(identity, []).append(i)
+
+        for _, indices in identity_map.items():
+            if len(indices) <= 1:
+                continue
+
+            # For identical participants, force non-decreasing group index
+            # group_idx_i = sum(g * x[i, g])
+            for k in range(len(indices) - 1):
+                p1, p2 = indices[k], indices[k + 1]
+                g_idx1 = sum(g * self.x[(p1, g)] for g in range(self.num_groups))
+                g_idx2 = sum(g * self.x[(p2, g)] for g in range(self.num_groups))
+                self.model.Add(g_idx1 <= g_idx2)
+
+    def add_solution_hints(self) -> None:
+        """Applies previous assignments as solver hints for warm starts.
+
+        If hints are provided in the configuration, they are mapped to the
+        internal model variables. This established starting point can
+        significantly accelerate the optimization process.
+        """
+        if not self.cfg.hints:
+            return
+
+        for p_idx, p in enumerate(self.participants):
+            # Hints map original_index -> group_id (1-indexed)
+            if p.original_index is not None and p.original_index in self.cfg.hints:
+                group_id = self.cfg.hints[p.original_index]
+                g_idx = group_id - 1
+                if 0 <= g_idx < self.num_groups:
+                    self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
     def get_model(self) -> cp_model.CpModel:
         """Finalizes and returns the model."""
@@ -415,6 +494,8 @@ def solve_with_ortools(
     )
     builder.add_scoring_objectives(strategy)
     builder.add_cohesion_penalties(groupers)
+    builder.add_participant_symmetry_breaking()
+    builder.add_solution_hints()
 
     model = builder.get_model()
 
@@ -422,6 +503,11 @@ def solve_with_ortools(
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
     solver_inst.parameters.num_search_workers = cfg.num_workers
+
+    # Optimization: linearization_level=0 is often faster for partition math.
+    # symmetry_level=2 enables aggressive internal symmetry breaking.
+    solver_inst.parameters.linearization_level = 0
+    solver_inst.parameters.symmetry_level = 2
 
     status = solver_inst.Solve(model, SolutionPrinter(start_time))
     elapsed = time.time() - start_time
