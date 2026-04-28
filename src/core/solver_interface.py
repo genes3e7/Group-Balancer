@@ -123,6 +123,8 @@ def run_optimization(
     )
     builder.add_scoring_objectives(strategy)
     builder.add_cohesion_penalties(groupers)
+    builder.add_participant_symmetry_breaking()
+    builder.add_solution_hints()
 
     model = builder.get_model()
 
@@ -130,6 +132,11 @@ def run_optimization(
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
     solver_inst.parameters.num_search_workers = cfg.num_workers
+
+    # Optimization: linearization_level=0 is often faster for partition math.
+    # symmetry_level=2 enables aggressive internal symmetry breaking.
+    solver_inst.parameters.linearization_level = 0
+    solver_inst.parameters.symmetry_level = 2
 
     cb = StreamlitSolverCallback(status_box, len(participants))
     status = solver_inst.Solve(model, cb)

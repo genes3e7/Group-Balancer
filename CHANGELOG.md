@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [6.0.0] - 2026-04-22
 
 ### Added
+- **Solver Optimization - Symmetry Breaking**: Enforces ordering on identical participants to drastically reduce the search space.
+- **Solver Optimization - Solution Hinting**: Added warm starts using previous solver results (`st.session_state.results_df`) to dramatically speed up iterative tweak-and-solve cycles.
+- **Solver Optimization - Tight Bounds**: Calculates tighter per-group theoretical objective bounds to reduce search domain.
+- **Solver Optimization - Strict Grouping**: Added a "Strict Grouping" toggle in Advanced Settings to bypass soft penalties and enforce hard equality constraints for tag cohesion.
+- **Solver Optimization - Advanced Parameters**: Tuned CP-SAT internal parameters (`linearization_level=0`, `symmetry_level=2`) for faster partition math.
 - **Pre-CI Refactoring:** Replaced legacy `tools/pre_ci.ps1` with a cross-platform Python orchestrator using `uv` (`tools/pre_ci.py`).
 - **Parallel Testing:** Added `pytest-xdist` to development dependencies to enable parallel execution of tests via `pytest -n auto`.
 - **Detailed Solver Error Reporting:** The UI now surfaces specific optimization failure reasons (e.g., `INFEASIBLE`, `MODEL_INVALID`) with actionable troubleshooting tips.

@@ -85,6 +85,8 @@ class OptimizationService:
         conflict_priority: ConflictPriority,
         timeout_seconds: int,
         status_box=None,
+        previous_results: pd.DataFrame | None = None,
+        strict_groupers: bool = False,
     ) -> tuple[pd.DataFrame | None, dict]:
         """
         Runs the group balancing optimization.
@@ -100,6 +102,9 @@ class OptimizationService:
             conflict_priority (ConflictPriority): Resolution for tag collisions.
             timeout_seconds (int): Max search time in seconds.
             status_box: Optional Streamlit placeholder for live updates.
+            previous_results: Optional DataFrame containing previous assignments
+                for solution hinting (warm start).
+            strict_groupers: If True, cohesion tags are hard constraints.
 
         Returns:
             tuple: (Results DataFrame or None, Metrics dictionary)
@@ -123,6 +128,20 @@ class OptimizationService:
             for i, row in enumerate(participants_df.to_dict("records"))
         ]
 
+        hints = None
+        if previous_results is not None and not previous_results.empty:
+            if (
+                config.COL_GROUP in previous_results.columns
+                and "_original_index" in previous_results.columns
+            ):
+                hints = dict(
+                    zip(
+                        previous_results["_original_index"],
+                        previous_results[config.COL_GROUP],
+                        strict=False,
+                    )
+                )
+
         cfg = SolverConfig(
             num_groups=len(group_capacities),
             group_capacities=group_capacities,
@@ -130,6 +149,8 @@ class OptimizationService:
             opt_mode=opt_mode,
             conflict_priority=conflict_priority,
             timeout_seconds=timeout_seconds,
+            hints=hints,
+            strict_groupers=strict_groupers,
         )
 
         try:

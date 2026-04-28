@@ -165,6 +165,14 @@ def render_step_2() -> None:
             format_func=lambda k: priority_options[k].value,
         )
 
+        st.checkbox(
+            "Strict Grouping (Hard Constraints)",
+            value=False,
+            key="strict_grouping_toggle",
+            help="Force all members with the same tag into one group. "
+            "May lead to infeasibility if tags are too large.",
+        )
+
     st.subheader("Objective Weighting")
     score_weights = {
         col: st.number_input(f"Weight: {col}", 0.0, 10.0, 1.0, 0.1, key=f"w_{col}")
@@ -201,6 +209,8 @@ def render_step_2() -> None:
             priority_options[priority_key],
             timeout,
             status_box=status_box,
+            previous_results=st.session_state.get("results_df"),
+            strict_groupers=st.session_state.get("strict_grouping_toggle", False),
         )
 
         if result_df is not None:

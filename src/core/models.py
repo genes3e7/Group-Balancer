@@ -65,6 +65,8 @@ class SolverConfig:
         conflict_priority: Which constraint wins if tags overlap.
         grouper_weight: Internal penalty for splitting groupers.
         separator_weight: Internal penalty for clumping separators.
+        strict_groupers: If True, cohesion tags are hard constraints.
+        hints: Optional mapping of original_index to group_id for warm starts.
         timeout_seconds: Maximum wall-clock time for search.
         num_workers: Number of parallel search threads.
     """
@@ -76,6 +78,8 @@ class SolverConfig:
     conflict_priority: ConflictPriority = ConflictPriority.GROUPERS
     grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT
     separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT
+    strict_groupers: bool = False
+    hints: Mapping[int, int] | None = None
     timeout_seconds: int = 60
     num_workers: int = 4
 
