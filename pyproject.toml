@@ -1,23 +1,74 @@
+[project]
+name = "group-balancer"
+version = "1.0.0"
+description = "Optimizes team allocations based on individual scores and constraints."
+authors = [{ name = "Group Balancer Contributors" }]
+requires-python = ">=3.10"
+dependencies = [
+    "streamlit>=1.49.0",
+    "pandas>=2.0.0",
+    "numpy>=1.24.0",
+    "openpyxl>=3.1.0",
+    "ortools>=9.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "ruff>=0.1.0",
+    "vulture>=2.10",
+    "interrogate>=1.5.0",
+    "pyinstaller>=6.0.0",
+    "pathspec>=0.12.0",
+    "pytest-xdist>=3.5.0",
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
 [tool.ruff]
-# Exclude a variety of commonly ignored directories.
 exclude = [
     ".git",
     ".ruff_cache",
-    ".venv",
+    ".pytest_cache",
     "build",
     "dist",
     "venv",
+    ".venv",
 ]
-
-# Same as Black.
 line-length = 88
 indent-width = 4
 
 [tool.ruff.lint]
-# Enable Pyflakes (`F`) and a subset of the pycodestyle (`E`)  codes by default.
-select = ["E4", "E7", "E9", "F"]
+select = ["E", "F", "I", "N", "W", "UP", "B"]
 ignore = []
-
-# Allow fix for all enabled rules (when `--fix`) is provided.
 fixable = ["ALL"]
-unfixable = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--cov=src --cov-report=term-missing --cov-fail-under=90"
+
+[tool.setuptools]
+packages = ["src"]
+package-dir = {"" = "."}
+
+[tool.interrogate]
+ignore-init-module = true
+ignore-init-method = true
+ignore-private = true
+ignore-semiprivate = false
+ignore-magic = true
+ignore-module = false
+ignore-nested-functions = false
+ignore-nested-classes = false
+ignore-setters = false
+fail-under = 100
+exclude = ["setup.py", "tests", "build", "tools", "dist", ".venv"]
+ignore-regex = ["^get$", "^mock_.*", ".*Base$"]
+verbose = 0
+quiet = false
+whitelist-regex = []
+color = true

@@ -1,59 +1,81 @@
-"""
-Command-Line Interface (CLI) Entry Point.
+"""CLI Entry Point for the Group Balancer.
 
-Allows the Group Balancer to be run in "headless" mode without the
-Streamlit UI. This is useful for batch processing or testing logic.
+Provides a terminal-based interface for running the optimization.
 """
 
-from src.core import data_loader, solver, config
+import sys
+
+from src import logger
+from src.core import config, data_loader, solver
+from src.core.models import ConflictPriority, OptimizationMode, SolverConfig
 
 
 def main():
-    """
-    Main function for the CLI.
-    Orchestrates data loading, solving, and printing results to the console.
-    """
-    print("=== Group Balancer CLI ===")
+    """Main CLI execution loop."""
+    logger.info("Starting Group Balancer CLI...")
+    print("\n=== Group Balancer CLI ===")
 
     filepath = data_loader.get_file_path_from_user()
-    if not filepath:
-        return
-
     participants = data_loader.load_data(filepath)
+
     if not participants:
-        return
+        logger.error("Failed to load data. Exiting.")
+        sys.exit(1)
 
-    print(f"Loaded {len(participants)} participants.")
+    num_people = len(participants)
+    score_cols = [
+        c for c in participants[0].keys() if c.startswith(config.SCORE_PREFIX)
+    ]
 
-    while True:
-        try:
-            num_groups_str = input("Enter number of groups: ").strip()
-            num_groups = int(num_groups_str)
-            if num_groups > 0:
-                break
-            print("Please enter a positive integer.")
-        except ValueError:
-            print("Invalid number.")
-        except KeyboardInterrupt:
-            print("\nOperation cancelled.")
-            return
+    if not score_cols:
+        logger.error("No score columns detected in input data.")
+        sys.exit(1)
 
-    print("\nSolving...")
-    result, success = solver.solve_with_ortools(
-        participants, num_groups, respect_stars=True
+    print(f"\nFound {num_people} participants and {len(score_cols)} score dimensions.")
+
+    try:
+        num_groups_str = input(f"Enter number of groups (1-{num_people}) [2]: ").strip()
+        num_groups = int(num_groups_str or "2")
+
+        if not (1 <= num_groups <= num_people):
+            logger.error(
+                "Invalid number of groups: %d. Must be between 1 and %d.",
+                num_groups,
+                num_people,
+            )
+            sys.exit(1)
+
+    except ValueError:
+        logger.error("Invalid input: Number of groups must be an integer.")
+        sys.exit(1)
+
+    # Simple even capacity split for CLI
+    base, rem = divmod(num_people, num_groups)
+    capacities = [base + (1 if i < rem else 0) for i in range(num_groups)]
+
+    cfg = SolverConfig(
+        num_groups=num_groups,
+        group_capacities=capacities,
+        score_weights={c: 1.0 for c in score_cols},
+        opt_mode=OptimizationMode.ADVANCED,
+        conflict_priority=ConflictPriority.GROUPERS,
+        timeout_seconds=config.SOLVER_TIMEOUT,
     )
 
-    if success:
-        print("\n=== Optimal Grouping Found ===")
-        for g in result:
-            # Formatted current_sum to 2 decimal places for cleaner output
-            print(
-                f"\nGroup {g['id']} (Avg: {g['avg']:.2f}, Sum: {g['current_sum']:.2f}):"
-            )
-            for m in g["members"]:
-                print(f" - {m[config.COL_NAME]} ({m[config.COL_SCORE]})")
+    print("\nSolving optimization model...")
+    results, status, elapsed = solver.solve_with_ortools(participants, cfg)
+
+    if results:
+        print(f"\n✅ Success! Found grouping in {elapsed:.2f}s.")
+        print("=== Results Summary ===")
+        for g_id in range(1, num_groups + 1):
+            members = [p for p in results if p[config.COL_GROUP] == g_id]
+            print(f"\nGroup {g_id} ({len(members)} members):")
+            for m in members:
+                scores_str = ", ".join([f"{k}:{m[k]}" for k in score_cols])
+                print(f" - {m[config.COL_NAME]} ({scores_str})")
     else:
-        print("\nFailed to find a feasible solution.")
+        print("\n❌ Failed to find a valid solution.")
 
 
 if __name__ == "__main__":

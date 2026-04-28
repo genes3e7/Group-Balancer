@@ -1,24 +1,39 @@
-"""
-Configuration constants for the Group Balancer application.
+"""Global configuration and constants for the Group Balancer.
 
-This module stores all hardcoded constants, column names, and solver settings
-to ensure a single source of truth for configuration.
+Centralized point for developer maintenance.
 """
 
 import os
 
-# Column Headers
+# --- Data Schema ---
 COL_NAME = "Name"
-COL_SCORE = "Score"
+SCORE_PREFIX = "Score"
 COL_GROUP = "Group"
 
-# Solver Settings
-SOLVER_TIMEOUT = 300  # seconds
-SOLVER_NUM_WORKERS = os.cpu_count() or 4  # Parallel search workers
+# --- Advanced Constraints ---
+COL_GROUPER = "Groupers"
+COL_SEPARATOR = "Separators"
 
-# Data Processing
-SCALE_FACTOR = 10**5  # Multiplier to convert float scores to integers for the solver
-ADVANTAGE_CHAR = "*"  # Suffix to identify "Star" participants
+# --- Solver Core Limits ---
+SCALE_FACTOR = 100000  # Scale float scores to integers for CP-SAT
+SOLVER_TIMEOUT = 600  # Absolute server hard-cap (seconds)
+SOLVER_NUM_WORKERS = os.cpu_count() or 4
 
-# Output
+# --- UI Constraints ---
+UI_TIMEOUT_MIN = 5
+UI_TIMEOUT_MAX = max(UI_TIMEOUT_MIN, SOLVER_TIMEOUT)
+UI_TIMEOUT_DEFAULT = max(UI_TIMEOUT_MIN, min(60, UI_TIMEOUT_MAX))
+
+# I/O
 OUTPUT_FILENAME = "balanced_groups.xlsx"
+
+# --- Solver Defaults ---
+DEFAULT_SCORE_WEIGHT = 1.0
+DEFAULT_GROUPER_WEIGHT = 100
+DEFAULT_SEPARATOR_WEIGHT = 50
+
+# --- Security Limits ---
+
+MAX_PARTICIPANTS = 1000
+MAX_GROUPS = 100
+MAX_FILE_SIZE_MB = 10
