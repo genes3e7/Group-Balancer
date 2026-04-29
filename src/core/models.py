@@ -52,6 +52,21 @@ class Participant:
         sanitized_scores = {k: float(v) for k, v in self.scores.items()}
         object.__setattr__(self, "scores", MappingProxyType(sanitized_scores))
 
+    @property
+    def fingerprint(self) -> str:
+        """Returns a stable hash of the participant's identity."""
+        import hashlib
+
+        # Sort scores for stable hashing
+        scores_str = ",".join(f"{k}:{v}" for k, v in sorted(self.scores.items()))
+        # Canonicalize tags (order/whitespace insensitive)
+        from src.core.solver import TagProcessor
+
+        g_tags = sorted(TagProcessor.get_tags(self.groupers))
+        s_tags = sorted(TagProcessor.get_tags(self.separators))
+        raw = f"{self.name}|{scores_str}|{','.join(g_tags)}|{','.join(s_tags)}"
+        return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()
+
 
 @dataclass(frozen=True)
 class SolverConfig:
@@ -66,7 +81,7 @@ class SolverConfig:
         grouper_weight: Internal penalty for splitting groupers.
         separator_weight: Internal penalty for clumping separators.
         strict_groupers: If True, cohesion tags are hard constraints.
-        hints: Optional mapping of original_index to group_id for warm starts.
+        hints: Optional mapping of identity to group_id for warm starts.
         timeout_seconds: Maximum wall-clock time for search.
         num_workers: Number of parallel search threads.
     """
@@ -79,7 +94,7 @@ class SolverConfig:
     grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT
     separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT
     strict_groupers: bool = False
-    hints: Mapping[int, int] | None = None
+    hints: Mapping[str | int, int] | None = None
     timeout_seconds: int = 60
     num_workers: int = 4
 

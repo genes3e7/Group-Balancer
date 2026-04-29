@@ -196,6 +196,7 @@ def run_optimization(
                 config.COL_GROUPER: p.groupers,
                 config.COL_SEPARATOR: p.separators,
                 "_original_index": p.original_index,
+                "participant_fingerprint": p.fingerprint,
             }
             p_dict.update(p.scores)
             results.append(p_dict)
