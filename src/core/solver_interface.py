@@ -18,6 +18,7 @@ from src.core.models import (
     Participant,
     SolverConfig,
 )
+from src.core.solver import apply_solver_tuning
 
 try:
     from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
@@ -133,10 +134,7 @@ def run_optimization(
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
     solver_inst.parameters.num_search_workers = cfg.num_workers
 
-    # Optimization: linearization_level=0 is often faster for partition math.
-    # symmetry_level=2 enables aggressive internal symmetry breaking.
-    solver_inst.parameters.linearization_level = 0
-    solver_inst.parameters.symmetry_level = 2
+    apply_solver_tuning(solver_inst)
 
     cb = StreamlitSolverCallback(status_box, len(participants))
     status = solver_inst.Solve(model, cb)

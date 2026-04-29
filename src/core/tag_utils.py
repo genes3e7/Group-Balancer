@@ -1,11 +1,11 @@
 """Utilities for processing and canonicalizing participant tags."""
 
 
-def canonicalize_tags(val: str) -> set[str]:
+def canonicalize_tags(val: object | None) -> set[str]:
     """Extracts unique characters as tags, ignoring whitespace and commas.
 
     Args:
-        val: The raw tag string from a participant record.
+        val: The raw tag cell from a participant record.
 
     Returns:
         A set of unique single-character tag strings.
