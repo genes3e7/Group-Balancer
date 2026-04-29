@@ -57,13 +57,13 @@ class Participant:
         """Returns a stable hash of the participant's identity."""
         import hashlib
 
+        from src.core.tag_utils import canonicalize_tags
+
         # Sort scores for stable hashing
         scores_str = ",".join(f"{k}:{v}" for k, v in sorted(self.scores.items()))
         # Canonicalize tags (order/whitespace insensitive)
-        from src.core.solver import TagProcessor
-
-        g_tags = sorted(TagProcessor.get_tags(self.groupers))
-        s_tags = sorted(TagProcessor.get_tags(self.separators))
+        g_tags = sorted(canonicalize_tags(self.groupers))
+        s_tags = sorted(canonicalize_tags(self.separators))
         raw = f"{self.name}|{scores_str}|{','.join(g_tags)}|{','.join(s_tags)}"
         return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()
 
