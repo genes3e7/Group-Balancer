@@ -74,6 +74,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── GEMINI.md
 ├── LICENSE
 ├── README.md
+├── REFACTOR_PLAN.md
 ├── app.py
 ├── build.py
 ├── group_balancer.py
@@ -87,7 +88,8 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   │   ├── models.py
 │   │   ├── services.py
 │   │   ├── solver.py
-│   │   └── solver_interface.py
+│   │   ├── solver_interface.py
+│   │   └── tag_utils.py
 │   ├── ui/
 │   │   ├── __init__.py
 │   │   ├── components.py

@@ -85,6 +85,7 @@ class OptimizationService:
         opt_mode: OptimizationMode,
         conflict_priority: ConflictPriority,
         timeout_seconds: int,
+        *,
         status_box=None,
         previous_results: pd.DataFrame | None = None,
         strict_groupers: bool = False,
@@ -131,10 +132,12 @@ class OptimizationService:
 
         hints = None
         if previous_results is not None and not previous_results.empty:
-            # Validate snapshot against fingerprints to prevent stale hints
+            # Validate snapshot against fingerprints to prevent stale hints.
+            # Skip if fingerprints are not unique to avoid collisions.
             if (
                 config.COL_GROUP in previous_results.columns
                 and "participant_fingerprint" in previous_results.columns
+                and not previous_results["participant_fingerprint"].duplicated().any()
             ):
                 current_fingerprints = sorted([p.fingerprint for p in participants])
                 prev_fingerprints = sorted(

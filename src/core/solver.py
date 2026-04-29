@@ -20,6 +20,7 @@ from src.core.models import (
     Participant,
     SolverConfig,
 )
+from src.core.tag_utils import canonicalize_tags
 
 
 class SolutionPrinter(cp_model.CpSolverSolutionCallback):
@@ -55,9 +56,7 @@ class TagProcessor:
     @staticmethod
     def get_tags(val: str) -> set[str]:
         """Extracts unique characters as tags, ignoring whitespace and commas."""
-        if not val or not isinstance(val, str):
-            return set()
-        return {c for c in val if not c.isspace() and c != ","}
+        return canonicalize_tags(val)
 
     @classmethod
     def process_participants(
@@ -308,10 +307,11 @@ class ConstraintBuilder:
                 abs_diff = self.model.NewIntVar(0, local_diff_bound, f"abs_{name}_{g}")
                 self.model.AddAbsEquality(abs_diff, diff)
 
-                w_diff = self.model.NewIntVar(0, weighted_bound, f"w_{name}_{g}")
+                local_weighted_bound = local_diff_bound * weight_m
+                w_diff = self.model.NewIntVar(0, local_weighted_bound, f"w_{name}_{g}")
                 self.model.Add(w_diff == abs_diff * weight_m)
                 self.objectives.append(w_diff)
-                self.max_objective_bound += weighted_bound
+                self.max_objective_bound += local_weighted_bound
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
         """Adds penalties for splitting grouper tags.
