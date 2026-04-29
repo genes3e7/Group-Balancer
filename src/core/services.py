@@ -131,8 +131,28 @@ class OptimizationService:
 
         hints = None
         if previous_results is not None and not previous_results.empty:
-            # Validate snapshot against indices to prevent stale hints
+            # Validate snapshot against fingerprints to prevent stale hints
             if (
+                config.COL_GROUP in previous_results.columns
+                and "participant_fingerprint" in previous_results.columns
+            ):
+                current_fingerprints = sorted([p.fingerprint for p in participants])
+                prev_fingerprints = sorted(
+                    previous_results["participant_fingerprint"].astype(str).unique()
+                )
+
+                if current_fingerprints == prev_fingerprints:
+                    hints = dict(
+                        zip(
+                            previous_results["participant_fingerprint"],
+                            previous_results[config.COL_GROUP],
+                            strict=False,
+                        )
+                    )
+                else:
+                    logger.info("Ignoring stale warm-start hints (mismatch)")
+            # Fallback to original_index for backward compatibility
+            elif (
                 config.COL_GROUP in previous_results.columns
                 and "_original_index" in previous_results.columns
             ):

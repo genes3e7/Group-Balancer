@@ -407,9 +407,15 @@ class ConstraintBuilder:
             return
 
         for p_idx, p in enumerate(self.participants):
-            # Hints map original_index -> group_id (1-indexed)
-            if p.original_index is not None and p.original_index in self.cfg.hints:
+            group_id = None
+            # 1. Try fingerprint lookup (robust)
+            if p.fingerprint in self.cfg.hints:
+                group_id = self.cfg.hints[p.fingerprint]
+            # 2. Try original_index lookup (fallback for legacy session states)
+            elif p.original_index is not None and p.original_index in self.cfg.hints:
                 group_id = self.cfg.hints[p.original_index]
+
+            if group_id is not None:
                 g_idx = group_id - 1
                 if 0 <= g_idx < self.num_groups:
                     self.model.AddHint(self.x[(p_idx, g_idx)], 1)
@@ -536,6 +542,7 @@ def solve_with_ortools(
                 config.COL_GROUPER: p.groupers,
                 config.COL_SEPARATOR: p.separators,
                 "_original_index": p.original_index,
+                "participant_fingerprint": p.fingerprint,
             }
             # Unpack MappingsProxyType for compatibility
             p_dict.update(dict(p.scores))
