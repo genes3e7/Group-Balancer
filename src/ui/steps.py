@@ -209,8 +209,16 @@ def render_step_2() -> None:
 
         # Prioritize interactive_df (with user edits) over initial results_df
         prev_results = st.session_state.get("interactive_df")
-        if prev_results is None:
-            prev_results = st.session_state.get("results_df")
+        cached_results = st.session_state.get("results_df")
+
+        if prev_results is not None and cached_results is not None:
+            # Re-inject tracking columns for robust warm-start validation
+            prev_results = prev_results.copy()
+            for col in ["_original_index", "participant_fingerprint"]:
+                if col in cached_results.columns:
+                    prev_results[col] = cached_results[col]
+        elif prev_results is None:
+            prev_results = cached_results
 
         # Use Service layer for optimization
         result_df, metrics = OptimizationService.run(
@@ -227,7 +235,10 @@ def render_step_2() -> None:
 
         if result_df is not None:
             st.session_state.results_df = result_df
-            st.session_state.interactive_df = result_df.copy()
+            # Initialize public dataframe without internal tracking columns
+            st.session_state.interactive_df = result_df.drop(
+                columns=["_original_index", "participant_fingerprint"], errors="ignore"
+            )
             st.session_state.solver_status = metrics["status"]
             st.session_state.solver_elapsed = metrics["elapsed"]
             st.session_state.solver_error = None
@@ -312,20 +323,14 @@ def _render_table_view(score_cols: list[str]) -> None:
         for col in score_cols:
             editor_configs[col] = st.column_config.NumberColumn(disabled=True)
 
-        df_for_editor = st.session_state.interactive_df.drop(
-            columns=["_original_index", "participant_fingerprint"], errors="ignore"
-        )
         edited_df = st.data_editor(
-            df_for_editor,
+            st.session_state.interactive_df,
             column_config=editor_configs,
             hide_index=True,
             width="stretch",
             key="results_editor_table",
         )
-        if not edited_df.equals(df_for_editor):
-            if "_original_index" in st.session_state.interactive_df.columns:
-                orig_index = st.session_state.interactive_df["_original_index"]
-                edited_df["_original_index"] = orig_index
+        if not edited_df.equals(st.session_state.interactive_df):
             st.session_state.interactive_df = edited_df
             st.rerun()
 
