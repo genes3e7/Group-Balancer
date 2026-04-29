@@ -56,16 +56,20 @@ class Participant:
     def fingerprint(self) -> str:
         """Returns a stable hash of the participant's identity."""
         import hashlib
+        import json
 
         from src.core.tag_utils import canonicalize_tags
 
-        # Sort scores for stable hashing
-        scores_str = ",".join(f"{k}:{v}" for k, v in sorted(self.scores.items()))
-        # Canonicalize tags (order/whitespace insensitive)
-        g_tags = sorted(canonicalize_tags(self.groupers))
-        s_tags = sorted(canonicalize_tags(self.separators))
-        raw = f"{self.name}|{scores_str}|{','.join(g_tags)}|{','.join(s_tags)}"
-        return hashlib.md5(raw.encode(), usedforsecurity=False).hexdigest()
+        # Build payload for unambiguous serialization
+        payload = {
+            "name": self.name,
+            "scores": sorted(self.scores.items()),
+            "groupers": sorted(canonicalize_tags(self.groupers)),
+            "separators": sorted(canonicalize_tags(self.separators)),
+        }
+        # Compact JSON to guarantee deterministic payload
+        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.md5(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 @dataclass(frozen=True)

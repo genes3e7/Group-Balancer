@@ -153,14 +153,28 @@ class OptimizationService:
                         )
                     )
                 elif "_original_index" in previous_results.columns:
-                    hints = dict(
+                    # Robust alignment check for duplicate fingerprints
+                    current_pairs = sorted(
+                        (p.original_index, p.fingerprint) for p in participants
+                    )
+                    prev_pairs = sorted(
                         zip(
                             previous_results["_original_index"],
-                            previous_results[config.COL_GROUP],
+                            previous_results["participant_fingerprint"].astype(str),
                             strict=False,
                         )
                     )
-            # Legacy fallback for snapshots without fingerprints
+                    if current_pairs == prev_pairs:
+                        hints = dict(
+                            zip(
+                                previous_results["_original_index"],
+                                previous_results[config.COL_GROUP],
+                                strict=False,
+                            )
+                        )
+                    else:
+                        logger.info("Ignoring stale warm-start hints (alignment error)")
+                    # Legacy fallback for snapshots without fingerprints
             elif (
                 config.COL_GROUP in previous_results.columns
                 and "_original_index" in previous_results.columns
