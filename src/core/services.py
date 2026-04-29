@@ -132,29 +132,35 @@ class OptimizationService:
 
         hints = None
         if previous_results is not None and not previous_results.empty:
-            # Validate snapshot against fingerprints to prevent stale hints.
-            # Skip if fingerprints are not unique to avoid collisions.
+            # Always validate the snapshot by fingerprint multiset first.
             if (
                 config.COL_GROUP in previous_results.columns
                 and "participant_fingerprint" in previous_results.columns
-                and not previous_results["participant_fingerprint"].duplicated().any()
             ):
-                current_fingerprints = sorted([p.fingerprint for p in participants])
+                current_fingerprints = sorted(p.fingerprint for p in participants)
                 prev_fingerprints = sorted(
-                    previous_results["participant_fingerprint"].astype(str).unique()
+                    previous_results["participant_fingerprint"].astype(str).tolist()
                 )
 
-                if current_fingerprints == prev_fingerprints:
+                if current_fingerprints != prev_fingerprints:
+                    logger.info("Ignoring stale warm-start hints (mismatch)")
+                elif not previous_results["participant_fingerprint"].duplicated().any():
                     hints = dict(
                         zip(
-                            previous_results["participant_fingerprint"],
+                            previous_results["participant_fingerprint"].astype(str),
                             previous_results[config.COL_GROUP],
                             strict=False,
                         )
                     )
-                else:
-                    logger.info("Ignoring stale warm-start hints (mismatch)")
-            # Fallback to original_index for backward compatibility
+                elif "_original_index" in previous_results.columns:
+                    hints = dict(
+                        zip(
+                            previous_results["_original_index"],
+                            previous_results[config.COL_GROUP],
+                            strict=False,
+                        )
+                    )
+            # Legacy fallback for snapshots without fingerprints
             elif (
                 config.COL_GROUP in previous_results.columns
                 and "_original_index" in previous_results.columns

@@ -110,15 +110,23 @@ def render_step_2() -> None:
     total_p = len(df)
     score_cols = st.session_state.get("score_cols", [])
 
-    # Clamp stale groups_input if total_p shrank since last visit
-    if isinstance(st.session_state.get("groups_input"), (int, float)):
+    # Initialize or clamp stale groups_input if total_p shrank
+    if "groups_input" not in st.session_state:
+        st.session_state["groups_input"] = min(2, total_p)
+    elif isinstance(st.session_state.get("groups_input"), (int, float)):
         st.session_state["groups_input"] = min(
             int(st.session_state["groups_input"]), total_p
         )
 
     c1, c2 = st.columns(2)
     num_groups = int(
-        c1.number_input("Groups", 1, total_p, min(2, total_p), key="groups_input")
+        c1.number_input(
+            "Groups",
+            min_value=1,
+            max_value=total_p,
+            value=st.session_state["groups_input"],
+            key="groups_input",
+        )
     )
     c2.info(f"Total Participants: {total_p}")
 
@@ -301,7 +309,7 @@ def _render_table_view(score_cols: list[str]) -> None:
             editor_configs[col] = st.column_config.NumberColumn(disabled=True)
 
         df_for_editor = st.session_state.interactive_df.drop(
-            columns=["_original_index"], errors="ignore"
+            columns=["_original_index", "participant_fingerprint"], errors="ignore"
         )
         edited_df = st.data_editor(
             df_for_editor,
