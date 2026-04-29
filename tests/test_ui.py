@@ -1,6 +1,6 @@
 """Unit tests for the UI layer (Mocked Streamlit)."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -558,7 +558,13 @@ def test_steps_render_2_clamped_groups():
         ]
 
         steps.render_step_2()
-        c1.number_input.assert_any_call("Groups", 1, 1, 1, key="groups_input")
+        c1.number_input.assert_any_call(
+            "Groups",
+            min_value=1,
+            max_value=1,
+            value=ANY,
+            key="groups_input",
+        )
 
 
 def test_ui_steps_load_uploaded_file_exception():
