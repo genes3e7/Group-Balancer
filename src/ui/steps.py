@@ -124,7 +124,6 @@ def render_step_2() -> None:
             "Groups",
             min_value=1,
             max_value=total_p,
-            value=st.session_state["groups_input"],
             key="groups_input",
         )
     )
@@ -208,6 +207,11 @@ def render_step_2() -> None:
 
         status_box = st.empty()
 
+        # Prioritize interactive_df (with user edits) over initial results_df
+        prev_results = st.session_state.get("interactive_df")
+        if prev_results is None:
+            prev_results = st.session_state.get("results_df")
+
         # Use Service layer for optimization
         result_df, metrics = OptimizationService.run(
             df,
@@ -217,7 +221,7 @@ def render_step_2() -> None:
             priority_options[priority_key],
             timeout,
             status_box=status_box,
-            previous_results=st.session_state.get("results_df"),
+            previous_results=prev_results,
             strict_groupers=st.session_state.get("strict_grouping_toggle", False),
         )
 
@@ -376,13 +380,18 @@ def _render_footer_actions(score_cols: list[str]) -> None:
         score_cols: List of score columns to include in export.
     """
     df = st.session_state.interactive_df
-    row_hashes = pd.util.hash_pandas_object(df, index=True)
+    # Sanitize export by dropping internal tracking columns
+    export_df = df.drop(
+        columns=["_original_index", "participant_fingerprint"], errors="ignore"
+    )
+
+    row_hashes = pd.util.hash_pandas_object(export_df, index=True)
     df_key = (
         int(row_hashes.sum()),
-        len(df),
-        tuple(map(str, df.columns)),
+        len(export_df),
+        tuple(map(str, export_df.columns)),
     )
-    excel_data = _build_excel_bytes(df_key, df, tuple(score_cols))
+    excel_data = _build_excel_bytes(df_key, export_df, tuple(score_cols))
     st.download_button(
         "📥 Download Excel",
         excel_data,

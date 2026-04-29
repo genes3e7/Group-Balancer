@@ -23,6 +23,18 @@ from src.core.models import (
 from src.core.tag_utils import canonicalize_tags
 
 
+def apply_solver_tuning(solver_inst: cp_model.CpSolver) -> None:
+    """Applies optimal CP-SAT parameters for group partitioning math.
+
+    Args:
+        solver_inst: The OR-Tools solver instance to configure.
+    """
+    # Optimization: linearization_level=0 is often faster for partition math.
+    # symmetry_level=2 enables aggressive internal symmetry breaking.
+    solver_inst.parameters.linearization_level = 0
+    solver_inst.parameters.symmetry_level = 2
+
+
 class SolutionPrinter(cp_model.CpSolverSolutionCallback):
     """Callback to log intermediate solutions found by the solver."""
 
@@ -518,10 +530,7 @@ def solve_with_ortools(
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
     solver_inst.parameters.num_search_workers = cfg.num_workers
 
-    # Optimization: linearization_level=0 is often faster for partition math.
-    # symmetry_level=2 enables aggressive internal symmetry breaking.
-    solver_inst.parameters.linearization_level = 0
-    solver_inst.parameters.symmetry_level = 2
+    apply_solver_tuning(solver_inst)
 
     status = solver_inst.Solve(model, SolutionPrinter(start_time))
     elapsed = time.time() - start_time
