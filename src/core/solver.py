@@ -203,11 +203,14 @@ class ConstraintBuilder:
             separators: Mapping of separator tags to sets of participant indices.
         """
         total_p = self.num_people
-        for _, s_set in separators.items():
+        # Sort tags for determinism in constraint addition order
+        for tag in sorted(separators.keys()):
+            s_set = separators[tag]
             if not s_set:
                 continue
 
             n_tag = len(s_set)
+            sorted_s_set = sorted(s_set)
 
             for g in range(self.num_groups):
                 cap_g = self.cfg.group_capacities[g]
@@ -222,7 +225,7 @@ class ConstraintBuilder:
                 # we'd have infeasibility. However, sum(ceil(p_i)) >= sum(p_i) = n_tag.
                 # So math.ceil((n_tag * cap_g) / total_p) is the tightest feasible
                 # limit.
-                self.model.Add(sum(self.x[(i, g)] for i in s_set) <= limit)
+                self.model.Add(sum(self.x[(i, g)] for i in sorted_s_set) <= limit)
 
     def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
         """Builds multi-objective minimization for group score variance.
@@ -411,26 +414,51 @@ class ConstraintBuilder:
     def add_solution_hints(self) -> None:
         """Applies previous assignments as solver hints for warm starts.
 
-        If hints are provided in the configuration, they are mapped to the
-        internal model variables. This established starting point can
-        significantly accelerate the optimization process.
+        To ensure compatibility with symmetry-breaking ordering constraints,
+        hints for identical participants are sorted by group ID before being
+        applied. This preserves the feasible search space while establishing
+        an immediate upper bound.
         """
         if not self.cfg.hints:
             return
 
+        # 1. Collect all valid hints from configuration
+        hinted_groups: dict[int, int] = {}
         for p_idx, p in enumerate(self.participants):
             group_id = None
-            # 1. Try fingerprint lookup (robust)
             if p.fingerprint in self.cfg.hints:
                 group_id = self.cfg.hints[p.fingerprint]
-            # 2. Try original_index lookup (fallback for legacy session states)
             elif p.original_index is not None and p.original_index in self.cfg.hints:
                 group_id = self.cfg.hints[p.original_index]
 
             if group_id is not None:
-                g_idx = group_id - 1
-                if 0 <= g_idx < self.num_groups:
-                    self.model.AddHint(self.x[(p_idx, g_idx)], 1)
+                try:
+                    g_idx = int(group_id) - 1
+                    if 0 <= g_idx < self.num_groups:
+                        hinted_groups[p_idx] = g_idx
+                except (ValueError, TypeError):
+                    continue
+
+        # 2. Group participants by symmetry buckets (identical identity)
+        symmetry_buckets: dict[tuple, list[int]] = {}
+        for p_idx, p in enumerate(self.participants):
+            sorted_scores = tuple(sorted(p.scores.items()))
+            identity = (
+                sorted_scores,
+                tuple(sorted(TagProcessor.get_tags(p.groupers))),
+                tuple(sorted(TagProcessor.get_tags(p.separators))),
+            )
+            symmetry_buckets.setdefault(identity, []).append(p_idx)
+
+        # 3. Apply hints so identical participants follow ordering constraints
+        for indices in symmetry_buckets.values():
+            # Get all hinted group assignments for this bucket
+            valid_hinted_g_idxs = sorted(
+                hinted_groups[idx] for idx in indices if idx in hinted_groups
+            )
+            # Re-assign hinted group IDs in sorted order to this bucket
+            for p_idx, g_idx in zip(indices, valid_hinted_g_idxs, strict=False):
+                self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
     def get_model(self) -> cp_model.CpModel:
         """Finalizes and returns the model."""
@@ -528,7 +556,9 @@ def solve_with_ortools(
     # Solver Execution
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    solver_inst.parameters.num_search_workers = cfg.num_workers
+    # Force determinism by using a single search worker and fixed seed
+    solver_inst.parameters.num_search_workers = 1
+    solver_inst.parameters.random_seed = 42
 
     apply_solver_tuning(solver_inst)
 

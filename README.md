@@ -111,6 +111,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   ├── test_solver.py
 │   ├── test_solver_interface.py
 │   ├── test_solver_unit.py
+│   ├── test_statistics.py
 │   ├── test_steps_edge.py
 │   ├── test_ui.py
 │   └── test_utils.py

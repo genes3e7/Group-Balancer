@@ -27,30 +27,11 @@ def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
         return
 
     st.subheader("📊 Global Balancing KPIs")
-
     groups = group_helpers.aggregate_groups(
         df, config.COL_GROUP, score_cols, config.COL_NAME
     )
 
-    stats_data = []
-    total_p = sum(g["count"] for g in groups)
-    for col in score_cols:
-        group_avgs = [g["averages"].get(col, 0.0) for g in groups]
-        series = pd.Series(group_avgs)
-        # Participant-weighted global average
-        weighted_avg = (
-            sum(g["averages"].get(col, 0.0) * g["count"] for g in groups) / total_p
-            if total_p > 0
-            else 0.0
-        )
-        std_dev = series.std(ddof=0) if len(group_avgs) > 1 else 0.0
-        stats_data.append(
-            {
-                "Score Dimension": col,
-                "Global Avg": weighted_avg,
-                "Avg Std Dev (Balance)": std_dev,
-            }
-        )
+    stats_data = group_helpers.calculate_balancing_stats(groups, score_cols)
 
     stats_df = pd.DataFrame(stats_data)
     st.dataframe(
@@ -58,7 +39,10 @@ def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
         hide_index=True,
         width="stretch",
         column_config={
-            "Global Avg": st.column_config.NumberColumn(format="%.2f"),
+            "Global Avg": st.column_config.NumberColumn(
+                format="%.2f",
+                help="Participant-weighted global average for this dimension.",
+            ),
             "Avg Std Dev (Balance)": st.column_config.NumberColumn(
                 format="%.4f",
                 help="Standard deviation between group averages. Lower is better.",

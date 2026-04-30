@@ -98,7 +98,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Canonicalization:** Tags must be order- and whitespace-insensitive (e.g., `"A,B"` == `"B A"`). Logic is extracted into `src/core/tag_utils.py` to prevent circular imports between Models and Solver.
 - **UI Mapping:** The `_original_index` must be preserved through any DataFrame transformations (like aggregation for group cards) to ensure UI edits can be mapped back to the global state correctly.
 
-### 4. Capacity-Aware Bounds
+### 5. Capacity-Aware Bounds
 - **Lesson:** Distribution bounds (like pigeonhole constraints for "stars" or separators) must be calculated relative to each group's specific capacity, rather than using a flat global average.
 - **Risk:** Using flat distribution bounds can mathematically force infeasibility when custom capacities are skewed.
 
