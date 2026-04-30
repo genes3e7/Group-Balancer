@@ -18,6 +18,7 @@ from src.core.models import (
     Participant,
     SolverConfig,
 )
+from src.core.solver import apply_solver_tuning
 
 try:
     from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
@@ -123,6 +124,8 @@ def run_optimization(
     )
     builder.add_scoring_objectives(strategy)
     builder.add_cohesion_penalties(groupers)
+    builder.add_participant_symmetry_breaking()
+    builder.add_solution_hints()
 
     model = builder.get_model()
 
@@ -130,6 +133,8 @@ def run_optimization(
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
     solver_inst.parameters.num_search_workers = cfg.num_workers
+
+    apply_solver_tuning(solver_inst)
 
     cb = StreamlitSolverCallback(status_box, len(participants))
     status = solver_inst.Solve(model, cb)
@@ -189,11 +194,18 @@ def run_optimization(
                 config.COL_GROUPER: p.groupers,
                 config.COL_SEPARATOR: p.separators,
                 "_original_index": p.original_index,
+                "participant_fingerprint": p.fingerprint,
             }
             p_dict.update(p.scores)
             results.append(p_dict)
 
-        return pd.DataFrame(results), metrics
+        result_df = pd.DataFrame(results)
+        # Persist configuration metadata for warm-start validation
+        result_df.attrs["score_weights"] = dict(cfg.score_weights)
+        result_df.attrs["opt_mode"] = cfg.opt_mode
+        result_df.attrs["conflict_priority"] = cfg.conflict_priority
+
+        return result_df, metrics
 
     if status_box:
         with status_box:

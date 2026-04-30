@@ -7,6 +7,7 @@ decoupling the UI from core internal logic and OR-Tools dependencies.
 
 import pandas as pd
 
+from src import logger
 from src.core import config, solver_interface
 from src.core.models import (
     ConflictPriority,
@@ -84,7 +85,10 @@ class OptimizationService:
         opt_mode: OptimizationMode,
         conflict_priority: ConflictPriority,
         timeout_seconds: int,
+        *,
         status_box=None,
+        previous_results: pd.DataFrame | None = None,
+        strict_groupers: bool = False,
     ) -> tuple[pd.DataFrame | None, dict]:
         """
         Runs the group balancing optimization.
@@ -100,6 +104,9 @@ class OptimizationService:
             conflict_priority (ConflictPriority): Resolution for tag collisions.
             timeout_seconds (int): Max search time in seconds.
             status_box: Optional Streamlit placeholder for live updates.
+            previous_results: Optional DataFrame containing previous assignments
+                for solution hinting (warm start).
+            strict_groupers: If True, cohesion tags are hard constraints.
 
         Returns:
             tuple: (Results DataFrame or None, Metrics dictionary)
@@ -123,6 +130,78 @@ class OptimizationService:
             for i, row in enumerate(participants_df.to_dict("records"))
         ]
 
+        hints = None
+        if previous_results is not None and not previous_results.empty:
+            # Always validate snapshot against current configuration and fingerprints
+            # to prevent stale/suboptimal warm-start guided searches.
+            config_match = (
+                previous_results.attrs.get("score_weights") == score_weights
+                and previous_results.attrs.get("opt_mode") == opt_mode
+                and previous_results.attrs.get("conflict_priority") == conflict_priority
+            )
+
+            if not config_match:
+                logger.info("Ignoring stale warm-start hints (configuration change).")
+            elif (
+                config.COL_GROUP in previous_results.columns
+                and "participant_fingerprint" in previous_results.columns
+            ):
+                current_fingerprints = sorted(p.fingerprint for p in participants)
+                prev_fingerprints = sorted(
+                    previous_results["participant_fingerprint"].astype(str).tolist()
+                )
+
+                if current_fingerprints != prev_fingerprints:
+                    logger.info("Ignoring stale warm-start hints (mismatch)")
+                elif not previous_results["participant_fingerprint"].duplicated().any():
+                    hints = dict(
+                        zip(
+                            previous_results["participant_fingerprint"].astype(str),
+                            previous_results[config.COL_GROUP],
+                            strict=False,
+                        )
+                    )
+                elif "_original_index" in previous_results.columns:
+                    # Robust alignment check for duplicate fingerprints
+                    current_pairs = sorted(
+                        (p.original_index, p.fingerprint) for p in participants
+                    )
+                    prev_pairs = sorted(
+                        zip(
+                            previous_results["_original_index"],
+                            previous_results["participant_fingerprint"].astype(str),
+                            strict=False,
+                        )
+                    )
+                    if current_pairs == prev_pairs:
+                        hints = dict(
+                            zip(
+                                previous_results["_original_index"],
+                                previous_results[config.COL_GROUP],
+                                strict=False,
+                            )
+                        )
+                    else:
+                        logger.info("Ignoring stale warm-start hints (alignment error)")
+            # Legacy fallback for snapshots without fingerprints
+            elif (
+                config.COL_GROUP in previous_results.columns
+                and "_original_index" in previous_results.columns
+            ):
+                current_indices = sorted([p.original_index for p in participants])
+                prev_indices = sorted(previous_results["_original_index"].unique())
+
+                if current_indices == prev_indices:
+                    hints = dict(
+                        zip(
+                            previous_results["_original_index"],
+                            previous_results[config.COL_GROUP],
+                            strict=False,
+                        )
+                    )
+                else:
+                    logger.info("Ignoring stale warm-start hints (indices mismatch).")
+
         cfg = SolverConfig(
             num_groups=len(group_capacities),
             group_capacities=group_capacities,
@@ -130,6 +209,8 @@ class OptimizationService:
             opt_mode=opt_mode,
             conflict_priority=conflict_priority,
             timeout_seconds=timeout_seconds,
+            hints=hints,
+            strict_groupers=strict_groupers,
         )
 
         try:

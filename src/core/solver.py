@@ -20,6 +20,19 @@ from src.core.models import (
     Participant,
     SolverConfig,
 )
+from src.core.tag_utils import canonicalize_tags
+
+
+def apply_solver_tuning(solver_inst: cp_model.CpSolver) -> None:
+    """Applies optimal CP-SAT parameters for group partitioning math.
+
+    Args:
+        solver_inst: The OR-Tools solver instance to configure.
+    """
+    # Optimization: linearization_level=0 is often faster for partition math.
+    # symmetry_level=2 enables aggressive internal symmetry breaking.
+    solver_inst.parameters.linearization_level = 0
+    solver_inst.parameters.symmetry_level = 2
 
 
 class SolutionPrinter(cp_model.CpSolverSolutionCallback):
@@ -55,9 +68,7 @@ class TagProcessor:
     @staticmethod
     def get_tags(val: str) -> set[str]:
         """Extracts unique characters as tags, ignoring whitespace and commas."""
-        if not val or not isinstance(val, str):
-            return set()
-        return {c for c in val if not c.isspace() and c != ","}
+        return canonicalize_tags(val)
 
     @classmethod
     def process_participants(
@@ -192,11 +203,14 @@ class ConstraintBuilder:
             separators: Mapping of separator tags to sets of participant indices.
         """
         total_p = self.num_people
-        for _, s_set in separators.items():
+        # Sort tags for determinism in constraint addition order
+        for tag in sorted(separators.keys()):
+            s_set = separators[tag]
             if not s_set:
                 continue
 
             n_tag = len(s_set)
+            sorted_s_set = sorted(s_set)
 
             for g in range(self.num_groups):
                 cap_g = self.cfg.group_capacities[g]
@@ -211,7 +225,7 @@ class ConstraintBuilder:
                 # we'd have infeasibility. However, sum(ceil(p_i)) >= sum(p_i) = n_tag.
                 # So math.ceil((n_tag * cap_g) / total_p) is the tightest feasible
                 # limit.
-                self.model.Add(sum(self.x[(i, g)] for i in s_set) <= limit)
+                self.model.Add(sum(self.x[(i, g)] for i in sorted_s_set) <= limit)
 
     def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
         """Builds multi-objective minimization for group score variance.
@@ -255,10 +269,24 @@ class ConstraintBuilder:
                         f"Score range for {name} is too extreme even after scaling."
                     )
 
-            g_sums = [
-                self.model.NewIntVar(min_sum, max_sum, f"sum_{name}_{g}")
-                for g in range(self.num_groups)
-            ]
+            # Pre-calculate theoretical bounds for g_sums to tighten diff_bound
+            # For capacity C, sum is between sum(bottom C) and sum(top C)
+            sorted_scores = sorted(scores)
+            g_sums = []
+            theoretical_bounds = []
+
+            for g in range(self.num_groups):
+                cap = self.cfg.group_capacities[g]
+                if cap == 0:
+                    t_min = 0
+                    t_max = 0
+                else:
+                    t_min = sum(sorted_scores[:cap])
+                    t_max = sum(sorted_scores[-cap:])
+
+                g_sums.append(self.model.NewIntVar(t_min, t_max, f"sum_{name}_{g}"))
+                theoretical_bounds.append((t_min, t_max))
+
             # Advanced Symmetry Breaking: Enforce ordering for identical capacity
             # groups on at most one canonical dimension. This prunes G! search
             # branches without over-constraining multi-dimensional weights.
@@ -278,16 +306,27 @@ class ConstraintBuilder:
                     == sum(self.x[(i, g)] * scores[i] for i in range(self.num_people))
                 )
                 target = total_score * self.cfg.group_capacities[g]
-                diff = self.model.NewIntVar(-diff_bound, diff_bound, f"diff_{name}_{g}")
+
+                # Calculate tightest possible diff bound for this specific group
+                # diff = g_sum * P - target
+                t_min, t_max = theoretical_bounds[g]
+                min_diff = t_min * self.num_people - target
+                max_diff = t_max * self.num_people - target
+                local_diff_bound = max(abs(min_diff), abs(max_diff))
+
+                diff = self.model.NewIntVar(
+                    -local_diff_bound, local_diff_bound, f"diff_{name}_{g}"
+                )
                 self.model.Add(diff == g_sums[g] * self.num_people - target)
 
-                abs_diff = self.model.NewIntVar(0, diff_bound, f"abs_{name}_{g}")
+                abs_diff = self.model.NewIntVar(0, local_diff_bound, f"abs_{name}_{g}")
                 self.model.AddAbsEquality(abs_diff, diff)
 
-                w_diff = self.model.NewIntVar(0, weighted_bound, f"w_{name}_{g}")
+                local_weighted_bound = local_diff_bound * weight_m
+                w_diff = self.model.NewIntVar(0, local_weighted_bound, f"w_{name}_{g}")
                 self.model.Add(w_diff == abs_diff * weight_m)
                 self.objectives.append(w_diff)
-                self.max_objective_bound += weighted_bound
+                self.max_objective_bound += local_weighted_bound
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
         """Adds penalties for splitting grouper tags.
@@ -295,6 +334,23 @@ class ConstraintBuilder:
         Args:
             groupers: Mapping of grouper tags to sets of participant indices.
         """
+        if self.cfg.strict_groupers:
+            # Implement as hard constraints: all members of a tag must be in ONE group.
+            # Sort tags for determinism in constraint addition order
+            for tag in sorted(groupers.keys()):
+                g_set = groupers[tag]
+                if len(g_set) <= 1:
+                    continue
+                # Sort indices for deterministic constraint ordering
+                sorted_g_set = sorted(g_set)
+                # For each group g, if any member is in g, ALL members must be in g.
+                for g in range(self.num_groups):
+                    used = self.model.NewBoolVar(f"used_{tag}_{g}")
+                    self.model.Add(
+                        sum(self.x[(i, g)] for i in sorted_g_set) == len(g_set) * used
+                    )
+            return
+
         # Prevent 64-bit integer overflow in CP-SAT.
         # aggregate_cap (e.g. 1 << 60) must fit all objectives.
         aggregate_cap = 1 << 60
@@ -302,12 +358,16 @@ class ConstraintBuilder:
         per_term_cap = aggregate_cap // max(1, active_tags * self.num_groups)
         base_penalty = min(self.max_objective_bound * 10 + 1000, per_term_cap)
 
-        for tag, g_set in groupers.items():
+        # Sort tags for determinism in constraint addition order
+        for tag in sorted(groupers.keys()):
+            g_set = groupers[tag]
             if len(g_set) <= 1:
                 continue
+
+            sorted_g_set = sorted(g_set)
             for g in range(self.num_groups):
                 used = self.model.NewBoolVar(f"used_{tag}_{g}")
-                self.model.AddMaxEquality(used, [self.x[(i, g)] for i in g_set])
+                self.model.AddMaxEquality(used, [self.x[(i, g)] for i in sorted_g_set])
 
                 # Incorporate SolverConfig.grouper_weight and clamp per-term
                 weight = self.cfg.grouper_weight
@@ -316,7 +376,7 @@ class ConstraintBuilder:
                 penalty = min(raw_penalty, per_term_cap)
 
                 if raw_penalty > per_term_cap:
-                    logger.warning(
+                    logger.debug(
                         "Clamping cohesion penalty for tag %s (G%d): %d -> %d",
                         tag,
                         g,
@@ -326,6 +386,86 @@ class ConstraintBuilder:
 
                 self.objectives.append(used * penalty)
                 self.max_objective_bound += penalty
+
+    def add_participant_symmetry_breaking(self) -> None:
+        """Enforces ordering for identical participants to reduce search space.
+
+        Identifies sets of participants with identical scores, groupers, and
+        separators, then forces them to be assigned to groups in a non-decreasing
+        index order. This prunes millions of redundant permutations.
+        """
+        identity_map: dict[tuple, list[int]] = {}
+
+        for i, p in enumerate(self.participants):
+            # Sort scores and tags for stable, order-insensitive hashing
+            sorted_scores = tuple(sorted(p.scores.items()))
+            identity = (
+                sorted_scores,
+                tuple(sorted(TagProcessor.get_tags(p.groupers))),
+                tuple(sorted(TagProcessor.get_tags(p.separators))),
+            )
+            identity_map.setdefault(identity, []).append(i)
+
+        for indices in identity_map.values():
+            if len(indices) <= 1:
+                continue
+
+            # For identical participants, force non-decreasing group index
+            # group_idx_i = sum(g * x[i, g])
+            for k in range(len(indices) - 1):
+                p1, p2 = indices[k], indices[k + 1]
+                g_idx1 = sum(g * self.x[(p1, g)] for g in range(self.num_groups))
+                g_idx2 = sum(g * self.x[(p2, g)] for g in range(self.num_groups))
+                self.model.Add(g_idx1 <= g_idx2)
+
+    def add_solution_hints(self) -> None:
+        """Applies previous assignments as solver hints for warm starts.
+
+        To ensure compatibility with symmetry-breaking ordering constraints,
+        hints for identical participants are sorted by group ID before being
+        applied. This preserves the feasible search space while establishing
+        an immediate upper bound.
+        """
+        if not self.cfg.hints:
+            return
+
+        # 1. Collect all valid hints from configuration
+        hinted_groups: dict[int, int] = {}
+        for p_idx, p in enumerate(self.participants):
+            group_id = None
+            if p.fingerprint in self.cfg.hints:
+                group_id = self.cfg.hints[p.fingerprint]
+            elif p.original_index is not None and p.original_index in self.cfg.hints:
+                group_id = self.cfg.hints[p.original_index]
+
+            if group_id is not None:
+                try:
+                    g_idx = int(group_id) - 1
+                    if 0 <= g_idx < self.num_groups:
+                        hinted_groups[p_idx] = g_idx
+                except (ValueError, TypeError):
+                    continue
+
+        # 2. Group participants by symmetry buckets (identical identity)
+        symmetry_buckets: dict[tuple, list[int]] = {}
+        for p_idx, p in enumerate(self.participants):
+            sorted_scores = tuple(sorted(p.scores.items()))
+            identity = (
+                sorted_scores,
+                tuple(sorted(TagProcessor.get_tags(p.groupers))),
+                tuple(sorted(TagProcessor.get_tags(p.separators))),
+            )
+            symmetry_buckets.setdefault(identity, []).append(p_idx)
+
+        # 3. Apply hints so identical participants follow ordering constraints
+        for indices in symmetry_buckets.values():
+            # Get all hinted group assignments for this bucket
+            valid_hinted_g_idxs = sorted(
+                hinted_groups[idx] for idx in indices if idx in hinted_groups
+            )
+            # Re-assign hinted group IDs in sorted order to this bucket
+            for p_idx, g_idx in zip(indices, valid_hinted_g_idxs, strict=False):
+                self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
     def get_model(self) -> cp_model.CpModel:
         """Finalizes and returns the model."""
@@ -415,13 +555,19 @@ def solve_with_ortools(
     )
     builder.add_scoring_objectives(strategy)
     builder.add_cohesion_penalties(groupers)
+    builder.add_participant_symmetry_breaking()
+    builder.add_solution_hints()
 
     model = builder.get_model()
 
     # Solver Execution
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    solver_inst.parameters.num_search_workers = cfg.num_workers
+    # Force determinism by using a single search worker and fixed seed
+    solver_inst.parameters.num_search_workers = 1
+    solver_inst.parameters.random_seed = 42
+
+    apply_solver_tuning(solver_inst)
 
     status = solver_inst.Solve(model, SolutionPrinter(start_time))
     elapsed = time.time() - start_time
@@ -442,6 +588,7 @@ def solve_with_ortools(
                 config.COL_GROUPER: p.groupers,
                 config.COL_SEPARATOR: p.separators,
                 "_original_index": p.original_index,
+                "participant_fingerprint": p.fingerprint,
             }
             # Unpack MappingsProxyType for compatibility
             p_dict.update(dict(p.scores))

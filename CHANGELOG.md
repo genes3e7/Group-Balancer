@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [6.0.0] - 2026-04-22
 
 ### Added
+- **Solver Optimization - Symmetry Breaking**: Enforces ordering on identical participants to drastically reduce the search space.
+- **Solver Optimization - Solution Hinting**: Added warm starts using previous solver results (`st.session_state.results_df`) to dramatically speed up iterative tweak-and-solve cycles.
+- **Solver Optimization - Tight Bounds**: Calculates tighter per-group theoretical objective bounds to reduce search domain.
+- **Solver Optimization - Strict Grouping**: Added a "Strict Grouping" toggle in Advanced Settings to bypass soft penalties and enforce hard equality constraints for tag cohesion.
+- **Solver Optimization - Advanced Parameters**: Tuned CP-SAT internal parameters (`linearization_level=0`, `symmetry_level=2`) for faster partition math.
 - **Pre-CI Refactoring:** Replaced legacy `tools/pre_ci.ps1` with a cross-platform Python orchestrator using `uv` (`tools/pre_ci.py`).
 - **Parallel Testing:** Added `pytest-xdist` to development dependencies to enable parallel execution of tests via `pytest -n auto`.
 - **Detailed Solver Error Reporting:** The UI now surfaces specific optimization failure reasons (e.g., `INFEASIBLE`, `MODEL_INVALID`) with actionable troubleshooting tips.
@@ -30,8 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Dependency Management:** Removed legacy `requirements.in/txt` in favor of `pyproject.toml` and `uv`.
 
 ### Fixed
-- **Solver Stability:** Resolved CP-SAT integer overflow risks using dynamic bounds scaling and tightened symmetry-breaking rules to prevent over-constraining models.
+- **Solver Stability:** Resolved CP-SAT integer overflow risks using dynamic bounds scaling, fixed a heap corruption issue in theoretical bound calculations, and tightened symmetry-breaking rules to prevent over-constraining models.
 - **Data Ingestion:** Hardened file upload validation with column header normalization and robust numeric coercion for sparse data.
+- **Warm Start Reliability:** Implemented fingerprint validation for solution hints to prevent applying stale assignments after data modifications.
 - **UI State Corruption:** Fixed group assignment corruption by ensuring stable original row indices are preserved during aggregations.
 - **CI Integrity:** Fixed version sorting logic, added safety guards for README updates, and enforced secure workflow permissions (`contents: read`).
 - **Tooling:** Refined `.gitignore` parsing to handle symlinks safely and improved regex for Python version badges.

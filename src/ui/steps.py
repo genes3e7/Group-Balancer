@@ -13,7 +13,7 @@ from src.core import config
 from src.core.models import ConflictPriority, OptimizationMode
 from src.core.services import DataService, OptimizationService
 from src.ui import results_renderer, session_manager
-from src.utils import exporter
+from src.utils import exporter, group_helpers
 
 
 def _load_uploaded_file() -> None:
@@ -110,15 +110,22 @@ def render_step_2() -> None:
     total_p = len(df)
     score_cols = st.session_state.get("score_cols", [])
 
-    # Clamp stale groups_input if total_p shrank since last visit
-    if isinstance(st.session_state.get("groups_input"), (int, float)):
+    # Initialize or clamp stale groups_input if total_p shrank
+    if "groups_input" not in st.session_state:
+        st.session_state["groups_input"] = min(2, total_p)
+    elif isinstance(st.session_state.get("groups_input"), (int, float)):
         st.session_state["groups_input"] = min(
             int(st.session_state["groups_input"]), total_p
         )
 
     c1, c2 = st.columns(2)
     num_groups = int(
-        c1.number_input("Groups", 1, total_p, min(2, total_p), key="groups_input")
+        c1.number_input(
+            "Groups",
+            min_value=1,
+            max_value=total_p,
+            key="groups_input",
+        )
     )
     c2.info(f"Total Participants: {total_p}")
 
@@ -165,6 +172,14 @@ def render_step_2() -> None:
             format_func=lambda k: priority_options[k].value,
         )
 
+        st.checkbox(
+            "Strict Grouping (Hard Constraints)",
+            value=False,
+            key="strict_grouping_toggle",
+            help="Force all members with the same tag into one group. "
+            "May lead to infeasibility if tags are too large.",
+        )
+
     st.subheader("Objective Weighting")
     score_weights = {
         col: st.number_input(f"Weight: {col}", 0.0, 10.0, 1.0, 0.1, key=f"w_{col}")
@@ -192,6 +207,21 @@ def render_step_2() -> None:
 
         status_box = st.empty()
 
+        # Prioritize interactive_df (with user edits) over initial results_df
+        prev_results = st.session_state.get("interactive_df")
+        cached_results = st.session_state.get("results_df")
+
+        if prev_results is not None and cached_results is not None:
+            # Re-inject tracking columns for robust warm-start validation
+            prev_results = prev_results.copy()
+            for col in ["_original_index", "participant_fingerprint"]:
+                if col in cached_results.columns:
+                    prev_results[col] = cached_results[col]
+            # Restore metadata for warm-start configuration matching
+            prev_results.attrs = dict(cached_results.attrs)
+        elif prev_results is None:
+            prev_results = cached_results
+
         # Use Service layer for optimization
         result_df, metrics = OptimizationService.run(
             df,
@@ -201,11 +231,16 @@ def render_step_2() -> None:
             priority_options[priority_key],
             timeout,
             status_box=status_box,
+            previous_results=prev_results,
+            strict_groupers=st.session_state.get("strict_grouping_toggle", False),
         )
 
         if result_df is not None:
             st.session_state.results_df = result_df
-            st.session_state.interactive_df = result_df.copy()
+            # Initialize public dataframe without internal tracking columns
+            st.session_state.interactive_df = result_df.drop(
+                columns=["_original_index", "participant_fingerprint"], errors="ignore"
+            )
             st.session_state.solver_status = metrics["status"]
             st.session_state.solver_elapsed = metrics["elapsed"]
             st.session_state.solver_error = None
@@ -290,27 +325,31 @@ def _render_table_view(score_cols: list[str]) -> None:
         for col in score_cols:
             editor_configs[col] = st.column_config.NumberColumn(disabled=True)
 
-        df_for_editor = st.session_state.interactive_df.drop(
-            columns=["_original_index"], errors="ignore"
-        )
         edited_df = st.data_editor(
-            df_for_editor,
+            st.session_state.interactive_df,
             column_config=editor_configs,
             hide_index=True,
             width="stretch",
             key="results_editor_table",
         )
-        if not edited_df.equals(df_for_editor):
-            if "_original_index" in st.session_state.interactive_df.columns:
-                orig_index = st.session_state.interactive_df["_original_index"]
-                edited_df["_original_index"] = orig_index
+        if not edited_df.equals(st.session_state.interactive_df):
             st.session_state.interactive_df = edited_df
             st.rerun()
 
     with stats_col:
         st.subheader("Live Stats")
-        for col in score_cols:
+        # Use Service layer to aggregate groups for stats
+        groups = group_helpers.aggregate_groups(
+            st.session_state.interactive_df,
+            config.COL_GROUP,
+            score_cols,
+            config.COL_NAME,
+        )
+        stats_data = group_helpers.calculate_balancing_stats(groups, score_cols)
+
+        for i, col in enumerate(score_cols):
             st.markdown(f"**{col} Stats**")
+            # Filter display dataframe for specific group stats
             gdf = (
                 st.session_state.interactive_df.groupby(config.COL_GROUP)[col]
                 .agg(["count", "mean", "sum"])
@@ -318,9 +357,8 @@ def _render_table_view(score_cols: list[str]) -> None:
             )
             gdf.columns = ["Group", "Count", "Avg", "Sum"]
 
-            std_val = gdf["Avg"].std()
-            if pd.isna(std_val):
-                std_val = 0.0
+            # Standard deviation from helper
+            std_val = stats_data[i]["Avg Std Dev (Balance)"]
 
             st.metric(f"{col} Std Dev", f"{std_val:.4f}")
             st.dataframe(
@@ -358,13 +396,18 @@ def _render_footer_actions(score_cols: list[str]) -> None:
         score_cols: List of score columns to include in export.
     """
     df = st.session_state.interactive_df
-    row_hashes = pd.util.hash_pandas_object(df, index=True)
+    # Sanitize export by dropping internal tracking columns
+    export_df = df.drop(
+        columns=["_original_index", "participant_fingerprint"], errors="ignore"
+    )
+
+    row_hashes = pd.util.hash_pandas_object(export_df, index=True)
     df_key = (
         int(row_hashes.sum()),
-        len(df),
-        tuple(map(str, df.columns)),
+        len(export_df),
+        tuple(map(str, export_df.columns)),
     )
-    excel_data = _build_excel_bytes(df_key, df, tuple(score_cols))
+    excel_data = _build_excel_bytes(df_key, export_df, tuple(score_cols))
     st.download_button(
         "📥 Download Excel",
         excel_data,

@@ -52,6 +52,25 @@ class Participant:
         sanitized_scores = {k: float(v) for k, v in self.scores.items()}
         object.__setattr__(self, "scores", MappingProxyType(sanitized_scores))
 
+    @property
+    def fingerprint(self) -> str:
+        """Returns a stable hash of the participant's identity."""
+        import hashlib
+        import json
+
+        from src.core.tag_utils import canonicalize_tags
+
+        # Build payload for unambiguous serialization
+        payload = {
+            "name": self.name,
+            "scores": sorted(self.scores.items()),
+            "groupers": sorted(canonicalize_tags(self.groupers)),
+            "separators": sorted(canonicalize_tags(self.separators)),
+        }
+        # Compact JSON to guarantee deterministic payload
+        raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        return hashlib.md5(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
+
 
 @dataclass(frozen=True)
 class SolverConfig:
@@ -65,6 +84,8 @@ class SolverConfig:
         conflict_priority: Which constraint wins if tags overlap.
         grouper_weight: Internal penalty for splitting groupers.
         separator_weight: Internal penalty for clumping separators.
+        strict_groupers: If True, cohesion tags are hard constraints.
+        hints: Optional mapping of identity to group_id for warm starts.
         timeout_seconds: Maximum wall-clock time for search.
         num_workers: Number of parallel search threads.
     """
@@ -76,6 +97,8 @@ class SolverConfig:
     conflict_priority: ConflictPriority = ConflictPriority.GROUPERS
     grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT
     separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT
+    strict_groupers: bool = False
+    hints: Mapping[str | int, int] | None = None
     timeout_seconds: int = 60
     num_workers: int = 4
 
@@ -90,6 +113,8 @@ class SolverConfig:
         object.__setattr__(
             self, "score_weights", MappingProxyType(dict(self.score_weights))
         )
+        if self.hints is not None:
+            object.__setattr__(self, "hints", MappingProxyType(dict(self.hints)))
 
         self.validate_safety_bounds()
 

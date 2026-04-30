@@ -87,7 +87,8 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   │   ├── models.py
 │   │   ├── services.py
 │   │   ├── solver.py
-│   │   └── solver_interface.py
+│   │   ├── solver_interface.py
+│   │   └── tag_utils.py
 │   ├── ui/
 │   │   ├── __init__.py
 │   │   ├── components.py
@@ -110,12 +111,14 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   ├── test_solver.py
 │   ├── test_solver_interface.py
 │   ├── test_solver_unit.py
+│   ├── test_statistics.py
 │   ├── test_steps_edge.py
 │   ├── test_ui.py
 │   └── test_utils.py
 ├── tools/
 │   ├── __init__.py
 │   ├── pre_ci.py
+│   ├── test_determinism.py
 │   └── update_readme.py
 └── uv.lock
 ```
