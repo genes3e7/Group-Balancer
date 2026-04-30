@@ -83,24 +83,38 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Lesson:** For robust iterative optimization (warm starts), participants must be identified via a stable content-based fingerprint rather than row indices.
 - **Implementation:** `Participant.fingerprint` computes a stable MD5 hash of Name, Scores, and canonicalized Tags.
 - **Warm Start Logic:** `OptimizationService.run` validates the full fingerprint **multiset** of the current session against previous results. If identical, it maps fingerprints to group assignments to seed the solver.
+- **Robustness:** If fingerprints are duplicated within the dataset, the logic falls back to a strict `(original_index, fingerprint)` alignment check to ensure hints are never misassigned after reordering.
 - **Risk:** Row indices are regenerated on every reorder/edit in Step 1. Using indices for warm starts after reordering causes "hallucinated" hints where assignments are applied to the wrong people.
 
-### 3. Integer Range & Overflows
+### 3. Absolute Solver Determinism
+
+- **Lesson:** CP-SAT solvers with multiple workers explore search branches non-deterministically. This can lead to "pseudo-optimal" results where two runs of the same data yield different assignments with slightly different standard deviations.
+- **Implementation:** To ensure absolute determinism for end users, `solve_with_ortools` hardcodes `num_search_workers = 1` and a fixed `random_seed = 42`.
+- **Consistency:** All internal set and dictionary iterations (tags, participant indices) are explicitly sorted before adding constraints to the model, ensuring the search tree is identical on every execution.
+
+### 4. Integer Range & Overflows
 
 - **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 60) - 1`) to avoid model construction failures.
 - **Implementation:** Weighted deviations and cohesion penalties are multiplied by a `SCALE_FACTOR` but validated against safety bounds before being added to the model.
 - **Optimization:** The cohesion penalty budget (`per_term_cap`) is calculated by counting only active grouper sets (`len(g_set) > 1`) to maximize the available penalty range while preventing overflow.
 - **Tuning:** Partitioning math is significantly faster with `linearization_level=0` and `symmetry_level=2`. These are centralized in `solver.apply_solver_tuning`.
 
-### 4. Categorical Constraints (Groupers/Separators)
+### 5. Categorical Constraints (Groupers/Separators)
 
 - **Design:** Every character in the tag string is treated as a unique constraint.
 - **Canonicalization:** Tags must be order- and whitespace-insensitive (e.g., `"A,B"` == `"B A"`). Logic is extracted into `src/core/tag_utils.py` to prevent circular imports between Models and Solver.
 - **UI Mapping:** The `_original_index` must be preserved through any DataFrame transformations (like aggregation for group cards) to ensure UI edits can be mapped back to the global state correctly.
 
-### 5. Capacity-Aware Bounds
+### 6. Capacity-Aware Bounds
+
 - **Lesson:** Distribution bounds (like pigeonhole constraints for "stars" or separators) must be calculated relative to each group's specific capacity, rather than using a flat global average.
 - **Risk:** Using flat distribution bounds can mathematically force infeasibility when custom capacities are skewed.
+
+### 7. Standard Deviation of Group Averages
+
+- **Lesson:** To balance groups effectively, the metric of interest is the dispersion between the group averages, not the individual participants.
+- **Implementation:** All UI views (`Global Balancing KPIs` and `Live Stats`) utilize a centralized helper in `group_helpers.py` that calculates the **Sample Standard Deviation** (`ddof=1`) of the group means.
+- **Data Hygiene:** Unassigned participants (Group -1) are strictly excluded from these metrics to prevent "data leakage" from the bench polluting the team balance score.
 
 ## Data Handling
 

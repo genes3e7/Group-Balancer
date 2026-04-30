@@ -217,6 +217,8 @@ def render_step_2() -> None:
             for col in ["_original_index", "participant_fingerprint"]:
                 if col in cached_results.columns:
                     prev_results[col] = cached_results[col]
+            # Restore metadata for warm-start configuration matching
+            prev_results.attrs = dict(cached_results.attrs)
         elif prev_results is None:
             prev_results = cached_results
 
