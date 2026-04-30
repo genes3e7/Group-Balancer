@@ -138,6 +138,8 @@ class OptimizationService:
                 previous_results.attrs.get("score_weights") == score_weights
                 and previous_results.attrs.get("opt_mode") == opt_mode
                 and previous_results.attrs.get("conflict_priority") == conflict_priority
+                and previous_results.attrs.get("group_capacities") == group_capacities
+                and previous_results.attrs.get("strict_groupers") == strict_groupers
             )
 
             if not config_match:

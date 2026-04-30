@@ -104,6 +104,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   ├── __init__.py
 │   ├── test_config.py
 │   ├── test_data_loader.py
+│   ├── test_determinism.py
 │   ├── test_exporter.py
 │   ├── test_infra.py
 │   ├── test_models_unit.py

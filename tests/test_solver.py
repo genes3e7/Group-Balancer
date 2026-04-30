@@ -221,47 +221,22 @@ def test_scoring_strategy_pass():
 
 
 def test_solver_extreme_value_error():
-    """Cover line 250 ValueError."""
-    participants = [Participant(name="P1", scores={"S1": 1.0})]
-    # A huge weight so weight_m > 2**60
-    # weight_m is weight * 100, so weight > 2**60 / 100
-    huge_weight = (2**61) / 100.0
+    """Cover ValueError for safety bound violation."""
+    # Use two participants with different scores to ensure non-zero deviation
+    participants = [
+        Participant(name="P1", scores={"S1": 100.0}),
+        Participant(name="P2", scores={"S1": 0.0}),
+    ]
+    # Astronomical weight to force local_weighted_bound > 2**60
+    huge_weight = 1e15 
     with patch("src.core.models.SolverConfig.validate_safety_bounds"):
         cfg = SolverConfig(
-            num_groups=1, group_capacities=[1], score_weights={"S1": huge_weight}
+            num_groups=2, group_capacities=[1, 1], score_weights={"S1": huge_weight}
         )
     from src.core.solver import AdvancedScoring, ConstraintBuilder
 
     strategy = AdvancedScoring()
     builder = ConstraintBuilder(participants, cfg)
     builder.build_variables()
-    with pytest.raises(ValueError, match="too extreme even after scaling"):
+    with pytest.raises(ValueError, match="Aggregate score objective exceeds CP-SAT safety bound"):
         builder.add_scoring_objectives(strategy)
-
-
-def test_solver_objective_generation_edge():
-    """Cover lines 230 (min_sum==0, max_sum==0), 234-244, and 250."""
-    # We want weighted_bound to be > 2**60 but <= 2**61 so that one scaling pass
-    # (dividing by 2) brings it back to <= 2**60.
-    # Logic in solver.py for 1 participant:
-    # scaled_score = float_score * SCALE_FACTOR
-    # diff_bound = scaled_score * 1 * 2
-    # weighted_bound = diff_bound * 100 (for weight 1.0)
-    # => weighted_bound = float_score * SCALE_FACTOR * 200
-
-    # Target: weighted_bound = 2**60 + 1000
-    target_weighted = (2**60) + 1000
-    float_score = target_weighted / (config.SCALE_FACTOR * 200.0)
-    participants = [Participant(name="P1", scores={"S1": float_score, "S2": 0.0})]
-
-    cfg = SolverConfig(
-        num_groups=2, group_capacities=[1, 1], score_weights={"S1": 1.0, "S2": 1.0}
-    )
-    from src.core.solver import AdvancedScoring, ConstraintBuilder
-
-    strategy = AdvancedScoring()
-    builder = ConstraintBuilder(participants, cfg)
-    builder.build_variables()
-    with patch("src.core.solver.logger.warning") as mock_warn:
-        builder.add_scoring_objectives(strategy)
-        mock_warn.assert_called()

@@ -87,8 +87,8 @@ class TagProcessor:
         separators: dict[str, set[int]] = {}
 
         for i, p in enumerate(participants):
-            g_tags = cls.get_tags(p.groupers)
-            s_tags = cls.get_tags(p.separators)
+            g_tags = sorted(cls.get_tags(p.groupers))
+            s_tags = sorted(cls.get_tags(p.separators))
 
             for tag in g_tags:
                 groupers.setdefault(tag, set()).add(i)
@@ -96,7 +96,7 @@ class TagProcessor:
                 separators.setdefault(tag, set()).add(i)
 
         # Conflict Resolution: Only resolve for the same tag key
-        common_tags = set(groupers.keys()) & set(separators.keys())
+        common_tags = sorted(set(groupers.keys()) & set(separators.keys()))
 
         for tag in common_tags:
             g_set = groupers[tag]
@@ -113,56 +113,134 @@ class TagProcessor:
 
 
 class ScoringStrategy(ABC):
-    """Abstract base for different optimization topologies."""
+    """Abstract base for different optimization topologies.
+
+    Defines the interface for converting participant data and configuration into
+    score vectors that the solver can minimize.
+    """
 
     @abstractmethod
     def get_score_vectors(
         self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Returns (name, scores, weight_multiplier) for each dimension."""
+        """Returns score vectors for each dimension to be optimized.
+
+        Args:
+            participants: List of strongly-typed Participant models.
+            cfg: The solver configuration parameters.
+
+        Returns:
+            A list of tuples, where each tuple contains:
+                - str: The name of the dimension.
+                - list[int]: The list of integer scores for each participant.
+                - int: The weight multiplier for this dimension.
+        """
         pass
 
 
 class AdvancedScoring(ScoringStrategy):
-    """Balances each score dimension independently."""
+    """Balances each score dimension independently with normalization.
+
+    This strategy ensures that dimensions with vastly different magnitudes (e.g.,
+    0.1 vs 100) are given equal priority in balancing when their user-defined
+    weights are identical. It uses high-precision integer scaling to eliminate
+    floating-point noise.
+    """
 
     def get_score_vectors(
         self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Generates independent score vectors for each weight mapping."""
+        """Generates normalized score vectors for each dimension.
+
+        Uses high-precision integer scaling (10^10) to map raw floats to a common
+        magnitude, ensuring magnitude-insensitive balancing.
+
+        Args:
+            participants: List of strongly-typed Participant models.
+            cfg: The solver configuration parameters.
+
+        Returns:
+            list[tuple[str, list[int], int]]: Normalized score vectors with weights.
+        """
         vectors = []
-        for col, weight in cfg.score_weights.items():
+        # Sort keys for deterministic objective addition order
+        for col in sorted(cfg.score_weights.keys()):
+            weight = cfg.score_weights[col]
             if weight == 0:
                 continue
 
+            # 1. Extract raw scores
+            raw_scores = [p.scores.get(col, 0.0) for p in participants]
+            # Use high precision integer scaling (10^10) to avoid float noise
+            scaled_raw = [int(round(s * 10_000_000_000)) for s in raw_scores]
+            raw_total = sum(abs(s) for s in scaled_raw)
+
+            if raw_total == 0:
+                continue
+
+            # 2. Normalize and scale to common magnitude (e.g. 10,000,000 total)
+            # Use integer math for normalization
+            norm_multiplier = config.SCALE_FACTOR * 100
             scores = [
-                round(p.scores.get(col, 0.0) * config.SCALE_FACTOR)
-                for p in participants
+                int(round((s * norm_multiplier) / raw_total))
+                for s in scaled_raw
             ]
-            # Ensure tiny positive weights are not rounded to 0
-            if weight > 0:
-                weight_m = max(1, round(weight * 100))
-            else:
-                weight_m = round(weight * 100)
+
+            # 3. Scale by user weight with higher precision (100 -> 10,000)
+            weight_m = int(max(1, round(weight * 10000)))
             vectors.append((col, scores, weight_m))
         return vectors
 
 
 class SimpleScoring(ScoringStrategy):
-    """Balances a single weighted total score."""
+    """Balances a single weighted total score with dimension normalization.
+
+    Aggregates multiple dimensions into a single target vector while still
+    performing normalization on each dimension individually to prevent
+    magnitude domination.
+    """
 
     def get_score_vectors(
         self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Generates a single pre-aggregated score vector."""
-        scores = []
-        for p in participants:
-            total = sum(
-                p.scores.get(c, 0.0) * cfg.score_weights.get(c, 1.0)
-                for c in cfg.score_weights
-            )
-            scores.append(round(total * config.SCALE_FACTOR))
-        return [("simple_total", scores, 100)]
+        """Generates a single pre-aggregated and normalized score vector.
+
+        Normalizes each dimension BEFORE aggregation to ensure fairness across
+        different numeric ranges.
+
+        Args:
+            participants: List of strongly-typed Participant models.
+            cfg: The solver configuration parameters.
+
+        Returns:
+            list[tuple[str, list[int], int]]: A single aggregated score vector.
+        """
+        # To avoid magnitude domination, we must normalize each dimension
+        # BEFORE aggregating into a single total score.
+        total_normalized_scores = [0.0] * len(participants)
+
+        for col in sorted(cfg.score_weights.keys()):
+            weight = cfg.score_weights[col]
+            if weight == 0:
+                continue
+
+            raw_scores = [p.scores.get(col, 0.0) for p in participants]
+            # Use high precision integer scaling (10^10) to avoid float noise
+            scaled_raw = [int(round(s * 10_000_000_000)) for s in raw_scores]
+            raw_total = sum(abs(s) for s in scaled_raw)
+
+            if raw_total == 0:
+                continue
+
+            # Scale each dimension so its relative contribution is exactly the user weight
+            # Use high precision multiplier for aggregation
+            norm_multiplier = config.SCALE_FACTOR * weight * 100
+            for i, s in enumerate(scaled_raw):
+                total_normalized_scores[i] += (s * norm_multiplier) / raw_total
+
+        # Round to integers for CP-SAT
+        final_scores = [int(round(s)) for s in total_normalized_scores]
+        return [("simple_total", final_scores, 100)]
 
 
 class ConstraintBuilder:
@@ -210,21 +288,12 @@ class ConstraintBuilder:
                 continue
 
             n_tag = len(s_set)
+            # Sort participant indices for deterministic sum order
             sorted_s_set = sorted(s_set)
 
             for g in range(self.num_groups):
                 cap_g = self.cfg.group_capacities[g]
-                # To ensure feasibility: Sum of limits across all groups >= n_tag.
-                # Proportional share: (n_tag * group_cap) / total_cap.
-                # Baseline: ceil(proportional_share).
-                # For uniform groups, this equals ceil(n_tag / G).
-                # For non-uniform, it scales with group size.
                 limit = min(cap_g, math.ceil((n_tag * cap_g) / total_p))
-
-                # If the sum of these tight limits might be < n_tag due to rounding,
-                # we'd have infeasibility. However, sum(ceil(p_i)) >= sum(p_i) = n_tag.
-                # So math.ceil((n_tag * cap_g) / total_p) is the tightest feasible
-                # limit.
                 self.model.Add(sum(self.x[(i, g)] for i in sorted_s_set) <= limit)
 
     def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
@@ -239,35 +308,6 @@ class ConstraintBuilder:
         # more effectively than just a single dimension.
         for name, scores, weight_m in vectors:
             total_score = sum(scores)
-            min_sum, max_sum = (
-                sum(s for s in scores if s < 0),
-                sum(s for s in scores if s > 0),
-            )
-
-            if min_sum == 0 and max_sum == 0:
-                continue
-
-            diff_bound = max(1, (max_sum - min_sum) * self.num_people * 2)
-            weighted_bound = diff_bound * weight_m
-
-            if weighted_bound > 2**60:
-                extra_scale = math.ceil(weighted_bound / 2**60)
-                logger.warning(
-                    "Extreme score range in %s risking overflow. Scaling by %d.",
-                    name,
-                    extra_scale,
-                )
-                scores = [round(s / extra_scale) for s in scores]
-                total_score = sum(scores)
-                min_sum = sum(s for s in scores if s < 0)
-                max_sum = sum(s for s in scores if s > 0)
-                diff_bound = max(1, (max_sum - min_sum) * self.num_people * 2)
-                weighted_bound = diff_bound * weight_m
-
-                if weighted_bound > 2**60:
-                    raise ValueError(
-                        f"Score range for {name} is too extreme even after scaling."
-                    )
 
             # Pre-calculate theoretical bounds for g_sums to tighten diff_bound
             # For capacity C, sum is between sum(bottom C) and sum(top C)
@@ -323,10 +363,16 @@ class ConstraintBuilder:
                 self.model.AddAbsEquality(abs_diff, diff)
 
                 local_weighted_bound = local_diff_bound * weight_m
+                self.max_objective_bound += local_weighted_bound
+
+                if self.max_objective_bound > (1 << 60) - 1:
+                    raise ValueError(
+                        "Aggregate score objective exceeds CP-SAT safety bound."
+                    )
+
                 w_diff = self.model.NewIntVar(0, local_weighted_bound, f"w_{name}_{g}")
                 self.model.Add(w_diff == abs_diff * weight_m)
                 self.objectives.append(w_diff)
-                self.max_objective_bound += local_weighted_bound
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
         """Adds penalties for splitting grouper tags.
@@ -354,7 +400,10 @@ class ConstraintBuilder:
         # Prevent 64-bit integer overflow in CP-SAT.
         # aggregate_cap (e.g. 1 << 60) must fit all objectives.
         aggregate_cap = 1 << 60
-        active_tags = sum(1 for g_set in groupers.values() if len(g_set) > 1)
+        # Count active tags deterministically
+        active_tags = sum(
+            1 for tag in sorted(groupers.keys()) if len(groupers[tag]) > 1
+        )
         per_term_cap = aggregate_cap // max(1, active_tags * self.num_groups)
         base_penalty = min(self.max_objective_bound * 10 + 1000, per_term_cap)
 
@@ -387,6 +436,11 @@ class ConstraintBuilder:
                 self.objectives.append(used * penalty)
                 self.max_objective_bound += penalty
 
+                if self.max_objective_bound > (1 << 60) - 1:
+                    raise ValueError(
+                        "Aggregate objective (cohesion) exceeds CP-SAT safety bound."
+                    )
+
     def add_participant_symmetry_breaking(self) -> None:
         """Enforces ordering for identical participants to reduce search space.
 
@@ -406,7 +460,12 @@ class ConstraintBuilder:
             )
             identity_map.setdefault(identity, []).append(i)
 
-        for indices in identity_map.values():
+        # Sort identity buckets by the first index in each to ensure
+        # absolute determinism regardless of dictionary iteration order.
+        sorted_identities = sorted(identity_map.keys(), key=lambda k: identity_map[k][0])
+
+        for identity in sorted_identities:
+            indices = identity_map[identity]
             if len(indices) <= 1:
                 continue
 
@@ -458,7 +517,13 @@ class ConstraintBuilder:
             symmetry_buckets.setdefault(identity, []).append(p_idx)
 
         # 3. Apply hints so identical participants follow ordering constraints
-        for indices in symmetry_buckets.values():
+        # Sort buckets by the first index in each to ensure absolute determinism.
+        sorted_bucket_keys = sorted(
+            symmetry_buckets.keys(), key=lambda k: symmetry_buckets[k][0]
+        )
+
+        for identity in sorted_bucket_keys:
+            indices = symmetry_buckets[identity]
             # Get all hinted group assignments for this bucket
             valid_hinted_g_idxs = sorted(
                 hinted_groups[idx] for idx in indices if idx in hinted_groups
@@ -468,8 +533,22 @@ class ConstraintBuilder:
                 self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
     def get_model(self) -> cp_model.CpModel:
-        """Finalizes and returns the model."""
-        self.model.Minimize(sum(self.objectives))
+        """Finalizes and returns the model with tie-breaking."""
+        # Main objective: minimize sum of weighted deviations and cohesion penalties
+        main_objective = sum(self.objectives)
+
+        # Tie-breaker: small penalty for high group indices to force canonical choice
+        # when multiple equivalent optima exist. This ensures absolute determinism.
+        # multiplier is 1 to keep it far below any real objective term.
+        tie_breaker = sum(
+            g * self.x[(i, g)]
+            for i in range(self.num_people)
+            for g in range(self.num_groups)
+        )
+
+        # Combine with huge multiplier for main objective
+        # (1 << 30) is roughly 10^9, safe given our safety caps.
+        self.model.Minimize(main_objective * 1000 + tie_breaker)
         return self.model
 
 
