@@ -68,3 +68,47 @@ def aggregate_groups(
         )
 
     return groups
+
+
+def calculate_balancing_stats(
+    groups: list[dict[str, Any]], score_cols: list[str]
+) -> list[dict[str, Any]]:
+    """Calculates global averages and standard deviations of group averages.
+
+    Args:
+        groups: List of group metadata from aggregate_groups.
+        score_cols: List of score dimensions to process.
+
+    Returns:
+        List of dictionaries containing 'Score Dimension', 'Global Avg',
+        and 'Avg Std Dev (Balance)'.
+    """
+    # Exclude unassigned participants (Group -1) from balancing metrics
+    valid_groups = [g for g in groups if g["id"] != -1]
+
+    stats_data = []
+    total_p = sum(g["count"] for g in valid_groups)
+
+    for col in score_cols:
+        group_avgs = [g["averages"].get(col, 0.0) for g in valid_groups]
+        series = pd.Series(group_avgs)
+
+        # Participant-weighted global average
+        group_contribs = [
+            g["averages"].get(col, 0.0) * g["count"] for g in valid_groups
+        ]
+        weighted_avg = sum(group_contribs) / total_p if total_p > 0 else 0.0
+
+        # Standard deviation of the group averages (Sample Std Dev, ddof=1)
+        # This measures how balanced the groups are relative to each other.
+        std_dev = series.std(ddof=1) if len(group_avgs) > 1 else 0.0
+
+        stats_data.append(
+            {
+                "Score Dimension": col,
+                "Global Avg": weighted_avg,
+                "Avg Std Dev (Balance)": std_dev,
+            }
+        )
+
+    return stats_data

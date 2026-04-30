@@ -132,8 +132,17 @@ class OptimizationService:
 
         hints = None
         if previous_results is not None and not previous_results.empty:
-            # Always validate the snapshot by fingerprint multiset first.
-            if (
+            # Always validate snapshot against current configuration and fingerprints
+            # to prevent stale/suboptimal warm-start guided searches.
+            config_match = (
+                previous_results.attrs.get("score_weights") == score_weights
+                and previous_results.attrs.get("opt_mode") == opt_mode
+                and previous_results.attrs.get("conflict_priority") == conflict_priority
+            )
+
+            if not config_match:
+                logger.info("Ignoring stale warm-start hints (configuration change).")
+            elif (
                 config.COL_GROUP in previous_results.columns
                 and "participant_fingerprint" in previous_results.columns
             ):
@@ -174,7 +183,7 @@ class OptimizationService:
                         )
                     else:
                         logger.info("Ignoring stale warm-start hints (alignment error)")
-                    # Legacy fallback for snapshots without fingerprints
+            # Legacy fallback for snapshots without fingerprints
             elif (
                 config.COL_GROUP in previous_results.columns
                 and "_original_index" in previous_results.columns

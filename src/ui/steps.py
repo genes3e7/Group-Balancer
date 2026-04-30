@@ -13,7 +13,7 @@ from src.core import config
 from src.core.models import ConflictPriority, OptimizationMode
 from src.core.services import DataService, OptimizationService
 from src.ui import results_renderer, session_manager
-from src.utils import exporter
+from src.utils import exporter, group_helpers
 
 
 def _load_uploaded_file() -> None:
@@ -336,8 +336,18 @@ def _render_table_view(score_cols: list[str]) -> None:
 
     with stats_col:
         st.subheader("Live Stats")
-        for col in score_cols:
+        # Use Service layer to aggregate groups for stats
+        groups = group_helpers.aggregate_groups(
+            st.session_state.interactive_df,
+            config.COL_GROUP,
+            score_cols,
+            config.COL_NAME,
+        )
+        stats_data = group_helpers.calculate_balancing_stats(groups, score_cols)
+
+        for i, col in enumerate(score_cols):
             st.markdown(f"**{col} Stats**")
+            # Filter display dataframe for specific group stats
             gdf = (
                 st.session_state.interactive_df.groupby(config.COL_GROUP)[col]
                 .agg(["count", "mean", "sum"])
@@ -345,9 +355,8 @@ def _render_table_view(score_cols: list[str]) -> None:
             )
             gdf.columns = ["Group", "Count", "Avg", "Sum"]
 
-            std_val = gdf["Avg"].std()
-            if pd.isna(std_val):
-                std_val = 0.0
+            # Standard deviation from helper
+            std_val = stats_data[i]["Avg Std Dev (Balance)"]
 
             st.metric(f"{col} Std Dev", f"{std_val:.4f}")
             st.dataframe(

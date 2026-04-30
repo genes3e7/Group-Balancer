@@ -199,7 +199,13 @@ def run_optimization(
             p_dict.update(p.scores)
             results.append(p_dict)
 
-        return pd.DataFrame(results), metrics
+        result_df = pd.DataFrame(results)
+        # Persist configuration metadata for warm-start validation
+        result_df.attrs["score_weights"] = dict(cfg.score_weights)
+        result_df.attrs["opt_mode"] = cfg.opt_mode
+        result_df.attrs["conflict_priority"] = cfg.conflict_priority
+
+        return result_df, metrics
 
     if status_box:
         with status_box:
