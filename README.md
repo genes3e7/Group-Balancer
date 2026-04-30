@@ -118,6 +118,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── tools/
 │   ├── __init__.py
 │   ├── pre_ci.py
+│   ├── test_determinism.py
 │   └── update_readme.py
 └── uv.lock
 ```

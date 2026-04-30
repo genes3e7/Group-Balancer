@@ -336,15 +336,18 @@ class ConstraintBuilder:
         """
         if self.cfg.strict_groupers:
             # Implement as hard constraints: all members of a tag must be in ONE group.
-            for tag, g_set in groupers.items():
+            # Sort tags for determinism in constraint addition order
+            for tag in sorted(groupers.keys()):
+                g_set = groupers[tag]
                 if len(g_set) <= 1:
                     continue
+                # Sort indices for deterministic constraint ordering
+                sorted_g_set = sorted(g_set)
                 # For each group g, if any member is in g, ALL members must be in g.
-                # Simplest way: sum(x[i, g] for i in g_set) == len(g_set) * used_g
                 for g in range(self.num_groups):
                     used = self.model.NewBoolVar(f"used_{tag}_{g}")
                     self.model.Add(
-                        sum(self.x[(i, g)] for i in g_set) == len(g_set) * used
+                        sum(self.x[(i, g)] for i in sorted_g_set) == len(g_set) * used
                     )
             return
 
@@ -355,12 +358,16 @@ class ConstraintBuilder:
         per_term_cap = aggregate_cap // max(1, active_tags * self.num_groups)
         base_penalty = min(self.max_objective_bound * 10 + 1000, per_term_cap)
 
-        for tag, g_set in groupers.items():
+        # Sort tags for determinism in constraint addition order
+        for tag in sorted(groupers.keys()):
+            g_set = groupers[tag]
             if len(g_set) <= 1:
                 continue
+
+            sorted_g_set = sorted(g_set)
             for g in range(self.num_groups):
                 used = self.model.NewBoolVar(f"used_{tag}_{g}")
-                self.model.AddMaxEquality(used, [self.x[(i, g)] for i in g_set])
+                self.model.AddMaxEquality(used, [self.x[(i, g)] for i in sorted_g_set])
 
                 # Incorporate SolverConfig.grouper_weight and clamp per-term
                 weight = self.cfg.grouper_weight
@@ -399,7 +406,7 @@ class ConstraintBuilder:
             )
             identity_map.setdefault(identity, []).append(i)
 
-        for _, indices in identity_map.items():
+        for indices in identity_map.values():
             if len(indices) <= 1:
                 continue
 
