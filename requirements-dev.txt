@@ -12,6 +12,11 @@ altair==6.0.0
     # via
     #   -c requirements.txt
     #   streamlit
+anyio==4.13.0
+    # via
+    #   -c requirements.txt
+    #   starlette
+    #   streamlit
 attrs==25.4.0
     # via
     #   -c requirements.txt
@@ -37,6 +42,7 @@ click==8.3.1
     # via
     #   -c requirements.txt
     #   streamlit
+    #   uvicorn
 et-xmlfile==2.0.0
     # via
     #   -c requirements.txt
@@ -49,9 +55,18 @@ gitpython==3.1.46
     # via
     #   -c requirements.txt
     #   streamlit
+h11==0.16.0
+    # via
+    #   -c requirements.txt
+    #   uvicorn
+httptools==0.7.1
+    # via
+    #   -c requirements.txt
+    #   streamlit
 idna==3.11
     # via
     #   -c requirements.txt
+    #   anyio
     #   requests
 immutabledict==4.2.2
     # via
@@ -59,6 +74,10 @@ immutabledict==4.2.2
     #   ortools
 iniconfig==2.3.0
     # via pytest
+itsdangerous==2.2.0
+    # via
+    #   -c requirements.txt
+    #   streamlit
 jinja2==3.1.6
     # via
     #   -c requirements.txt
@@ -135,6 +154,10 @@ python-dateutil==2.9.0.post0
     # via
     #   -c requirements.txt
     #   pandas
+python-multipart==0.0.27
+    # via
+    #   -c requirements.txt
+    #   streamlit
 referencing==0.37.0
     # via
     #   -c requirements.txt
@@ -149,7 +172,7 @@ rpds-py==0.30.0
     #   -c requirements.txt
     #   jsonschema
     #   referencing
-ruff==0.15.11
+ruff==0.15.12
     # via -r requirements-dev.in
 six==1.17.0
     # via
@@ -159,7 +182,11 @@ smmap==5.0.2
     # via
     #   -c requirements.txt
     #   gitdb
-streamlit==1.56.0
+starlette==1.0.0
+    # via
+    #   -c requirements.txt
+    #   streamlit
+streamlit==1.57.0
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -168,10 +195,6 @@ tenacity==9.1.2
     #   -c requirements.txt
     #   streamlit
 toml==0.10.2
-    # via
-    #   -c requirements.txt
-    #   streamlit
-tornado==6.5.5
     # via
     #   -c requirements.txt
     #   streamlit
@@ -185,7 +208,15 @@ urllib3==2.6.3
     # via
     #   -c requirements.txt
     #   requests
+uvicorn==0.46.0
+    # via
+    #   -c requirements.txt
+    #   streamlit
 watchdog==6.0.0
+    # via
+    #   -c requirements.txt
+    #   streamlit
+websockets==16.0
     # via
     #   -c requirements.txt
     #   streamlit
