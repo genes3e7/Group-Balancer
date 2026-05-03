@@ -141,9 +141,9 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
 
     # 2. Update Version Badge
     if min_ver and max_ver:
-        # Matches badge URL part: python-3.10%20-%203.14-blue
+        # Matches badge URL part: python-3.10%20--%203.14-blue
         badge_pattern = re.compile(r"python-\d+\.\d+[^\s\[\]\(\)]*-blue")
-        new_badge_url = f"python-{min_ver}%20-%20{max_ver}-blue"
+        new_badge_url = f"python-{min_ver}%20--%20{max_ver}-blue"
         content = badge_pattern.sub(new_badge_url, content)
 
         # Also update the Alt Text of the badge: [Python 3.10 - 3.14]

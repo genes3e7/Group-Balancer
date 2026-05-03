@@ -335,116 +335,125 @@ class PreCIPipeline:
         print(f"🚀 GROUP BALANCER {mode} GATE", flush=True)
         print("=" * 60, flush=True)
 
-        # 1. Sync Dependencies (Fail-fast as subsequent steps depend on it)
-        self.run_command(
-            ["uv", "sync", "--all-extras", "--frozen"],
-            "Syncing Project Environment",
-            fail_fast=True,
-        )
-
-        # 2. Update README
-        print("\n>>> [Step: Updating README structure]", flush=True)
-        res = subprocess.run(
-            [
-                "uv",
-                "run",
-                "--no-sync",
-                "python",
-                "tools/update_readme.py",
-                self.min_ver,
-                self.max_ver,
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            env=os.environ.copy(),
-        )  # noqa: S603
-        if res.stdout:
-            print(res.stdout.strip(), flush=True)
-        if res.stderr:
-            print(res.stderr.strip(), flush=True)
-
-        # Fail fast if script failed or output contains anchored ERROR/CRITICAL
-        if res.returncode != 0 or re.search(
-            r"^ERROR:|^CRITICAL:", res.stdout + res.stderr, re.MULTILINE
-        ):
-            print(
-                "\n❌ FATAL: 'Updating README structure' failed or contains errors.",
-                flush=True,
-            )
-            self.record_result("Updating README structure", False)
-            sys.exit(1)
-
-        print("✅ Updating README structure completed successfully.", flush=True)
-        self.record_result("Updating README structure", True)
-
-        # 3. Parallel Checks (Vulture, Interrogate)
-        # These are lightweight enough to run concurrently.
-        parallel_tasks = [
-            (
-                ["uv", "run", "--no-sync", "vulture", "src/", "--min-confidence", "80"],
-                "Dead Code Analysis (Vulture)",
-            ),
-            (
-                ["uv", "run", "--no-sync", "interrogate", "."],
-                "Docstring Coverage Enforcement",
-            ),
-        ]
-
-        self.run_commands_parallel(parallel_tasks)
-
-        # 4. Unit Tests (Run sequentially to avoid xdist hangs and see clear progress)
-        # Pytest executes in the remote test-matrix job. Prevent redundancy in CI.
-        if not self.is_ci:
+        try:
+            # 1. Sync Dependencies (Fail-fast as subsequent steps depend on it)
             self.run_command(
-                ["uv", "run", "--no-sync", "pytest", "-v"],
-                "Unit Tests & Coverage Enforcement",
+                ["uv", "sync", "--all-extras", "--frozen"],
+                "Syncing Project Environment",
+                fail_fast=True,
             )
 
-        # 5. Linting and Formatting (Apply only if checks passed, or if local)
-        if self.is_ci:
-            # In CI, fail-fast on style drift instead of auto-fixing.
-            self.run_command(
-                ["uv", "run", "--no-sync", "ruff", "check", "."],
-                "Ruff Linting",
-            )
-            self.run_command(
-                ["uv", "run", "--no-sync", "ruff", "format", "--check", "."],
-                "Ruff Formatting",
-            )
-        elif self.all_passed():
-            # Locally, allow auto-fixing if logic is sound.
-            self.run_command(
-                ["uv", "run", "--no-sync", "ruff", "check", ".", "--fix"],
-                "Ruff Linting",
-            )
-            self.run_command(
-                ["uv", "run", "--no-sync", "ruff", "format", "."], "Ruff Formatting"
-            )
-        else:
-            self.record_result("Ruff Linting", "SKIPPED")
-            self.record_result("Ruff Formatting", "SKIPPED")
+            # 2. Update README
+            print("\n>>> [Step: Updating README structure]", flush=True)
+            res = subprocess.run(
+                [
+                    "uv",
+                    "run",
+                    "--no-sync",
+                    "python",
+                    "tools/update_readme.py",
+                    self.min_ver,
+                    self.max_ver,
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                env=os.environ.copy(),
+            )  # noqa: S603
+            if res.stdout:
+                print(res.stdout.strip(), flush=True)
+            if res.stderr:
+                print(res.stderr.strip(), flush=True)
 
-        # 6. Build Verification Gate
-        if self.all_passed():
-            self.run_command(
-                ["uv", "run", "--no-sync", "python", "build.py"],
-                "Verifying Build Integrity",
-            )
-        else:
-            self.record_result("Verifying Build Integrity", "SKIPPED")
+            # Fail fast if script failed or output contains anchored ERROR/CRITICAL
+            if res.returncode != 0 or re.search(
+                r"^ERROR:|^CRITICAL:", res.stdout + res.stderr, re.MULTILINE
+            ):
+                print(
+                    "\n❌ FATAL: 'Updating README structure' failed.",
+                    flush=True,
+                )
+                self.record_result("Updating README structure", False)
+                sys.exit(1)
 
-        # 7. Cleanup
-        # cleanup() intentionally removes build artifacts (including "build" and "dist")
-        # produced by the preceding build step to keep the local workspace clean.
-        self.cleanup()
+            print("✅ Updating README structure completed successfully.", flush=True)
+            self.record_result("Updating README structure", True)
 
-        # 8. Final Report
-        if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
-            print("\n✨ ALL CHECKS PASSED.\n", flush=True)
-        else:
-            print("\n❌ Pipeline failed. See logs above.\n", flush=True)
-            sys.exit(1)
+            # 3. Parallel Checks (Vulture, Interrogate)
+            # These are lightweight enough to run concurrently.
+            parallel_tasks = [
+                (
+                    [
+                        "uv",
+                        "run",
+                        "--no-sync",
+                        "vulture",
+                        "src/",
+                        "--min-confidence",
+                        "80",
+                    ],
+                    "Dead Code Analysis (Vulture)",
+                ),
+                (
+                    ["uv", "run", "--no-sync", "interrogate", "."],
+                    "Docstring Coverage Enforcement",
+                ),
+            ]
+
+            self.run_commands_parallel(parallel_tasks)
+
+            # 4. Unit Tests (Run sequentially to see clear progress)
+            # Pytest executes in the remote test-matrix job. Prevent redundancy in CI.
+            if not self.is_ci:
+                self.run_command(
+                    ["uv", "run", "--no-sync", "pytest", "-v"],
+                    "Unit Tests & Coverage Enforcement",
+                )
+
+            # 5. Linting and Formatting (Apply only if checks passed, or if local)
+            if self.is_ci:
+                # In CI, fail-fast on style drift instead of auto-fixing.
+                self.run_command(
+                    ["uv", "run", "--no-sync", "ruff", "check", "."],
+                    "Ruff Linting",
+                )
+                self.run_command(
+                    ["uv", "run", "--no-sync", "ruff", "format", "--check", "."],
+                    "Ruff Formatting",
+                )
+            elif self.all_passed():
+                # Locally, allow auto-fixing if logic is sound.
+                self.run_command(
+                    ["uv", "run", "--no-sync", "ruff", "check", ".", "--fix"],
+                    "Ruff Linting",
+                )
+                self.run_command(
+                    ["uv", "run", "--no-sync", "ruff", "format", "."], "Ruff Formatting"
+                )
+            else:
+                self.record_result("Ruff Linting", "SKIPPED")
+                self.record_result("Ruff Formatting", "SKIPPED")
+
+            # 6. Build Verification Gate
+            if self.all_passed():
+                self.run_command(
+                    ["uv", "run", "--no-sync", "python", "build.py"],
+                    "Verifying Build Integrity",
+                )
+            else:
+                self.record_result("Verifying Build Integrity", "SKIPPED")
+
+        finally:
+            # 7. Cleanup
+            # Removes build artifacts (including "build" and "dist").
+            self.cleanup()
+
+            # 8. Final Report
+            if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
+                print("\n✨ ALL CHECKS PASSED.\n", flush=True)
+            else:
+                print("\n❌ Pipeline failed. See logs above.\n", flush=True)
+                sys.exit(1)
 
 
 if __name__ == "__main__":
