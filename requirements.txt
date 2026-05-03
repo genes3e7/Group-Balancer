@@ -34,7 +34,7 @@ exceptiongroup==1.3.1
     # via anyio
 gitdb==4.0.12
     # via gitpython
-gitpython==3.1.46
+gitpython==3.1.47
     # via streamlit
 h11==0.16.0
     # via uvicorn
