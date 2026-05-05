@@ -384,6 +384,36 @@ class ConstraintBuilder:
             for p_idx, g_idx in zip(indices, valid_hinted_g_idxs, strict=False):
                 self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
+    def add_branching_strategy(self) -> None:
+        """Guides the solver to decide on high-impact participants first.
+
+        Orders decision variables so that participants with the largest absolute
+        score magnitudes are assigned to groups earlier in the search tree. This
+        prunes high-variance branches faster and accelerates optimality proof.
+        """
+        # Calculate impact metric: sum of absolute scores across all dimensions
+        impacts = []
+        for i, p in enumerate(self.participants):
+            total_abs_score = sum(abs(s) for s in p.scores.values())
+            impacts.append((total_abs_score, i))
+
+        # Sort indices by descending impact
+        sorted_indices = [idx for _, idx in sorted(impacts, reverse=True)]
+
+        # Decision variables: self.x[(p_idx, g_idx)]
+        # Priority: Participants with highest score impact
+        branching_vars = []
+        for p_idx in sorted_indices:
+            for g_idx in range(self.num_groups):
+                branching_vars.append(self.x[(p_idx, g_idx)])
+
+        # Apply strategy: Choose high-impact variables first
+        self.model.AddDecisionStrategy(
+            branching_vars,
+            cp_model.CHOOSE_FIRST,
+            cp_model.SELECT_MAX_VALUE,  # Try "assigned" (1) before "not" (0)
+        )
+
     def get_model(self) -> cp_model.CpModel:
         """Finalizes and returns the model with tiering and stable tie-breaker."""
         main_objective = sum(self.objectives)
@@ -474,12 +504,15 @@ def solve_with_ortools(
     builder.add_cohesion_penalties(groupers)
     builder.add_participant_symmetry_breaking()
     builder.add_solution_hints()
+    builder.add_branching_strategy()
 
     model = builder.get_model()
 
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    solver_inst.parameters.num_search_workers = 1
+    # Enable deterministic multi-core search
+    solver_inst.parameters.num_search_workers = 8
+    solver_inst.parameters.interleave_search = True
     solver_inst.parameters.random_seed = 42
 
     apply_solver_tuning(solver_inst)
