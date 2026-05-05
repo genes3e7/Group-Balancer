@@ -18,7 +18,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
     -   Ruff linting and formatting compliance (0 errors).
     -   Dead code analysis (`vulture` > 80% confidence, ensuring effectively 0 dead code).
     -   Docstring coverage (`interrogate` == 100%).
-    -   Functional test coverage (`pytest-cov` >= 90%).
+    -   Functional test coverage (`pytest-cov` >= 95%).
     -   README tree and metadata are updated.
     -   Build integrity is verified.
 
@@ -79,92 +79,68 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Risk:** Over-constraining secondary dimensions or zero-weight dimensions can lead to sub-optimal solutions or unnecessary infeasibility.
 
 ### 2. Participant Identity & Warm Starts
-
 - **Lesson:** For robust iterative optimization (warm starts), participants must be identified via a stable content-based fingerprint rather than row indices.
 - **Implementation:** `Participant.fingerprint` computes a stable MD5 hash of Name, Scores, and canonicalized Tags.
-- **Warm Start Logic:** `OptimizationService.run` validates the full fingerprint **multiset** of the current session against previous results. If identical, it maps fingerprints to group assignments to seed the solver.
-- **Robustness:** If fingerprints are duplicated within the dataset, the logic falls back to a strict `(original_index, fingerprint)` alignment check to ensure hints are never misassigned after reordering.
-- **Risk:** Row indices are regenerated on every reorder/edit in Step 1. Using indices for warm starts after reordering causes "hallucinated" hints where assignments are applied to the wrong people.
+- **Warm Start Logic:** `OptimizationService.run` validates the multiset of fingerprints and configuration. If identical, it applies assignments to seed the solver.
+- **Risk:** Using indices for warm starts after reordering causes "hallucinated" hints.
 
 ### 3. Absolute Solver Determinism
-
-- **Lesson:** CP-SAT solvers with multiple workers explore search branches non-deterministically. This can lead to "pseudo-optimal" results where two runs of the same data yield different assignments with slightly different standard deviations.
-- **Implementation:** To ensure absolute determinism for end users, `solve_with_ortools` hardcodes `num_search_workers = 1` and a fixed `random_seed = 42`.
-- **Consistency:** All internal set and dictionary iterations (tags, participant indices) are explicitly sorted before adding constraints to the model, ensuring the search tree is identical on every execution.
+- **Lesson:** To ensure absolute determinism, CP-SAT must run with `num_search_workers = 1` and a fixed `random_seed = 42`.
+- **Consistency:** All internal iterations (tags, participants) are explicitly sorted before adding constraints.
 
 ### 4. Integer Range & Overflows
-
-- **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 60) - 1`) to avoid model construction failures.
-- **Implementation:** Weighted deviations and cohesion penalties are multiplied by a `SCALE_FACTOR` but validated against safety bounds before being added to the model.
-- **Optimization:** The cohesion penalty budget (`per_term_cap`) is calculated by counting only active grouper sets (`len(g_set) > 1`) to maximize the available penalty range while preventing overflow.
-- **Tuning:** Partitioning math is significantly faster with `linearization_level=0` and `symmetry_level=2`. These are centralized in `solver.apply_solver_tuning`.
+- **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 62) - 1`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
+- **Implementation:** Multipliers are calibrated into "Bit-Slices" to ensure high-priority terms always dominate lower ones without exceeding $9 \times 10^{18}$.
 
 ### 5. Categorical Constraints (Groupers/Separators)
-
 - **Design:** Every character in the tag string is treated as a unique constraint.
-- **Canonicalization:** Tags must be order- and whitespace-insensitive (e.g., `"A,B"` == `"B A"`). Logic is extracted into `src/core/tag_utils.py` to prevent circular imports between Models and Solver.
-- **UI Mapping:** The `_original_index` must be preserved through any DataFrame transformations (like aggregation for group cards) to ensure UI edits can be mapped back to the global state correctly.
+- **Canonicalization:** Tags must be order- and whitespace-insensitive. Logic is extracted into `src/core/tag_utils.py`.
 
 ### 6. Capacity-Aware Bounds
-
-- **Lesson:** Distribution bounds (like pigeonhole constraints for "stars" or separators) must be calculated relative to each group's specific capacity, rather than using a flat global average.
-- **Risk:** Using flat distribution bounds can mathematically force infeasibility when custom capacities are skewed.
+- **Lesson:** Distribution bounds must be calculated relative to each group's specific capacity, rather than using a flat global average.
 
 ### 7. Standard Deviation of Group Averages
+- **Lesson:** To balance groups effectively, the metric of interest is the dispersion between the group averages, not individual participants. Uses Sample Standard Deviation (`ddof=1`) of group means.
 
-- **Lesson:** To balance groups effectively, the metric of interest is the dispersion between the group averages, not the individual participants.
-- **Implementation:** All UI views (`Global Balancing KPIs` and `Live Stats`) utilize a centralized helper in `group_helpers.py` that calculates the **Sample Standard Deviation** (`ddof=1`) of the group means.
-- **Data Hygiene:** Unassigned participants (Group -1) are strictly excluded from these metrics to prevent "data leakage" from the bench polluting the team balance score.
+### 8. Squared Exact Math (L2 Optimization)
+- **Architecture:** The solver minimizes the **Sum of Squared Deviations** (L2) rather than Absolute Error (L1).
+- **Benefit:** L2 is significantly more aggressive at eliminating outliers, leading to the "Way Lower" optimal Standard Deviation results desired by users.
+- **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
+
+### 9. Priority Tiering (Bit-Slicing)
+- **Mandate:** Logical constraints MUST always be met before score balancing occurs.
+- **Tiers:**
+    - **Tier 1: Separators ($10^{16}$):** Highest priority (Disperse).
+    - **Tier 2: Groupers ($10^{15}$):** Secondary priority (Cohesion).
+    - **Tier 3: Balance (L2 Squared Error, $\approx 10^{14}$):** Tertiary priority (Balancing).
+    - **Tier 4: Tie-Breaker ($10^0$):** Lowest priority (Determinism).
+- **Stable Identity:** Anchored to `original_index` to ensure that sorting in the UI never shifts the preferred mathematical optimal.
 
 ## Data Handling
 
 ### 1. Column Coercion
-- **Lesson:** When loading data from Excel/CSV, column headers should be explicitly coerced to `str` before stripping/processing.
-- **Risk:** Numeric or null headers in the raw file can cause `AttributeError` during prefix checks (e.g., `.startswith("Score")`).
+- **Lesson:** Column headers should be explicitly coerced to `str` before stripping/processing to avoid `AttributeError`.
 
 ### 2. Missing Value Normalization
-- **Lesson:** Missing values (`NaN`, `None`, `pd.NA`, `pd.NaT`) in both text and numeric columns must be explicitly normalized.
-- **Implementation**: 
-  - Text columns (`Grouper`, `Separator`) normalize to empty strings (`""`).
-  - Score columns normalize to `0.0`.
-- **Risk:** OR-Tools solvers and pandas operations can crash or produce non-deterministic results when encountering mixed-type missing scalars.
+- **Lesson:** Missing values in text columns normalize to `""`, numeric to `0.0`.
 
-### 3. Coercion Warnings
-- **Lesson:** When using `pd.to_numeric(errors="coerce")`, distinguish between originally missing data (blank cells) and truly invalid strings.
-- **Risk:** Failing to separate these cases leads to false-positive warnings that confuse users about "invalid" data.
-
-### 4. Path Sanitization
-- **Lesson**: CLI path inputs must be stripped of shell artifacts (quotes, ampersands) before validation.
-- **Implementation**: `get_file_path_from_user` uses a regex to sanitize raw input before passing it to `validate_file_path`.
+### 3. Path Sanitization
+- **Implementation**: CLI path inputs must be stripped of shell artifacts before validation.
 
 ## 🛡️ Defensive Programming & Data Safety
 
 - **Fail-Fast**: The program MUST terminate immediately if a validation step fails or a critical configuration is missing.
-- **Idempotency**: Ensure solver operations and file exports are idempotent; multiple runs with the same input should yield deterministic results.
-- **Supply Chain Security**: All GitHub Actions in `.github/workflows/` MUST be pinned to 40-character **immutable commit SHAs** rather than mutable version tags (e.g., `@v4`). This prevents supply-chain attacks via tag-shifting and ensures deterministic CI behavior.
+- **Supply Chain Security**: All GitHub Actions must be pinned to 40-character **immutable commit SHAs**.
 
 ## 🧪 Testing Standards
 
 ### 1. Mocking Streamlit Cache
-- **Lesson**: When testing functions decorated with `@st.cache_data` (or `@st.cache_resource`), ensure all mocked arguments are serializable (no `MagicMock`).
-- **Risk**: Streamlit's caching mechanism attempts to hash/pickle arguments; passing a `MagicMock` triggers `UnserializableReturnValueError` or `TypeError`.
-- **Mitigation**: Mock the cached function itself rather than its internal dependencies when unit testing UI logic, or provide real but minimal data objects (e.g., small DataFrames).
+- **Lesson**: Ensure all mocked arguments to `@st.cache_data` are serializable (no `MagicMock`).
 
 ## 🗒️ Complex Change Management (Planning & State)
 
-For large-scale refactorings or multi-phase integrations, follow this integrated lifecycle:
-
-1.  **Drafting the Plan**: Enter `Plan Mode` to research and design a comprehensive execution strategy.
-2.  **Creating the Spec Sheet**: Save the plan as a standalone markdown file (e.g., `REFACTOR_PLAN.md`) in the project root. This acts as a persistent "Source of Truth" that survives session crashes or pauses.
-3.  **Iterative Execution & Validation**:
-    -   Perform work in distinct phases.
-    -   **Post-Phase Validation**: After every phase, you MUST execute the **Post-Change Validation Workflow** (`uv run python tools/pre_ci.py`). This is a mandatory gate to prevent regression accumulation.
-    -   **Update the Spec**: Explicitly mark tasks as completed in the spec sheet file only after a successful `pre_ci.py` pass.
-4.  **Finalization & Landing**:
-    -   **Update Learnings**: Before closing the task, review the changes for new architectural insights, quirks, or standard shifts and document them in `GEMINI.md`.
-    -   **Cleanup**: Delete the ephemeral spec sheet (`REFACTOR_PLAN.md`).
-    -   **Final Validation**: Run a final, full pass of `tools/pre_ci.py` **AFTER** deleting the spec sheet to ensure the `README.md` project tree is accurate for the final push.
-    -   **Commit & Push**: Push the finalized code and updated learnings.
-    -   **Review Scheduling**: By default, schedule the next review in **60 minutes** using the `@coderabbitai review` command (NEVER `@coderabbitai resume` as it triggers mass replies and immediate rate throttling). Using `review` while paused ensures the system remains paused for future manual triggers.
-
-
+For large-scale refactorings, follow this integrated lifecycle:
+1. Drafting the Plan (Plan Mode).
+2. Spec Sheet: Save as `REFACTOR_PLAN.md`.
+3. Iterative Execution & Validation: Phased approach, Post-Phase Validation (`uv run python tools/pre_ci.py`).
+4. Finalization & Landing: Update `GEMINI.md`, Cleanup, Final Validation, Commit.

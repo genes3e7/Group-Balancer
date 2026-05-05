@@ -74,6 +74,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── GEMINI.md
 ├── LICENSE
 ├── README.md
+├── SOLVER_SUMMARY.md
 ├── app.py
 ├── build.py
 ├── group_balancer.py

@@ -111,71 +111,99 @@ class OptimizationService:
         Returns:
             tuple: (Results DataFrame or None, Metrics dictionary)
         """
-        if not group_capacities:
-            raise ValueError("Group capacities cannot be empty.")
+        try:
+            if participants_df is None:
+                raise ValueError("Participants DataFrame cannot be None.")
 
-        # Convert to models
-        participants = [
-            Participant(
-                name=str(row.get(config.COL_NAME, "")),
-                scores={
-                    str(k): float(v)
-                    for k, v in row.items()
-                    if str(k).startswith(config.SCORE_PREFIX)
-                },
-                groupers=str(row.get(config.COL_GROUPER, "")),
-                separators=str(row.get(config.COL_SEPARATOR, "")),
-                original_index=i,
-            )
-            for i, row in enumerate(participants_df.to_dict("records"))
-        ]
+            if not group_capacities:
+                raise ValueError("Group capacities cannot be empty.")
 
-        hints = None
-        if previous_results is not None and not previous_results.empty:
-            # Always validate snapshot against current configuration and fingerprints
-            # to prevent stale/suboptimal warm-start guided searches.
-            config_match = (
-                previous_results.attrs.get("score_weights") == score_weights
-                and previous_results.attrs.get("opt_mode") == opt_mode
-                and previous_results.attrs.get("conflict_priority") == conflict_priority
-                and previous_results.attrs.get("group_capacities") == group_capacities
-                and previous_results.attrs.get("strict_groupers") == strict_groupers
-            )
+            # Convert to models
+            participants = [
+                Participant(
+                    name=str(row.get(config.COL_NAME, "")),
+                    scores={
+                        str(k): float(v)
+                        for k, v in row.items()
+                        if str(k).startswith(config.SCORE_PREFIX)
+                    },
+                    groupers=str(row.get(config.COL_GROUPER, "")),
+                    separators=str(row.get(config.COL_SEPARATOR, "")),
+                    # Anchor to the first-ever assigned index for tie-breaker stability
+                    original_index=int(row.get("_original_index", i)),
+                )
+                for i, row in enumerate(participants_df.to_dict("records"))
+            ]
 
-            if not config_match:
-                logger.info("Ignoring stale warm-start hints (configuration change).")
-            elif (
-                config.COL_GROUP in previous_results.columns
-                and "participant_fingerprint" in previous_results.columns
-            ):
-                current_fingerprints = sorted(p.fingerprint for p in participants)
-                prev_fingerprints = sorted(
-                    previous_results["participant_fingerprint"].astype(str).tolist()
+            hints = None
+            if previous_results is not None and not previous_results.empty:
+                # Always validate snapshot against current configuration
+                config_match = (
+                    previous_results.attrs.get("score_weights") == score_weights
+                    and previous_results.attrs.get("opt_mode") == opt_mode
+                    and previous_results.attrs.get("conflict_priority")
+                    == conflict_priority
+                    and previous_results.attrs.get("group_capacities")
+                    == group_capacities
+                    and previous_results.attrs.get("strict_groupers") == strict_groupers
                 )
 
-                if current_fingerprints != prev_fingerprints:
-                    logger.info("Ignoring stale warm-start hints (mismatch)")
-                elif not previous_results["participant_fingerprint"].duplicated().any():
-                    hints = dict(
-                        zip(
-                            previous_results["participant_fingerprint"].astype(str),
-                            previous_results[config.COL_GROUP],
-                            strict=False,
+                if not config_match:
+                    logger.info("Ignoring stale warm-start hints (config change).")
+                elif (
+                    config.COL_GROUP in previous_results.columns
+                    and "participant_fingerprint" in previous_results.columns
+                ):
+                    current_f = sorted(p.fingerprint for p in participants)
+                    prev_f = sorted(
+                        previous_results["participant_fingerprint"].astype(str).tolist()
+                    )
+
+                    if current_f != prev_f:
+                        logger.info("Ignoring stale warm-start hints (mismatch)")
+                    elif (
+                        not previous_results["participant_fingerprint"]
+                        .duplicated()
+                        .any()
+                    ):
+                        hints = dict(
+                            zip(
+                                previous_results["participant_fingerprint"].astype(str),
+                                previous_results[config.COL_GROUP],
+                                strict=False,
+                            )
                         )
-                    )
-                elif "_original_index" in previous_results.columns:
-                    # Robust alignment check for duplicate fingerprints
-                    current_pairs = sorted(
-                        (p.original_index, p.fingerprint) for p in participants
-                    )
-                    prev_pairs = sorted(
-                        zip(
-                            previous_results["_original_index"],
-                            previous_results["participant_fingerprint"].astype(str),
-                            strict=False,
+                    elif "_original_index" in previous_results.columns:
+                        # Robust alignment check for duplicate fingerprints
+                        current_pairs = sorted(
+                            (p.original_index, p.fingerprint) for p in participants
                         )
-                    )
-                    if current_pairs == prev_pairs:
+                        prev_pairs = sorted(
+                            zip(
+                                previous_results["_original_index"],
+                                previous_results["participant_fingerprint"].astype(str),
+                                strict=False,
+                            )
+                        )
+                        if current_pairs == prev_pairs:
+                            hints = dict(
+                                zip(
+                                    previous_results["_original_index"],
+                                    previous_results[config.COL_GROUP],
+                                    strict=False,
+                                )
+                            )
+                        else:
+                            logger.info("Ignoring stale hints (alignment error)")
+                # Legacy fallback for snapshots without fingerprints
+                elif (
+                    config.COL_GROUP in previous_results.columns
+                    and "_original_index" in previous_results.columns
+                ):
+                    current_indices = sorted([p.original_index for p in participants])
+                    prev_indices = sorted(previous_results["_original_index"].unique())
+
+                    if current_indices == prev_indices:
                         hints = dict(
                             zip(
                                 previous_results["_original_index"],
@@ -184,38 +212,19 @@ class OptimizationService:
                             )
                         )
                     else:
-                        logger.info("Ignoring stale warm-start hints (alignment error)")
-            # Legacy fallback for snapshots without fingerprints
-            elif (
-                config.COL_GROUP in previous_results.columns
-                and "_original_index" in previous_results.columns
-            ):
-                current_indices = sorted([p.original_index for p in participants])
-                prev_indices = sorted(previous_results["_original_index"].unique())
+                        logger.info("Ignoring stale hints (indices mismatch).")
 
-                if current_indices == prev_indices:
-                    hints = dict(
-                        zip(
-                            previous_results["_original_index"],
-                            previous_results[config.COL_GROUP],
-                            strict=False,
-                        )
-                    )
-                else:
-                    logger.info("Ignoring stale warm-start hints (indices mismatch).")
+            cfg = SolverConfig(
+                num_groups=len(group_capacities),
+                group_capacities=group_capacities,
+                score_weights=score_weights,
+                opt_mode=opt_mode,
+                conflict_priority=conflict_priority,
+                timeout_seconds=timeout_seconds,
+                hints=hints,
+                strict_groupers=strict_groupers,
+            )
 
-        cfg = SolverConfig(
-            num_groups=len(group_capacities),
-            group_capacities=group_capacities,
-            score_weights=score_weights,
-            opt_mode=opt_mode,
-            conflict_priority=conflict_priority,
-            timeout_seconds=timeout_seconds,
-            hints=hints,
-            strict_groupers=strict_groupers,
-        )
-
-        try:
             return solver_interface.run_optimization(
                 participants, cfg, status_box=status_box
             )

@@ -3,7 +3,6 @@
 from unittest.mock import patch
 
 import pandas as pd
-import pytest
 
 from src.core import config
 from src.core.models import ConflictPriority, OptimizationMode
@@ -83,17 +82,77 @@ def test_optimization_service_handles_solver_failure():
 
 
 def test_optimization_service_validates_group_capacities():
-    """The service should raise ValueError if no group capacities are provided."""
+    """The service should return ERROR if no group capacities are provided."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
-    with pytest.raises(ValueError, match="Group capacities cannot be empty"):
-        OptimizationService.run(
-            df,
-            [],
-            {"S1": 1.0},
-            OptimizationMode.ADVANCED,
-            ConflictPriority.GROUPERS,
-            10,
-        )
+    res, metrics = OptimizationService.run(
+        df,
+        [],
+        {"S1": 1.0},
+        OptimizationMode.ADVANCED,
+        ConflictPriority.GROUPERS,
+        10,
+    )
+    assert res is None
+    assert metrics["status"] == "ERROR"
+    assert "capacities" in metrics["error"]
+
+
+def test_optimization_service_warm_start_hit():
+    """Verify that warm-start hints are actually used when config matches."""
+    data = pd.DataFrame(
+        {
+            config.COL_NAME: ["P1", "P2"],
+            "Score1": [10, 20],
+            config.COL_GROUPER: ["", ""],
+            config.COL_SEPARATOR: ["", ""],
+        }
+    )
+    weights = {"Score1": 1.0}
+
+    # First run
+    res1, metrics1 = OptimizationService.run(
+        data, [1, 1], weights, OptimizationMode.ADVANCED, ConflictPriority.GROUPERS, 10
+    )
+
+    # Second run with SAME config
+    res2, metrics2 = OptimizationService.run(
+        data,
+        [1, 1],
+        weights,
+        OptimizationMode.ADVANCED,
+        ConflictPriority.GROUPERS,
+        10,
+        previous_results=res1,
+    )
+    assert metrics2["status"] == "OPTIMAL"
+    pd.testing.assert_series_equal(res1[config.COL_GROUP], res2[config.COL_GROUP])
+
+
+def test_optimization_service_warm_start_duplicate_fingerprints():
+    """Verify warm-start alignment check with duplicate fingerprints."""
+    data = pd.DataFrame(
+        {
+            config.COL_NAME: ["P1", "P1"],
+            "Score1": [10, 10],
+            config.COL_GROUPER: ["", ""],
+            config.COL_SEPARATOR: ["", ""],
+        }
+    )
+    weights = {"Score1": 1.0}
+
+    res1, _ = OptimizationService.run(
+        data, [1, 1], weights, OptimizationMode.ADVANCED, ConflictPriority.GROUPERS, 10
+    )
+    res2, metrics2 = OptimizationService.run(
+        data,
+        [1, 1],
+        weights,
+        OptimizationMode.ADVANCED,
+        ConflictPriority.GROUPERS,
+        10,
+        previous_results=res1,
+    )
+    assert metrics2["status"] == "OPTIMAL"
 
 
 def test_data_service_cleaning_handles_missing_names():
@@ -119,3 +178,17 @@ def test_optimization_service_catches_runtime_exceptions():
         )
         assert metrics["status"] == "ERROR"
         assert "Fail" in metrics["error"]
+
+
+def test_optimization_service_invalid_input_none():
+    """Verify OptimizationService.run handles None input."""
+    res, metrics = OptimizationService.run(
+        None,
+        [1],
+        {"Score1": 1.0},
+        OptimizationMode.ADVANCED,
+        ConflictPriority.GROUPERS,
+        10,
+    )
+    assert res is None
+    assert metrics["status"] == "ERROR"

@@ -115,8 +115,7 @@ def run_optimization(
         participants,
         cfg.conflict_priority,
     )
-    builder.add_pigeonhole_constraints(separators)
-
+    builder.add_separator_penalties(separators)
     strategy = (
         solver.AdvancedScoring()
         if cfg.opt_mode == OptimizationMode.ADVANCED

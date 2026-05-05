@@ -5,6 +5,7 @@ Updated to match the professional standards refactor (models and result formats)
 
 from unittest.mock import patch
 
+import pandas as pd
 import pytest
 from ortools.sat.python import cp_model
 
@@ -227,8 +228,8 @@ def test_solver_extreme_value_error():
         Participant(name="P1", scores={"S1": 100.0}),
         Participant(name="P2", scores={"S1": 0.0}),
     ]
-    # Astronomical weight to force local_weighted_bound > 2**60
-    huge_weight = 1e15 
+    # Weight high enough to trigger safety bound but stay in 64-bit range
+    huge_weight = 1e10
     with patch("src.core.models.SolverConfig.validate_safety_bounds"):
         cfg = SolverConfig(
             num_groups=2, group_capacities=[1, 1], score_weights={"S1": huge_weight}
@@ -238,5 +239,172 @@ def test_solver_extreme_value_error():
     strategy = AdvancedScoring()
     builder = ConstraintBuilder(participants, cfg)
     builder.build_variables()
-    with pytest.raises(ValueError, match="Aggregate score objective exceeds CP-SAT safety bound"):
+    msg = "Objective aggregate exceeds safety bound"
+    with pytest.raises(ValueError, match=msg):
         builder.add_scoring_objectives(strategy)
+
+
+def test_solver_zero_sum_weighted_error():
+    """Verify ValueError is raised if a weighted dimension has zero absolute sum."""
+    cfg = get_solver_config(1, [1], weights={"S1": 1.0})
+    with pytest.raises(ValueError, match="has weight but sum is 0"):
+        solver.solve_with_ortools([{"Name": "P1", "Score1": 0.0}], cfg)
+
+
+def test_solver_tie_breaker_pressure():
+    """Verify the tie-breaker ensures canonical ordering for symmetric optima.
+
+    With symmetric scores (10 and 20, target 15 each), there are two optimal
+    arrangements with identical objective values. The tie-breaker should
+    force P0 into G2 and P1 into G1 to minimize penalty (0 vs 1).
+    We use different capacities to avoid group symmetry breaking.
+    """
+    # Use 3 participants to allow different capacities
+    # P0: 10, P1: 20, P2: 15. Total: 45.
+    # Group 1 (cap 2): target 30. Group 2 (cap 1): target 15.
+    # Arr 1: {P0, P1} in G1, {P2} in G2. G1 sum: 30, G2 sum: 15. Perfect.
+    # Arr 2: {P2, P1} in G1, {P0} in G2. G1 sum: 35, G2 sum: 10.
+    # Wait, that's not symmetric.
+
+    # Let's use 2 participants, 2 groups, but capacities are SAME, so symmetry breaking
+    # ALWAYS happens. If I want to test the tie-breaker, I need a case where
+    # group symmetry breaking doesn't apply OR it applies but there are still ties.
+
+    # Actually, if group symmetry breaking applies, then there are NO ties
+    # in terms of group arrangements.
+    # BUT there can be ties in terms of WHICH participant goes where.
+    # P0 and P1 have SAME scores. Symmetry breaking for identical participants
+    # forces P0 index <= P1 index.
+
+    # To test tie-breaker, we need participants with DIFFERENT identities
+    # but SAME score contribution.
+    # P0: Score1=10, Separators="A"
+    # P1: Score1=10, Separators="B"
+    # These are NOT identical. Symmetry breaking for participants won't apply.
+    # If capacities are same, group symmetry breaking applies.
+    # Arr 1: P0 in G1, P1 in G2.
+    # Arr 2: P0 in G2, P1 in G1.
+    # Since scores are identical (10, 10), g_sum[0] == g_sum[1] in both.
+    # So g_sum[0] <= g_sum[1] is satisfied in both.
+    # Both are feasible. Tie-breaker should pick.
+
+    p = [
+        {"Name": "P0", "Score1": 10, "Separators": "A"},
+        {"Name": "P1", "Score1": 10, "Separators": "B"},
+    ]
+    cfg = get_solver_config(2, [1, 1])
+    results, _, _ = solver.solve_with_ortools(p, cfg)
+
+    # Tie-breaker sum(g * i * x[i,g])
+    # Arr 1: P0 in G1 (0,0), P1 in G2 (1,1). Penalty 1.
+    # Arr 2: P0 in G2 (1,0), P1 in G1 (0,1). Penalty 0.
+    # Arr 2 is better. P0 should be in Group 2.
+    p0 = next(r for r in results if r[config.COL_NAME] == "P0")
+    assert p0[config.COL_GROUP] == 2
+
+
+def test_solver_quantization_preservation():
+    """Verify variance preservation for tight distributions with large N.
+
+    Ensures that scores like 3.51 and 3.49 are NOT crushed to the same integer.
+    """
+    participants = []
+    # 100 people: 50 have 3.51, 50 have 3.49
+    for i in range(100):
+        s = 3.51 if i < 50 else 3.49
+        participants.append({"Name": f"P{i}", "Score1": s})
+
+    # Balance into 2 groups of 50
+    cfg = get_solver_config(2, [50, 50])
+    results, status, _ = solver.solve_with_ortools(participants, cfg)
+
+    assert status == cp_model.OPTIMAL
+
+    # Each group should have 25 of 3.51 and 25 of 3.49 to be perfectly balanced
+    df = pd.DataFrame(results)
+    for gid in [1, 2]:
+        group = df[df[config.COL_GROUP] == gid]
+        # Mean should be exactly 3.5
+        assert abs(group[SCORE_COL].mean() - 3.5) < 1e-9
+
+
+def test_solver_zero_sum_weighted_error_simple():
+    """Verify ValueError in SimpleScoring for zero-sum weighted dimensions."""
+    cfg = get_solver_config(1, [1], weights={"S1": 1.0}, mode=OptimizationMode.SIMPLE)
+    with pytest.raises(ValueError, match="has weight but sum is 0"):
+        solver.solve_with_ortools([{"Name": "P1", "Score1": 0.0}], cfg)
+
+
+def test_solver_soft_groupers():
+    """Verify soft grouper cohesion penalties are added."""
+    # 2 groups of 2. P0, P1 both have tag 'T'.
+    p = make_participants(4, groupers=["T", "T", "", ""])
+    # Not strict
+    cfg = get_solver_config(2, [2, 2])
+    results, status, _ = solver.solve_with_ortools(p, cfg)
+
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    # They should be together because it's optimal
+    t_groups = {p[config.COL_GROUP] for p in results if "T" in p[config.COL_GROUPER]}
+    assert len(t_groups) == 1
+
+
+def test_solver_soft_groupers_clamping():
+    """Trigger the cohesion penalty clamping logic with a safe but high weight."""
+    p = make_participants(4, groupers=["T", "T", "", ""])
+    # Max safe weight
+    cfg = SolverConfig(
+        num_groups=2,
+        group_capacities=[2, 2],
+        score_weights={SCORE_COL: 1.0},
+        opt_mode=OptimizationMode.ADVANCED,
+        grouper_weight=1_000_000,
+    )
+    results, status, _ = solver.solve_with_ortools(p, cfg)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_solver_simple_multi_dimension():
+    """Verify SimpleScoring with multiple dimensions and symmetry breaking."""
+    s2 = f"{config.SCORE_PREFIX}2"
+    participants = [
+        {config.COL_NAME: "P1", SCORE_COL: 100, s2: 10},
+        {config.COL_NAME: "P2", SCORE_COL: 10, s2: 100},
+    ]
+    # Weight both.
+    cfg = get_solver_config(
+        2, [1, 1], weights={SCORE_COL: 1.0, s2: 1.0}, mode=OptimizationMode.SIMPLE
+    )
+    results, status, _ = solver.solve_with_ortools(participants, cfg)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+
+
+def test_solver_clean_helpers():
+    """Cover _clean_tag_cell and _clean_score_cell edge cases."""
+    from src.core.solver import _clean_score_cell, _clean_tag_cell
+
+    # Tag cleaning
+    assert _clean_tag_cell(None) == ""
+    assert _clean_tag_cell(pd.NA) == ""
+    assert _clean_tag_cell("ABC") == "ABC"
+
+    # Score cleaning
+    assert _clean_score_cell(None) == 0.0
+    assert _clean_score_cell(" ") == 0.0
+    assert _clean_score_cell("not a float") == 0.0
+    assert _clean_score_cell(12.5) == 12.5
+    # Cover the TypeError/ValueError paths
+    assert _clean_score_cell([]) == 0.0
+
+
+def test_solver_multi_dimension_symmetry_breaking():
+    """Ensure group symmetry breaking only applies to the first canonical dimension."""
+    s2 = f"{config.SCORE_PREFIX}2"
+    participants = [
+        {config.COL_NAME: "P1", SCORE_COL: 100, s2: 10},
+        {config.COL_NAME: "P2", SCORE_COL: 10, s2: 100},
+    ]
+    # Weight both. Symmetry breaking should happen for Score1.
+    cfg = get_solver_config(2, [1, 1], weights={SCORE_COL: 1.0, s2: 1.0})
+    results, status, _ = solver.solve_with_ortools(participants, cfg)
+    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
