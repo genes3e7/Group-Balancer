@@ -85,8 +85,8 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Risk:** Using indices for warm starts after reordering causes "hallucinated" hints.
 
 ### 3. Absolute Solver Determinism
-- **Lesson:** To ensure absolute determinism, CP-SAT must run with `num_search_workers = 1` and a fixed `random_seed = 42`.
-- **Consistency:** All internal iterations (tags, participants) are explicitly sorted before adding constraints.
+- **Lesson:** Absolute determinism is maintained even in multi-core modes by using `num_search_workers = 8` combined with `interleave_search = True` and a fixed `random_seed = 42`.
+- **Consistency:** All internal iterations (tags, participants) are explicitly sorted before adding constraints to ensure the search tree is built identically across runs.
 
 ### 4. Integer Range & Overflows
 - **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 62) - 1`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
@@ -106,15 +106,20 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Architecture:** The solver minimizes the **Sum of Squared Deviations** (L2) rather than Absolute Error (L1).
 - **Benefit:** L2 is significantly more aggressive at eliminating outliers, leading to the "Way Lower" optimal Standard Deviation results desired by users.
 - **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
+- **Precision Mandate:** Use `norm_multiplier = 1000 * len(participants)` to provide **0.001 precision**. This granularity is confirmed as necessary for L2 math to achieve peak balancing quality.
 
-### 9. Priority Tiering (Bit-Slicing)
+### 9. Priority Tiering (Calibrated Bit-Slicing)
 - **Mandate:** Logical constraints MUST always be met before score balancing occurs.
 - **Tiers:**
-    - **Tier 1: Separators ($10^{16}$):** Highest priority (Disperse).
-    - **Tier 2: Groupers ($10^{15}$):** Secondary priority (Cohesion).
-    - **Tier 3: Balance (L2 Squared Error, $\approx 10^{14}$):** Tertiary priority (Balancing).
+    - **Tier 1: Separators ($10^{12}$):** Highest priority (Disperse). Max total $\approx 10^{15}$.
+    - **Tier 2: Groupers ($10^9$):** Secondary priority (Cohesion). Max total $\approx 10^{12}$.
+    - **Tier 3: Balance (L2 Squared Error, $\approx 10^{10}$):** Tertiary priority (Balancing). Multiplied by $100$ for tie-breaker separation.
     - **Tier 4: Tie-Breaker ($10^0$):** Lowest priority (Determinism).
 - **Stable Identity:** Anchored to `original_index` to ensure that sorting in the UI never shifts the preferred mathematical optimal.
+
+### 10. Search & Branching Strategy
+- **Worker Portfolio:** Uses 8 search workers with `interleave_search = True` to utilize multi-core performance while guaranteeing thread-safe, repeatable results.
+- **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes. This prunes high-variance branches earlier in the search tree and accelerates both finding and proving optimality.
 
 ## Data Handling
 

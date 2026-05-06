@@ -129,8 +129,9 @@ class AdvancedScoring(ScoringStrategy):
             if raw_total == 0:
                 raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
 
-            # Fixed personal resolution (10,000 units = 0.0001)
-            norm_multiplier = 10_000 * len(participants)
+            # High-Resolution: 1,000 * N (0.001 precision)
+            # This provides the necessary granularity for superior L2 balancing.
+            norm_multiplier = 1000 * len(participants)
             scores = [int(round((s * norm_multiplier) / raw_total)) for s in scaled_raw]
 
             vectors.append((col, scores, int(max(1, round(weight)))))
@@ -158,7 +159,8 @@ class SimpleScoring(ScoringStrategy):
             if raw_total == 0:
                 raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
 
-            norm_multiplier = 10_000 * weight * len(participants)
+            # High-Resolution: 1,000 * N
+            norm_multiplier = 1000 * weight * len(participants)
             for i, s in enumerate(scaled_raw):
                 total_normalized_scores[i] += (s * norm_multiplier) / raw_total
 
@@ -195,7 +197,7 @@ class ConstraintBuilder:
             )
 
     def add_separator_penalties(self, separators: dict[str, set[int]]) -> None:
-        """Adds Tier 1 penalties ($10^14$) for separator violations."""
+        """Adds Tier 1 penalties ($10^12$) for separator violations."""
         total_p = self.num_people
         for tag in sorted(separators.keys()):
             s_set = separators[tag]
@@ -213,8 +215,8 @@ class ConstraintBuilder:
                 overflow = self.model.NewIntVar(0, n_tag, f"overflow_{tag}_{g}")
                 self.model.Add(overflow >= count - limit)
 
-                # Tier 1 Penalty: 100,000,000,000,000 ($10^14$) per violation.
-                penalty = 100_000_000_000_000
+                # Tier 1 Penalty ($10^12$)
+                penalty = 1_000_000_000_000
                 self.objectives.append(overflow * penalty)
                 self.max_objective_bound += n_tag * penalty
 
@@ -251,6 +253,7 @@ class ConstraintBuilder:
                     == sum(self.x[(i, g)] * scores[i] for i in range(self.num_people))
                 )
 
+                # Cross-multiplication for exact fractional comparison
                 target_product = total_score * self.cfg.group_capacities[g]
                 t_min, t_max = theoretical_bounds[g]
                 min_diff = t_min * self.num_people - target_product
@@ -279,7 +282,7 @@ class ConstraintBuilder:
                     raise ValueError("Objective aggregate exceeds safety bound.")
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
-        """Adds Tier 2 penalties ($10^11$) for splitting grouper tags."""
+        """Adds Tier 2 penalties ($10^9$) for splitting grouper tags."""
         if self.cfg.strict_groupers:
             for tag in sorted(groupers.keys()):
                 g_set = groupers[tag]
@@ -303,9 +306,9 @@ class ConstraintBuilder:
                 used = self.model.NewBoolVar(f"used_{tag}_{g}")
                 self.model.AddMaxEquality(used, [self.x[(i, g)] for i in sorted_g_set])
 
-                # Tier 2 Penalty: 100,000,000,000 ($10^11$) per split.
+                # Tier 2 Penalty ($10^9$)
                 weight = self.cfg.grouper_weight
-                penalty = int(100_000_000_000 * weight)
+                penalty = int(1_000_000_000 * weight)
 
                 self.objectives.append(used * penalty)
                 self.max_objective_bound += penalty
@@ -388,30 +391,24 @@ class ConstraintBuilder:
         """Guides the solver to decide on high-impact participants first.
 
         Orders decision variables so that participants with the largest absolute
-        score magnitudes are assigned to groups earlier in the search tree. This
-        prunes high-variance branches faster and accelerates optimality proof.
+        score magnitudes are assigned to groups earlier in the search tree.
         """
-        # Calculate impact metric: sum of absolute scores across all dimensions
         impacts = []
         for i, p in enumerate(self.participants):
             total_abs_score = sum(abs(s) for s in p.scores.values())
             impacts.append((total_abs_score, i))
 
-        # Sort indices by descending impact
         sorted_indices = [idx for _, idx in sorted(impacts, reverse=True)]
 
-        # Decision variables: self.x[(p_idx, g_idx)]
-        # Priority: Participants with highest score impact
         branching_vars = []
         for p_idx in sorted_indices:
             for g_idx in range(self.num_groups):
                 branching_vars.append(self.x[(p_idx, g_idx)])
 
-        # Apply strategy: Choose high-impact variables first
         self.model.AddDecisionStrategy(
             branching_vars,
             cp_model.CHOOSE_FIRST,
-            cp_model.SELECT_MAX_VALUE,  # Try "assigned" (1) before "not" (0)
+            cp_model.SELECT_MAX_VALUE,
         )
 
     def get_model(self) -> cp_model.CpModel:
@@ -427,7 +424,9 @@ class ConstraintBuilder:
             for g in range(self.num_groups)
         )
 
-        self.model.Minimize(main_objective + tie_breaker)
+        # Multiplier of 1,000 ensures balance wins over tie-breaker
+        # stays safely below the 10^18 ceiling.
+        self.model.Minimize(main_objective * 1000 + tie_breaker)
         return self.model
 
 
@@ -510,9 +509,9 @@ def solve_with_ortools(
 
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    # Enable deterministic multi-core search
+    # Step 2: Maximum multi-core search speed (Race Mode)
     solver_inst.parameters.num_search_workers = 8
-    solver_inst.parameters.interleave_search = True
+    solver_inst.parameters.interleave_search = False
     solver_inst.parameters.random_seed = 42
 
     apply_solver_tuning(solver_inst)
