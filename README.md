@@ -49,7 +49,7 @@ This gate enforces:
 
 - **Linting & Formatting:** Ruff (Python) and Markdown standards.
 - **Static Analysis:** Vulture (Dead code) and Interrogate (Docstring coverage).
-- **Testing:** 100% pass rate with >95% functional coverage.
+- **Testing:** 100% pass rate with >=95% functional coverage.
 - **Build Integrity:** PyInstaller verification.
 
 ## 📂 Project Structure
@@ -72,6 +72,7 @@ This gate enforces:
 ├── app.py
 ├── build.py
 ├── group_balancer.py
+├── pr_comments.txt
 ├── pyproject.toml
 ├── src/
 │   ├── __init__.py

@@ -268,21 +268,39 @@ def render_step_2() -> None:
         )
 
         # Determine best-effort previous results
-        if cache_key in st.session_state.warm_start_cache:
+        # 1. Check if interactive_df exists AND matches the requested configuration.
+        # This preserves manual UI edits if the user re-runs the same configuration.
+        prev_results = None
+        interactive_df = st.session_state.get("interactive_df")
+        results_df = st.session_state.get("results_df")
+
+        if interactive_df is not None and results_df is not None:
+            # Reconstruct the cache key for the interactive_df to see if it matches
+            interactive_key = _generate_cache_key(
+                df,
+                results_df.attrs.get("group_capacities", []),
+                results_df.attrs.get("score_weights", {}),
+                results_df.attrs.get(
+                    "conflict_priority", priority_options[priority_key]
+                ),
+            )
+
+            if interactive_key == cache_key:
+                prev_results = interactive_df.copy(deep=True)
+                for col in ["_original_index", "participant_fingerprint"]:
+                    if col in results_df.columns:
+                        prev_results[col] = results_df[col]
+                prev_results.attrs = dict(results_df.attrs)
+
+        # 2. If interactive_df doesn't match the new config (e.g. user changed weights),
+        # check if we've solved this exact configuration before in the cache.
+        if prev_results is None and cache_key in st.session_state.warm_start_cache:
             prev_results = st.session_state.warm_start_cache[cache_key].copy(deep=True)
             st.session_state.warm_start_cache.move_to_end(cache_key)
-        else:
-            prev_results = st.session_state.get("interactive_df")
-            cached_results = st.session_state.get("results_df")
 
-            if prev_results is not None and cached_results is not None:
-                prev_results = prev_results.copy()
-                for col in ["_original_index", "participant_fingerprint"]:
-                    if col in cached_results.columns:
-                        prev_results[col] = cached_results[col]
-                prev_results.attrs = dict(cached_results.attrs)
-            elif prev_results is None:
-                prev_results = cached_results
+        # 3. Fallback
+        if prev_results is None:
+            prev_results = results_df
 
         result_df, metrics = OptimizationService.run(
             df,

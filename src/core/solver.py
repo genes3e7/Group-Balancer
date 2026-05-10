@@ -164,7 +164,8 @@ class AdvancedScoring(ScoringStrategy):
 
         # Dynamic Precision Scaling:
         # Prevents L2 squared math from exceeding CP-SAT's 64-bit integer limit.
-        max_w = max(cfg.score_weights.values()) if cfg.score_weights else 1.0
+        assert cfg.score_weights, "score_weights must be non-empty"
+        max_w = max(cfg.score_weights.values())
         max_w = max(1.0, max_w)
 
         # M / (G * W * N^4) is a safe lower bound for the resolution ratio.
@@ -216,14 +217,16 @@ class ConstraintBuilder:
         self.x = {}  # (p_idx, g_idx) -> BoolVar
         self.objectives = []
         self.objective_bounds = []
-        self._symmetry_broken = False
 
-        if cfg.conflict_priority == ConflictPriority.SEPARATORS:
-            self.sep_multiplier = config.TIER_HI_MULTIPLIER
-            self.group_multiplier = config.TIER_LO_MULTIPLIER
-        else:
-            self.sep_multiplier = config.TIER_LO_MULTIPLIER
-            self.group_multiplier = config.TIER_HI_MULTIPLIER
+        match cfg.conflict_priority:
+            case ConflictPriority.SEPARATORS:
+                self.sep_multiplier = config.TIER_HI_MULTIPLIER
+                self.group_multiplier = config.TIER_LO_MULTIPLIER
+            case ConflictPriority.GROUPERS:
+                self.sep_multiplier = config.TIER_LO_MULTIPLIER
+                self.group_multiplier = config.TIER_HI_MULTIPLIER
+            case _:
+                raise ValueError(f"Unknown conflict priority: {cfg.conflict_priority}")
 
     def build_variables(self) -> None:
         """Initializes assignment variables and basic partitioning constraints."""
@@ -277,6 +280,12 @@ class ConstraintBuilder:
         vectors = strategy.get_score_vectors(self.participants, self.cfg)
         max_int_limit = (1 << 62) - 1
 
+        # Determine the canonical dimension for symmetry breaking
+        # Select the first dimension name that has a positive weight
+        canonical_name = next(
+            (name for name, w in self.cfg.score_weights.items() if w > 0), None
+        )
+
         for name, scores, weight in vectors:
             total_score = sum(scores)
             sorted_scores = sorted(scores)
@@ -285,13 +294,15 @@ class ConstraintBuilder:
 
             for g in range(self.num_groups):
                 cap = self.cfg.group_capacities[g]
-                t_min = sum(sorted_scores[:cap]) if cap > 0 else 0
-                t_max = sum(sorted_scores[-cap:]) if cap > 0 else 0
+                if cap == 0:
+                    t_min, t_max = 0, 0
+                else:
+                    t_min = sum(sorted_scores[:cap])
+                    t_max = sum(sorted_scores[-cap:])
                 g_sums.append(self.model.NewIntVar(t_min, t_max, f"sum_{name}_{g}"))
                 theoretical_bounds.append((t_min, t_max))
 
-            if weight > 0 and not self._symmetry_broken:
-                self._symmetry_broken = True
+            if weight > 0 and name == canonical_name:
                 for g1 in range(self.num_groups):
                     for g2 in range(g1 + 1, self.num_groups):
                         if (
@@ -525,8 +536,11 @@ class ConstraintBuilder:
         # Max g = num_groups - 1
         max_g = self.num_groups - 1
         max_idx = max(
-            (p.original_index if p.original_index is not None else i)
-            for i, p in enumerate(self.participants)
+            (
+                (p.original_index if p.original_index is not None else i)
+                for i, p in enumerate(self.participants)
+            ),
+            default=0,
         )
         max_tb = max_g * max_idx * self.num_people
         total_bound = sum(self.objective_bounds) + max_tb
@@ -599,11 +613,13 @@ def _clean_score_cell(value: object) -> float:
         return 0.0
     try:
         val = float(value)
-        if math.isnan(val) or math.isinf(val):
-            return 0.0
-        return val
     except (TypeError, ValueError):
+        logger.warning("Invalid score value: %r of type %s", value, type(value))
         return 0.0
+
+    if math.isnan(val) or math.isinf(val):
+        return 0.0
+    return val
 
 
 def solve_with_ortools(

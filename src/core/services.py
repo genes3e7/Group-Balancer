@@ -81,20 +81,20 @@ def _resolve_warm_start_hints(
                     strict=False,
                 )
             )
+            # Safe to build index-based hints as a secondary layer
+            if "_original_index" in previous_results.columns:
+                mask = previous_results["_original_index"].notna()
+                valid_rows = previous_results[mask]
+                hints_idx = dict(
+                    zip(
+                        valid_rows["_original_index"].astype(int),
+                        valid_rows[config.COL_GROUP],
+                        strict=False,
+                    )
+                )
         else:
             logger.info("Ignoring stale hints (duplicate profiles).")
 
-        # Always try to build index-based hints as a secondary layer
-        if "_original_index" in previous_results.columns:
-            mask = previous_results["_original_index"].notna()
-            valid_rows = previous_results[mask]
-            hints_idx = dict(
-                zip(
-                    valid_rows["_original_index"].astype(int),
-                    valid_rows[config.COL_GROUP],
-                    strict=False,
-                )
-            )
     elif (
         config.COL_GROUP in previous_results.columns
         and "_original_index" in previous_results.columns
@@ -103,9 +103,13 @@ def _resolve_warm_start_hints(
         current_indices = sorted(
             [p.original_index for p in participants if p.original_index is not None]
         )
-        prev_indices = sorted(previous_results["_original_index"].dropna().unique())
+        prev_indices = sorted(previous_results["_original_index"].dropna().tolist())
 
-        if current_indices == prev_indices:
+        # Check that indices multiset matches exactly, meaning no duplicates
+        # that could shift positions.
+        if current_indices == prev_indices and len(current_indices) == len(
+            set(current_indices)
+        ):
             mask = previous_results["_original_index"].notna()
             valid_rows = previous_results[mask]
             hints_idx = dict(
@@ -116,7 +120,7 @@ def _resolve_warm_start_hints(
                 )
             )
         else:
-            logger.info("Ignoring stale hints (indices mismatch).")
+            logger.info("Ignoring stale hints (indices mismatch or duplicates).")
 
     return hints_fp, hints_idx
 

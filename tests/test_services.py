@@ -167,10 +167,9 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
         )
 
         captured_cfg = mock_opt.call_args[0][1]
-        # Should be None due to duplicates
+        # Both should be None due to duplicates to prevent misassignments
         assert captured_cfg.hints_by_fingerprint is None
-        # Should fallback to index-based hints
-        assert captured_cfg.hints_by_index is not None
+        assert captured_cfg.hints_by_index is None
 
 
 def test_stale_hints_logging():
@@ -220,7 +219,9 @@ def test_stale_hints_logging():
             5,
             previous_results=res_no_fp,
         )
-        mock_log.assert_any_call("Ignoring stale hints (indices mismatch).")
+        mock_log.assert_any_call(
+            "Ignoring stale hints (indices mismatch or duplicates)."
+        )
 
 
 def test_data_service_cleaning_handles_missing_names():

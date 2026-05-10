@@ -142,11 +142,13 @@ def build_executable():
     # Clean old artifacts
     dirs_to_clean = ["build", "dist"]
     for d in dirs_to_clean:
-        if os.path.exists(d):
-            shutil.rmtree(d)
+        full_path = os.path.join(project_root, d)
+        if os.path.exists(full_path):
+            shutil.rmtree(full_path)
 
-    if os.path.exists("GroupBalancer.spec"):
-        os.remove("GroupBalancer.spec")
+    spec_path = os.path.join(project_root, "GroupBalancer.spec")
+    if os.path.exists(spec_path):
+        os.remove(spec_path)
 
     # Tree Shaking
     print("🌳 Detecting unused dependencies (Tree Shaking)...")
