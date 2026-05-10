@@ -13,12 +13,14 @@
   - **Groupers:** Keep participants with matching tags together in the same group.
   - **Separators:** Spread participants with matching tags across as many different groups as possible (pigeonhole principle).
 - **Custom Group Sizes:** Define exact capacity requirements for every individual group.
+- **Configuration Cache (Memoization):** Remembers the best-found solutions for up to 50 distinct weight/capacity combinations, enabling instant comparison and continuous iterative refinement.
 - **Async High-Performance UI:** Responsive interface with native CSS progress bars and non-blocking fragmented rendering.
 - **Mathematical Optimization:** Powered by **Google OR-Tools (CP-SAT)** using **Squared Exact Math (L2)** for ultra-precise balancing.
+- **Identity-Determinism:** Guarantees bit-for-bit identical personnel assignments on every run through internal iteration sorting and deterministic branching strategies.
 - **Security Hardened:**
   - Strict input validation and participant count limits.
-  - Professional logging and error handling.
-  - Dynamic Precision Scaling to prevent 64-bit integer overflows.
+  - Fail-Fast architecture that prevents unsafe numerical overflows ($> 2^{62}-1$).
+  - Dynamic Precision Scaling to maximize balancing quality within 64-bit safety.
 
 ## Getting Started
 
@@ -131,5 +133,5 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 The project follows high-quality engineering standards:
 - **SOLID & SRP:** Decoupled Service, UI, and Core layers.
 - **Type Safety:** Strong typing with `dataclasses` and `TypedDict`.
-- **Testing:** 90%+ functional coverage with isolated sandboxed test execution.
+- **Testing:** 95% functional coverage with isolated sandboxed test execution.
 - **CI/CD:** Automated testing across Python 3.10 through 3.14 using `uv`.

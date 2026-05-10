@@ -269,6 +269,7 @@ def test_steps_load_uploaded_file_csv():
     """Verify file upload callback for CSV."""
     mock_file = MagicMock()
     mock_file.name = "test.csv"
+    mock_file.size = 100
     mock_state = MagicMock()
     mock_state.u_file = mock_file
     mock_df = pd.DataFrame({config.COL_NAME: ["P1"], "Score1": [100.0]})
@@ -416,6 +417,7 @@ def test_steps_load_uploaded_file_excel():
     """Verify file upload callback for Excel."""
     mock_file = MagicMock()
     mock_file.name = "test.xlsx"
+    mock_file.size = 100
     mock_state = MagicMock()
     mock_state.u_file = mock_file
     mock_df = pd.DataFrame({config.COL_NAME: ["P1"], "Score1": [100.0]})
@@ -439,7 +441,7 @@ def test_steps_load_uploaded_file_none():
     mock_state = MagicMock()
     mock_state.u_file = None
     with patch("streamlit.session_state", mock_state):
-        # With no file, it should just return (previously it called the callback)
+        # With no file, it should just return
         pass
 
 
@@ -459,8 +461,6 @@ def test_steps_render_3_interactive():
             return 1.23
         if key == "score_cols":
             return ["Score1"]
-        if key == "interactive_df":
-            return mock_df
         return default
 
     mock_state.get.side_effect = get_side_effect
@@ -494,10 +494,12 @@ def test_data_loader_invalid_columns_check():
 
 
 def test_steps_start_over():
-    """Verify 'Start Over' button logic."""
+    """Verify 'Start Over' button logic performs selective reset."""
     df = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "Score1": [10.0]})
     mock_state = MagicMock()
     mock_state.interactive_df = df
+    mock_state.keys.return_value = ["participants_df", "warm_start_cache"]
+
     with (
         patch("streamlit.button", return_value=True),
         patch("streamlit.download_button"),
@@ -506,7 +508,11 @@ def test_steps_start_over():
         patch("streamlit.session_state", mock_state),
     ):
         steps._render_footer_actions(["Score1"])
-        mock_state.clear.assert_called_once()
+        # Selective delete
+        mock_state.__delitem__.assert_called_with("participants_df")
+        # Cache preserved
+        del_calls = mock_state.__delitem__.call_args_list
+        assert not any(call[0][0] == "warm_start_cache" for call in del_calls)
         mock_rerun.assert_called_once()
 
 
@@ -559,13 +565,12 @@ def test_steps_render_2_clamped_groups():
 
 
 def test_ui_steps_load_uploaded_file_exception():
-    """Cover the exception branches in _load_uploaded_file."""
+    """Cover the exception branches in _process_uploaded_file."""
     mock_file = MagicMock()
-    with patch("streamlit.session_state", MagicMock()) as mock_state:
-        mock_state.u_file = mock_file
+    mock_file.name = "test.csv"
+    with patch("streamlit.session_state", MagicMock()):
         with patch("pandas.read_csv", side_effect=Exception("Read error")):
             with patch("streamlit.error") as mock_err:
-                mock_file.name = "test.csv"
                 steps._process_uploaded_file(mock_file)
                 mock_err.assert_called_with("Error reading file: Read error")
 
@@ -617,6 +622,7 @@ def test_render_footer_reset_hit_proper_mock():
     mock_state = MagicMock()
     mock_state.results_df = df_orig
     mock_state.interactive_df = df_orig
+    mock_state.keys.return_value = ["interactive_df", "warm_start_cache"]
 
     with patch("pandas.DataFrame.copy", return_value=df_orig.copy()):
         c_back = MagicMock()
@@ -641,9 +647,11 @@ def test_steps_render_2_solver_failure_surface():
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = MagicMock()
     mock_state.participants_df = mock_df
+    mock_state.warm_start_cache = {}
     mock_state.get.side_effect = lambda key, default=None: {
         "participants_df": mock_df,
         "score_cols": ["Score1"],
+        "warm_start_cache": {},
     }.get(key, default)
 
     with (

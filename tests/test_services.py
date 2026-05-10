@@ -8,6 +8,7 @@ logic and hint validation.
 from unittest.mock import patch
 
 import pandas as pd
+import pytest
 
 from src.core import config
 from src.core.models import ConflictPriority
@@ -90,18 +91,16 @@ def test_optimization_service_handles_solver_failure():
 
 
 def test_optimization_service_validates_group_capacities():
-    """Verify the service returns ERROR if no group capacities are provided."""
+    """Verify the service raises ValueError if no group capacities are provided."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
-    res, metrics = OptimizationService.run(
-        df,
-        [],
-        {"S1": 1.0},
-        ConflictPriority.GROUPERS,
-        10,
-    )
-    assert res is None
-    assert metrics["status"] == "ERROR"
-    assert "capacities" in metrics["error"]
+    with pytest.raises(ValueError, match="Group capacities cannot be empty"):
+        OptimizationService.run(
+            df,
+            [],
+            {"S1": 1.0},
+            ConflictPriority.GROUPERS,
+            10,
+        )
 
 
 def test_optimization_service_warm_start_hit():
@@ -137,7 +136,11 @@ def test_optimization_service_warm_start_hit():
 
 
 def test_optimization_service_warm_start_duplicate_fingerprints():
-    """Verify warm-start alignment check with duplicate fingerprints."""
+    """Verify warm-start hints rejection when duplicate profiles exist.
+
+    Ensures hints_by_fingerprint is None when fingerprints are non-unique,
+    to prevent mapping collisions.
+    """
     data = pd.DataFrame(
         {
             config.COL_NAME: ["P1", "P1"],
@@ -148,20 +151,26 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
     )
     weights = {"Score1": 1.0}
 
-    res1, _ = OptimizationService.run(
+    res1, metrics1 = OptimizationService.run(
         data, [1, 1], weights, ConflictPriority.GROUPERS, 10
     )
 
-    res2, metrics2 = OptimizationService.run(
-        data,
-        [1, 1],
-        weights,
-        ConflictPriority.GROUPERS,
-        10,
-        previous_results=res1,
-    )
-    assert metrics2["status"] == "OPTIMAL"
-    pd.testing.assert_series_equal(res1[config.COL_GROUP], res2[config.COL_GROUP])
+    target = "src.core.services.solver_interface.run_optimization"
+    with patch(target, return_value=(res1, metrics1)) as mock_opt:
+        OptimizationService.run(
+            data,
+            [1, 1],
+            weights,
+            ConflictPriority.GROUPERS,
+            10,
+            previous_results=res1,
+        )
+
+        captured_cfg = mock_opt.call_args[0][1]
+        # Should be None due to duplicates
+        assert captured_cfg.hints_by_fingerprint is None
+        # Should fallback to index-based hints
+        assert captured_cfg.hints_by_index is not None
 
 
 def test_stale_hints_logging():
@@ -185,7 +194,7 @@ def test_stale_hints_logging():
         )
         mock_log.assert_any_call("Ignoring stale warm-start hints (config change).")
 
-        # 2. Data mismatch
+        # 2. Data mismatch (fingerprint change)
         data2 = data.copy()
         data2.at[0, "Score1"] = 20
         OptimizationService.run(
@@ -197,6 +206,21 @@ def test_stale_hints_logging():
             previous_results=res1,
         )
         mock_log.assert_any_call("Ignoring stale warm-start hints (mismatch)")
+
+        # 3. Indices mismatch (structural)
+        # Mock a result that has fingerprints matching but different indices
+        res_weird = res1.copy().drop(columns=["participant_fingerprint"])
+        res_weird.at[0, "_original_index"] = 999
+        res_weird.attrs = res1.attrs.copy()
+        OptimizationService.run(
+            data,
+            [1],
+            {"Score1": 1.0},
+            ConflictPriority.GROUPERS,
+            5,
+            previous_results=res_weird,
+        )
+        mock_log.assert_any_call("Ignoring stale hints (indices mismatch).")
 
 
 def test_data_service_cleaning_handles_missing_names():
@@ -210,8 +234,8 @@ def test_data_service_cleaning_handles_missing_names():
 def test_optimization_service_catches_runtime_exceptions():
     """Verify that the service captures and reports unexpected runtime errors."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
-    target = "src.core.services.solver_interface.run_optimization"
-    with patch(target, side_effect=RuntimeError("Fail")):
+    # Cause an error inside the try block
+    with patch("src.core.services.Participant", side_effect=RuntimeError("Fail")):
         _, metrics = OptimizationService.run(
             df,
             [1],
@@ -224,13 +248,12 @@ def test_optimization_service_catches_runtime_exceptions():
 
 
 def test_optimization_service_invalid_input_none():
-    """Verify OptimizationService.run handles None input."""
-    res, metrics = OptimizationService.run(
-        None,
-        [1],
-        {"Score1": 1.0},
-        ConflictPriority.GROUPERS,
-        10,
-    )
-    assert res is None
-    assert metrics["status"] == "ERROR"
+    """Verify OptimizationService.run raises ValueError on None input."""
+    with pytest.raises(ValueError, match="Participants DataFrame cannot be None"):
+        OptimizationService.run(
+            None,
+            [1],
+            {"Score1": 1.0},
+            ConflictPriority.GROUPERS,
+            10,
+        )

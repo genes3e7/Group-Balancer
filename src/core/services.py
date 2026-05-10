@@ -98,14 +98,17 @@ class OptimizationService:
 
         Returns:
             tuple[pd.DataFrame | None, dict]: Results DataFrame and metrics.
+
+        Raises:
+            ValueError: If input data or capacities are invalid.
         """
+        if participants_df is None:
+            raise ValueError("Participants DataFrame cannot be None.")
+
+        if not group_capacities:
+            raise ValueError("Group capacities cannot be empty.")
+
         try:
-            if participants_df is None:
-                raise ValueError("Participants DataFrame cannot be None.")
-
-            if not group_capacities:
-                raise ValueError("Group capacities cannot be empty.")
-
             participants = []
             for i, row in enumerate(participants_df.to_dict("records")):
                 # Robust index extraction
@@ -137,7 +140,7 @@ class OptimizationService:
                     == group_capacities
                 )
 
-                if not config_match:  # pragma: no cover
+                if not config_match:
                     logger.info("Ignoring stale warm-start hints (config change).")
                 elif (
                     config.COL_GROUP in previous_results.columns
@@ -148,7 +151,7 @@ class OptimizationService:
                         previous_results["participant_fingerprint"].astype(str).tolist()
                     )
 
-                    if current_f != prev_f:  # pragma: no cover
+                    if current_f != prev_f:
                         logger.info("Ignoring stale warm-start hints (mismatch)")
                     else:
                         # Build identity-based mappings
@@ -166,7 +169,7 @@ class OptimizationService:
                                     strict=False,
                                 )
                             )
-                        else:  # pragma: no cover
+                        else:
                             logger.info("Ignoring stale hints (duplicate profiles).")
 
                         if "_original_index" in previous_results.columns:
@@ -192,7 +195,7 @@ class OptimizationService:
                                 strict=False,
                             )
                         )
-                    else:  # pragma: no cover
+                    else:
                         logger.info("Ignoring stale hints (indices mismatch).")
 
             cfg = SolverConfig(

@@ -66,14 +66,10 @@ def render_step_progress(step: int) -> None:
                 st.markdown(f"### :gray[{label}]")
 
     cols_bar = st.columns(3, gap="small")
-    red_svg_css = (
-        "background-color: #ff4b4b; height: 4px; width: 100%; border-radius: 2px;"
-    )
-    gray_svg_css = (
-        "background-color: #ddd; height: 4px; width: 100%; border-radius: 2px;"
-    )
+    red_css = "background-color: #ff4b4b; height: 4px; width: 100%; border-radius: 2px;"
+    gray_css = "background-color: #ddd; height: 4px; width: 100%; border-radius: 2px;"
 
     for i, col in enumerate(cols_bar):
         target = i + 1
-        css = red_svg_css if target <= step else gray_svg_css
+        css = red_css if target <= step else gray_css
         col.markdown(f'<div style="{css}"></div>', unsafe_allow_html=True)

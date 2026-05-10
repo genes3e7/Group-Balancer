@@ -175,13 +175,13 @@ class AdvancedScoring(ScoringStrategy):
                 continue
 
             raw_scores = [p.scores.get(col, 0.0) for p in participants]
-            scaled_raw = [int(round(s * config.SCALE_FACTOR)) for s in raw_scores]
+            scaled_raw = [round(s * config.SCALE_FACTOR) for s in raw_scores]
             raw_total = sum(abs(s) for s in scaled_raw)
 
             if raw_total == 0:
                 raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
 
-            scores = [int(round((s * norm_multiplier) / raw_total)) for s in scaled_raw]
+            scores = [round((s * norm_multiplier) / raw_total) for s in scaled_raw]
 
             vectors.append((col, scores, int(max(1, round(weight)))))
         return vectors
@@ -314,14 +314,17 @@ class ConstraintBuilder:
                 abs_diffs.append(a_diff)
 
                 # L2 Squared Error (Tier 4)
-                sq_diff = self.model.NewIntVar(0, local_diff_bound**2, f"sq_{name}_{g}")
+                # Capped at (1 << 62) - 1 for 64-bit safe math
+                sq_limit = (1 << 62) - 1
+                capped_sq_bound = min(sq_limit, local_diff_bound**2)
+                sq_diff = self.model.NewIntVar(0, capped_sq_bound, f"sq_{name}_{g}")
                 self.model.AddMultiplicationEquality(sq_diff, [diff, diff])
 
                 self.objectives.append(
                     sq_diff * weight * config.TIER_BALANCE_MULTIPLIER
                 )
                 self.objective_bounds.append(
-                    local_diff_bound**2 * weight * config.TIER_BALANCE_MULTIPLIER
+                    capped_sq_bound * weight * config.TIER_BALANCE_MULTIPLIER
                 )
 
             # Max-Min Fairness Tier
@@ -395,13 +398,18 @@ class ConstraintBuilder:
         hinted_groups: dict[int, int] = {}
         for p_idx, p in enumerate(self.participants):
             # Flattened identity lookup: Identity-based fingerprint takes priority
-            group_id = None
-            if self.cfg.hints_by_fingerprint:
-                group_id = self.cfg.hints_by_fingerprint.get(p.fingerprint)
+            group_id = (
+                self.cfg.hints_by_fingerprint.get(p.fingerprint)
+                if self.cfg.hints_by_fingerprint
+                else None
+            )
 
-            if group_id is None and self.cfg.hints_by_index:
-                if p.original_index is not None:
-                    group_id = self.cfg.hints_by_index.get(p.original_index)
+            if (
+                group_id is None
+                and self.cfg.hints_by_index
+                and p.original_index is not None
+            ):
+                group_id = self.cfg.hints_by_index.get(p.original_index)
 
             if group_id is not None:
                 try:
@@ -477,16 +485,18 @@ class ConstraintBuilder:
 
         Returns:
             cp_model.CpModel: The constructed CP-SAT model.
+
+        Raises:
+            ValueError: If the theoretical maximum objective exceeds 64-bit limits.
         """
         # Aggregate objective safety guard
         max_int_limit = (1 << 62) - 1
         total_bound = sum(self.objective_bounds)
-        if total_bound > max_int_limit:  # pragma: no cover
-            logger.warning(
-                "Aggregate objective theoretical maximum (%d) exceeds CP-SAT "
-                "safety bound (%d). Consider reducing weights or group count.",
-                total_bound,
-                max_int_limit,
+        if total_bound > max_int_limit:
+            raise ValueError(
+                f"Aggregate objective theoretical maximum ({total_bound}) "
+                f"exceeds CP-SAT safety bound ({max_int_limit}). "
+                "Consider reducing score weights or group count."
             )
 
         main_objective = sum(self.objectives)

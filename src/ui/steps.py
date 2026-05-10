@@ -52,8 +52,15 @@ def _generate_cache_key(
     return hashlib.md5(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
-def _process_uploaded_file(uploaded) -> None:
-    """Processes the uploaded file and updates session state manual data."""
+def _process_uploaded_file(uploaded) -> tuple[bool, str]:
+    """Processes the uploaded file and updates session state manual data.
+
+    Args:
+        uploaded: The uploaded file object.
+
+    Returns:
+        tuple[bool, str]: Success flag and content-based signature.
+    """
     try:
         ext = uploaded.name.split(".")[-1].lower()
         if ext == "csv":
@@ -67,10 +74,15 @@ def _process_uploaded_file(uploaded) -> None:
             df_clean = DataService.clean_participants_df(df_new)
             st.session_state.manual_df = df_clean
             st.toast(f"✅ Imported {len(df_clean)} rows!", icon="📂")
-        else:  # pragma: no cover
-            st.error("File missing required columns: Name and Score*")
-    except Exception as e:  # pragma: no cover
+            # Generate content signature
+            sig = str(pd.util.hash_pandas_object(df_clean, index=True).sum())
+            return True, sig
+
+        st.error("File missing required columns: Name and Score*")
+        return False, ""
+    except Exception as e:
         st.error(f"Error reading file: {e}")
+        return False, ""
 
 
 def render_step_1() -> None:
@@ -84,14 +96,13 @@ def render_step_1() -> None:
             key="u_file",
         )
         if uploaded:
-            # Track last processed file to avoid redundant reprocessing on every rerun
-            if (
-                st.session_state.get("last_file_processed") != uploaded.name
-                or st.session_state.get("last_file_size") != uploaded.size
-            ):
-                _process_uploaded_file(uploaded)
-                st.session_state.last_file_processed = uploaded.name
-                st.session_state.last_file_size = uploaded.size
+            # Use content-based signature to detect edits even with same name/size
+            current_sig = f"{uploaded.name}_{uploaded.size}"
+            if st.session_state.get("last_file_processed_meta") != current_sig:
+                success, content_sig = _process_uploaded_file(uploaded)
+                if success:
+                    st.session_state.last_file_processed_meta = current_sig
+                    st.session_state.last_file_content_sig = content_sig
 
     st.subheader("Edit Participants")
 
@@ -120,14 +131,14 @@ def render_step_1() -> None:
             clean_df = DataService.clean_participants_df(edited_df)
             score_cols = DataService.get_score_columns(clean_df)
 
-            if not score_cols:  # pragma: no cover
+            if not score_cols:
                 st.error("At least one score column is required.")
             else:
                 st.session_state.participants_df = clean_df
                 st.session_state.manual_df = clean_df.copy()
                 st.session_state.score_cols = score_cols
                 session_manager.go_to_step(2)
-        else:  # pragma: no cover
+        else:
             st.warning("Please add participants.")
 
 
@@ -139,7 +150,7 @@ def render_step_2() -> None:
     """
     st.header("Step 2: Configuration")
     df = st.session_state.get("participants_df")
-    if df is None or df.empty:  # pragma: no cover
+    if df is None or df.empty:
         st.warning("No data found.")
         if st.button("⬅ Back"):
             session_manager.go_to_step(1)
@@ -172,15 +183,19 @@ def render_step_2() -> None:
     cols = st.columns(num_groups)
     for i in range(num_groups):
         default = base + (1 if i < rem else 0)
-        cap = int(
-            cols[i % len(cols)].number_input(
-                f"G{i + 1}", 0, total_p, default, key=f"cap_{num_groups}_{i}"
-            )
-        )
+        key = f"cap_{num_groups}_{i}"
+
+        # Defensive state clamping to prevent out-of-bounds rendering
+        if key in st.session_state:
+            st.session_state[key] = max(0, min(int(st.session_state[key]), total_p))
+        else:
+            st.session_state[key] = default
+
+        cap = int(cols[i % len(cols)].number_input(f"G{i + 1}", 0, total_p, key=key))
         group_capacities.append(cap)
 
     cap_valid = sum(group_capacities) == total_p
-    if not cap_valid:  # pragma: no cover
+    if not cap_valid:
         st.error(f"Capacity mismatch: {sum(group_capacities)} != {total_p}")
 
     st.subheader("Solver Controls")
@@ -216,7 +231,7 @@ def render_step_2() -> None:
 
     st.divider()
     c_back, c_go = st.columns([1, 5])
-    if c_back.button("⬅ Back"):  # pragma: no cover
+    if c_back.button("⬅ Back"):
         session_manager.go_to_step(1)
 
     if c_go.button("🚀 Generate", type="primary", disabled=not cap_valid):
@@ -231,11 +246,8 @@ def render_step_2() -> None:
         )
 
         # Determine best-effort previous results
-        # 1. Exact configuration match from cache (Highest quality)
-        # 2. Most recent manual/solver result from current session (Good quality)
         if cache_key in st.session_state.warm_start_cache:
             prev_results = st.session_state.warm_start_cache[cache_key]
-            # Refresh LRU status
             st.session_state.warm_start_cache.move_to_end(cache_key)
         else:
             prev_results = st.session_state.get("interactive_df")
@@ -247,7 +259,7 @@ def render_step_2() -> None:
                     if col in cached_results.columns:
                         prev_results[col] = cached_results[col]
                 prev_results.attrs = dict(cached_results.attrs)
-            elif prev_results is None:  # pragma: no cover
+            elif prev_results is None:
                 prev_results = cached_results
 
         result_df, metrics = OptimizationService.run(
@@ -261,10 +273,8 @@ def render_step_2() -> None:
         )
 
         if result_df is not None:
-            # Update cache with the new best result
             st.session_state.warm_start_cache[cache_key] = result_df.copy()
-            # Enforce LRU limit (50)
-            if len(st.session_state.warm_start_cache) > 50:  # pragma: no cover
+            if len(st.session_state.warm_start_cache) > 50:
                 st.session_state.warm_start_cache.popitem(last=False)
 
             st.session_state.results_df = result_df
@@ -274,7 +284,7 @@ def render_step_2() -> None:
             st.session_state.solver_error = None
             time.sleep(0.5)
             session_manager.go_to_step(3)
-        else:  # pragma: no cover
+        else:
             st.session_state.results_df = None
             st.session_state.interactive_df = None
             st.session_state.solver_status = metrics["status"]
@@ -293,7 +303,7 @@ def render_step_3() -> None:
     elapsed = st.session_state.get("solver_elapsed", 0.0)
     error_msg = st.session_state.get("solver_error")
 
-    if error_msg:  # pragma: no cover
+    if error_msg:
         st.error(f"❌ {error_msg}")
         st.info(
             "💡 **Tips to resolve:**\n"
@@ -303,7 +313,7 @@ def render_step_3() -> None:
         )
         return
 
-    if st.session_state.get("interactive_df") is None:  # pragma: no cover
+    if st.session_state.get("interactive_df") is None:
         st.error("No results found.")
         return
 
@@ -311,7 +321,7 @@ def render_step_3() -> None:
         st.success(f"🎯 Optimal Solution found in {elapsed:.2f}s")
     elif status_name == "FEASIBLE":
         st.warning(f"⏳ Best solution found in {elapsed:.2f}s (Status: {status_name})")
-    else:  # pragma: no cover
+    else:
         st.warning(f"⏳ Solver stopped in {elapsed:.2f}s (Status: {status_name})")
 
     score_cols = st.session_state.get("score_cols", [])
@@ -438,6 +448,9 @@ def _render_footer_actions(score_cols: list[str]) -> None:
         type="primary",
     )
 
-    if st.button("🔄 Start Over"):  # pragma: no cover
-        st.session_state.clear()
+    if st.button("🔄 Start Over"):
+        # Selective reset: Preserve the memoization cache but clear all project data
+        for key in list(st.session_state.keys()):
+            if key != "warm_start_cache":
+                del st.session_state[key]
         st.rerun()

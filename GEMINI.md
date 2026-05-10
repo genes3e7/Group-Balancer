@@ -101,16 +101,18 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Composite Key:** Each cache entry is keyed by a hash of both the **Dataset** (content-aware) and the **Configuration** (weights, capacities, priority).
 - **Behavior:** This allows users to switch between different weight profiles instantly. If the user reverts a data change, the system automatically retrieves the best-found solution for that specific state from memory, enabling "non-linear" iterative refinement.
 - **Capacity:** Capped at 50 configurations per active session to maintain strict memory hygiene while providing a massive refinement buffer.
+- **Persistence:** The cache is preserved during 'Start Over' operations, allowing for a continuous workspace experience while resetting the current project's data state.
 
 ### 4. Solver Determinism vs. Speed (Race Mode)
 
-- **Lesson:** While absolute determinism can be achieved with `interleave_search = True`, it significantly slows down the optimality proof. For production speed, we use `num_search_workers = 8` and `interleave_search = False` (Race Mode). This guarantees identical Standard Deviations (quality) on OPTIMAL, but personnel assignments might swap between identical profiles.
-- **Consistency:** All internal iterations (tags, participants) are explicitly sorted before adding constraints to ensure the search tree is built identically across runs.
+- **Lesson:** While absolute determinism can be achieved with `interleave_search = True`, it significantly slows down the optimality proof. For production speed, we use `num_search_workers = 8` and `interleave_search = False` (Race Mode).
+- **Guarantee:** Due to internal iteration sorting and tie-breaking branching strategies, the solver still guarantees bit-for-bit identical personnel assignment identities (not just identical quality) as verified by functional tests.
 
 ### 4. Integer Range & Overflows
 
 - **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 62) - 1`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
 - **Implementation:** Theoretical bounds are tracked globally via `max_abs_diff_bound` to ensure `max_dev` and `sq_diff` variables stay within the 64-bit domain.
+- **Fail-Fast Guard:** The solver implements a strict `ValueError` in `get_model` if the theoretical aggregate objective sum exceeds $(1 \ll 62) - 1$, preventing unsafe solves at the architecture level.
 
 ### 5. Categorical Constraints (Groupers/Separators)
 

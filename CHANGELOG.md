@@ -18,7 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Solver Optimization - Configuration Cache**: Implemented a Least Recently Used (LRU) memoization layer that caches the best-found solutions for up to 50 distinct weight/capacity combinations, enabling instant comparison and iterative refinement.
 - **Solver Optimization - Advanced Parameters**: Tuned CP-SAT internal parameters (`linearization_level=0`, `symmetry_level=2`) for faster partition math.
 - **Solver Hardening - Dynamic Precision Scaling**: Mathematically prevents 64-bit integer overflow for large datasets ($N=1000$) while maintaining 0.001 target precision.
+- **Solver Hardening - Aggregate Objective Guard**: Implemented a Fail-Fast `ValueError` if the theoretical maximum objective sum exceeds CP-SAT's 64-bit limits, ensuring absolute numerical safety.
 - **Solver Hardening - Scaling Enforcement**: Added `tests/test_scaling_tiers.py` to programmatically lock in the bit-slicing priority hierarchy and resolution constants.
+- **UI Hardening - State Clamping**: Added defensive session state clamping for group capacities to prevent out-of-bounds rendering when switching datasets.
+- **UI Hardening - Upload Signatures**: Implemented content-based signatures (MD5) for file uploads to robustly detect edits even if filename and size remain identical.
+- **UI Hardening - Selective Reset**: Optimized the 'Start Over' logic to preserve the high-value configuration cache while securely purging session-specific participant data.
 - **Async High-Performance UI:** Native CSS progress bars and fragmented rendering to ensure the tool feels "alive" and responsive during engine initialization.
 - **Detailed Solver Error Reporting:** The UI now surfaces specific optimization failure reasons (e.g., `INFEASIBLE`, `MODEL_INVALID`) with actionable troubleshooting tips.
 - **Pre-CI Refactoring:** Cross-platform Python orchestrator using `uv` (`tools/pre_ci.py`) replacing legacy PowerShell scripts.

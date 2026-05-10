@@ -279,7 +279,6 @@ def test_solver_soft_groupers_clamping():
     results, status, _ = solver.solve_with_ortools(p, cfg)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
-    # Verify that participants with grouper "T" (P0, P1) are in the same group
     t_groups = {r[config.COL_GROUP] for r in results if "T" in r[config.COL_GROUPER]}
     assert len(t_groups) == 1
 
@@ -348,4 +347,22 @@ def test_solver_identity_buckets_complex():
     )
     builder = solver.ConstraintBuilder(p, cfg)
     builder.build_variables()
-    builder.add_solution_hints()
+
+    # Capture AddHint calls via monkeypatching the model
+    with patch.object(builder.model, "AddHint") as mock_add_hint:
+        builder.add_solution_hints()
+        # Verify that hints were consumed for both participants
+        assert mock_add_hint.call_count == 2
+
+
+def test_solver_aggregate_objective_error():
+    """Verify ValueError is raised if the bound exceeds 64-bit limits."""
+    p = [Participant(name="P1", scores={"S1": 10}, original_index=0)]
+    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
+    builder = solver.ConstraintBuilder(p, cfg)
+    builder.build_variables()
+
+    # Artificially blow the objective bound
+    builder.objective_bounds = [2**63]
+    with pytest.raises(ValueError, match="exceeds CP-SAT safety bound"):
+        builder.get_model()

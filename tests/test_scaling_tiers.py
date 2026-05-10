@@ -26,7 +26,13 @@ def test_scaling_constants_lock():
 
 
 def test_priority_separators_wins():
-    """Verify HI Tier (Separators) strictly outweighs LO Tier (Groupers)."""
+    """Verify HI Tier (Separators) strictly outweighs LO Tier (Groupers).
+
+    Conflict scenario:
+    - P0 and P1 share a Separator tag 'S' (Want them apart).
+    - P0 and P1 share a Grouper tag 'G' (Want them together).
+    If Separators win, P0 and P1 MUST be split.
+    """
     participants = [
         {
             config.COL_NAME: "P0",
@@ -38,13 +44,13 @@ def test_priority_separators_wins():
             config.COL_NAME: "P1",
             "Score1": 10,
             config.COL_GROUPER: "G",
-            config.COL_SEPARATOR: "",
+            config.COL_SEPARATOR: "S",
         },
         {
             config.COL_NAME: "P2",
             "Score1": 10,
             config.COL_GROUPER: "",
-            config.COL_SEPARATOR: "S",
+            config.COL_SEPARATOR: "",
         },
         {
             config.COL_NAME: "P3",
@@ -66,13 +72,20 @@ def test_priority_separators_wins():
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
     p0_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P0")
-    p2_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P2")
+    p1_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P1")
 
-    assert p0_group != p2_group
+    # Separators priority wins -> P0 and P1 are split
+    assert p0_group != p1_group
 
 
 def test_priority_groupers_wins():
-    """Verify HI Tier (Groupers) strictly outweighs LO Tier (Separators)."""
+    """Verify HI Tier (Groupers) strictly outweighs LO Tier (Separators).
+
+    Conflict scenario:
+    - P0 and P1 share a Separator tag 'S' (Want them apart).
+    - P0 and P1 share a Grouper tag 'G' (Want them together).
+    If Groupers win, P0 and P1 MUST be together.
+    """
     participants = [
         {
             config.COL_NAME: "P0",
@@ -84,13 +97,13 @@ def test_priority_groupers_wins():
             config.COL_NAME: "P1",
             "Score1": 10,
             config.COL_GROUPER: "G",
-            config.COL_SEPARATOR: "",
+            config.COL_SEPARATOR: "S",
         },
         {
             config.COL_NAME: "P2",
             "Score1": 10,
             config.COL_GROUPER: "",
-            config.COL_SEPARATOR: "S",
+            config.COL_SEPARATOR: "",
         },
         {
             config.COL_NAME: "P3",
@@ -114,6 +127,7 @@ def test_priority_groupers_wins():
     p0_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P0")
     p1_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P1")
 
+    # Groupers priority wins -> P0 and P1 are kept together
     assert p0_group == p1_group
 
 
@@ -165,4 +179,5 @@ def test_norm_multiplier_precision():
     vectors = strategy.get_score_vectors(participants, cfg)
 
     scores = vectors[0][1]
-    assert scores[0] != scores[1]
+    assert abs(scores[0] - scores[1]) >= 1
+    assert abs(scores[0] - scores[1]) / max(scores) >= 0.001
