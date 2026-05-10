@@ -69,10 +69,7 @@ def _process_uploaded_file(uploaded) -> tuple[bool, str]:
         return False, ""
     try:
         suffix = pathlib.Path(uploaded.name).suffix.lower().lstrip(".")
-        if suffix == "csv":
-            df_new = pd.read_csv(uploaded)
-        else:
-            df_new = pd.read_excel(uploaded)
+        df_new = pd.read_csv(uploaded) if suffix == "csv" else pd.read_excel(uploaded)
 
         df_new.columns = df_new.columns.astype(str).str.strip()
         score_cols_raw = DataService.get_score_columns(df_new)
@@ -92,7 +89,8 @@ def _process_uploaded_file(uploaded) -> tuple[bool, str]:
         return False, ""
     except Exception:
         logger.exception("Unexpected error during file upload")
-        raise
+        st.error("Unexpected error reading file. Check logs for details.")
+        return False, ""
 
 
 def render_step_1() -> None:
@@ -106,15 +104,18 @@ def render_step_1() -> None:
             key="u_file",
         )
         if uploaded:
-            # Use content-based signature to detect edits even with same name/size
-            meta_sig = f"{uploaded.name}_{uploaded.size}"
+            # Use hash of raw bytes to detect edits even with same name/size
+            bytes_sig = hashlib.md5(
+                uploaded.getvalue(), usedforsecurity=False
+            ).hexdigest()
+
             # Gate on content signature to ensure we handle same-name edits correctly
-            if st.session_state.get("last_file_processed_meta") != meta_sig or (
+            if st.session_state.get("last_file_processed_meta") != bytes_sig or (
                 st.session_state.get("last_file_content_sig") is None
             ):
                 success, content_sig = _process_uploaded_file(uploaded)
                 if success:
-                    st.session_state.last_file_processed_meta = meta_sig
+                    st.session_state.last_file_processed_meta = bytes_sig
                     st.session_state.last_file_content_sig = content_sig
 
     st.subheader("Edit Participants")
@@ -171,13 +172,16 @@ def render_step_2() -> None:
 
     total_p = len(df)
     score_cols = st.session_state.get("score_cols", [])
+    min_allowed = min(2, total_p)
 
-    if "groups_input" not in st.session_state:
-        st.session_state["groups_input"] = min(2, total_p)
-    elif isinstance(st.session_state.get("groups_input"), (int, float)):
-        st.session_state["groups_input"] = min(
-            int(st.session_state["groups_input"]), total_p
-        )
+    # Defensive coercion and clamping for groups_input
+    try:
+        raw_val = st.session_state.get("groups_input", min_allowed)
+        curr_val = int(raw_val)
+    except (ValueError, TypeError):
+        curr_val = min_allowed
+
+    st.session_state["groups_input"] = max(1, min(curr_val, total_p))
 
     c1, c2 = st.columns(2)
     num_groups = int(
@@ -260,7 +264,7 @@ def render_step_2() -> None:
 
         # Determine best-effort previous results
         if cache_key in st.session_state.warm_start_cache:
-            prev_results = st.session_state.warm_start_cache[cache_key]
+            prev_results = st.session_state.warm_start_cache[cache_key].copy(deep=True)
             st.session_state.warm_start_cache.move_to_end(cache_key)
         else:
             prev_results = st.session_state.get("interactive_df")
@@ -281,6 +285,8 @@ def render_step_2() -> None:
             score_weights,
             priority_options[priority_key],
             timeout,
+            grouper_weight=config.DEFAULT_GROUPER_WEIGHT,
+            separator_weight=config.DEFAULT_SEPARATOR_WEIGHT,
             status_box=status_box,
             previous_results=prev_results,
         )

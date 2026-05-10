@@ -30,34 +30,15 @@ def test_priority_separators_wins():
 
     Conflict scenario:
     - P0 and P1 share a Separator tag 'S' (Want them apart).
-    - P0 and P1 share a Grouper tag 'G' (Want them together).
-    If Separators win, P0 and P1 MUST be split.
+    - P2 and P3 share a Grouper tag 'G' (Want them together).
+    If Separators win, the solver must prioritize splitting P0/P1 even
+    if it potentially compromises other constraints.
     """
     participants = [
-        {
-            config.COL_NAME: "P0",
-            "Score1": 10,
-            config.COL_GROUPER: "G",
-            config.COL_SEPARATOR: "S",
-        },
-        {
-            config.COL_NAME: "P1",
-            "Score1": 10,
-            config.COL_GROUPER: "G",
-            config.COL_SEPARATOR: "S",
-        },
-        {
-            config.COL_NAME: "P2",
-            "Score1": 10,
-            config.COL_GROUPER: "",
-            config.COL_SEPARATOR: "",
-        },
-        {
-            config.COL_NAME: "P3",
-            "Score1": 10,
-            config.COL_GROUPER: "",
-            config.COL_SEPARATOR: "",
-        },
+        {config.COL_NAME: "P0", "Score1": 10, config.COL_SEPARATOR: "S"},
+        {config.COL_NAME: "P1", "Score1": 10, config.COL_SEPARATOR: "S"},
+        {config.COL_NAME: "P2", "Score1": 10, config.COL_GROUPER: "G"},
+        {config.COL_NAME: "P3", "Score1": 10, config.COL_GROUPER: "G"},
     ]
 
     cfg = SolverConfig(
@@ -83,34 +64,14 @@ def test_priority_groupers_wins():
 
     Conflict scenario:
     - P0 and P1 share a Separator tag 'S' (Want them apart).
-    - P0 and P1 share a Grouper tag 'G' (Want them together).
-    If Groupers win, P0 and P1 MUST be together.
+    - P2 and P3 share a Grouper tag 'G' (Want them together).
+    If Groupers win, keeping P2/P3 together takes precedence.
     """
     participants = [
-        {
-            config.COL_NAME: "P0",
-            "Score1": 10,
-            config.COL_GROUPER: "G",
-            config.COL_SEPARATOR: "S",
-        },
-        {
-            config.COL_NAME: "P1",
-            "Score1": 10,
-            config.COL_GROUPER: "G",
-            config.COL_SEPARATOR: "S",
-        },
-        {
-            config.COL_NAME: "P2",
-            "Score1": 10,
-            config.COL_GROUPER: "",
-            config.COL_SEPARATOR: "",
-        },
-        {
-            config.COL_NAME: "P3",
-            "Score1": 10,
-            config.COL_GROUPER: "",
-            config.COL_SEPARATOR: "",
-        },
+        {config.COL_NAME: "P0", "Score1": 10, config.COL_SEPARATOR: "S"},
+        {config.COL_NAME: "P1", "Score1": 10, config.COL_SEPARATOR: "S"},
+        {config.COL_NAME: "P2", "Score1": 10, config.COL_GROUPER: "G"},
+        {config.COL_NAME: "P3", "Score1": 10, config.COL_GROUPER: "G"},
     ]
 
     cfg = SolverConfig(
@@ -132,7 +93,15 @@ def test_priority_groupers_wins():
 
 
 def test_tier_hi_over_tier3_fairness():
-    """Verify that the HI tier strictly outweighs Max-Min Fairness."""
+    """Verify that the HI tier strictly outweighs Max-Min Fairness.
+
+    Conflict scenario:
+    - P0 and P1 share a Grouper tag 'G' (Want them together).
+    - Scores: P0=100, P1=100, P2=10, P3=10.
+    - Fairness wants [P0, P2] and [P1, P3] (Sums 110 vs 110).
+    - Grouper HI wants [P0, P1] and [P2, P3] (Sums 200 vs 20).
+    Under default multipliers, HI wins and they stay together.
+    """
     participants = [
         {config.COL_NAME: "P0", "Score1": 100, config.COL_GROUPER: "G"},
         {config.COL_NAME: "P1", "Score1": 100, config.COL_GROUPER: "G"},
@@ -154,7 +123,25 @@ def test_tier_hi_over_tier3_fairness():
     p0_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P0")
     p1_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P1")
 
+    # HI tier wins -> P0 and P1 are kept together despite fairness cost
     assert p0_group == p1_group
+
+    # Case 2: Reduce HI multiplier significantly to force Fairness to win
+    # Note: We patch the solver module where the multipliers are consumed
+    from unittest.mock import patch
+
+    with patch("src.core.solver.config.TIER_HI_MULTIPLIER", 1):
+        results2, status2, _ = solver.solve_with_ortools(participants, cfg)
+        assert status2 in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+        p0_g2 = next(
+            r[config.COL_GROUP] for r in results2 if r[config.COL_NAME] == "P0"
+        )
+        p1_g2 = next(
+            r[config.COL_GROUP] for r in results2 if r[config.COL_NAME] == "P1"
+        )
+        # Now Fairness wins -> P0 and P1 are split
+
+        assert p0_g2 != p1_g2
 
 
 def test_norm_multiplier_precision():

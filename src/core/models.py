@@ -87,6 +87,7 @@ class SolverConfig:
         conflict_priority (ConflictPriority): Which constraint wins if tags overlap.
         grouper_weight (int): Internal penalty for splitting groupers.
         separator_weight (int): Internal penalty for clumping separators.
+        random_seed (int): Deterministic seed for CP-SAT search workers.
         hints_by_fingerprint (Mapping[str, int] | None): Warm-start hints by identity.
         hints_by_index (Mapping[int, int] | None): Warm-start hints by index.
         timeout_seconds (int): Maximum wall-clock time for search.
@@ -100,6 +101,7 @@ class SolverConfig:
     conflict_priority: ConflictPriority = ConflictPriority.GROUPERS
     grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT
     separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT
+    random_seed: int = 42
     hints_by_fingerprint: Mapping[str, int] | None = None
     hints_by_index: Mapping[int, int] | None = None
     timeout_seconds: int = 60

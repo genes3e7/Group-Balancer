@@ -22,6 +22,8 @@ def _resolve_warm_start_hints(
     score_weights: dict[str, float],
     conflict_priority: ConflictPriority,
     group_capacities: list[int],
+    grouper_weight: int,
+    separator_weight: int,
 ) -> tuple[dict[str, int] | None, dict[int, int] | None]:
     """Validates and constructs hint mappings from a previous result snapshot.
 
@@ -31,6 +33,8 @@ def _resolve_warm_start_hints(
         score_weights (dict[str, float]): Current optimization weights.
         conflict_priority (ConflictPriority): Current priority setting.
         group_capacities (list[int]): Current capacity configuration.
+        grouper_weight (int): Current cohesion penalty weight.
+        separator_weight (int): Current dispersion penalty weight.
 
     Returns:
         tuple[dict | None, dict | None]: Hints by fingerprint and by index.
@@ -43,6 +47,8 @@ def _resolve_warm_start_hints(
         previous_results.attrs.get("score_weights") == score_weights
         and previous_results.attrs.get("conflict_priority") == conflict_priority
         and previous_results.attrs.get("group_capacities") == group_capacities
+        and previous_results.attrs.get("grouper_weight") == grouper_weight
+        and previous_results.attrs.get("separator_weight") == separator_weight
     )
 
     if not config_match:
@@ -178,6 +184,9 @@ class OptimizationService:
         score_weights: dict[str, float],
         conflict_priority: ConflictPriority,
         timeout_seconds: int,
+        grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT,
+        separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT,
+        random_seed: int = 42,
         *,
         status_box=None,
         previous_results: pd.DataFrame | None = None,
@@ -193,6 +202,9 @@ class OptimizationService:
             score_weights (dict[str, float]): Weight mapping for each score.
             conflict_priority (ConflictPriority): Resolution for tag collisions.
             timeout_seconds (int): Max search time in seconds.
+            grouper_weight (int): Penalty for splitting groupers.
+            separator_weight (int): Penalty for clumping separators.
+            random_seed (int): Deterministic seed for solver search.
             status_box: Optional Streamlit placeholder for live updates.
             previous_results (pd.DataFrame | None): Optional previous assignments.
 
@@ -237,6 +249,8 @@ class OptimizationService:
                     score_weights,
                     conflict_priority,
                     group_capacities,
+                    grouper_weight,
+                    separator_weight,
                 )
 
             cfg = SolverConfig(
@@ -245,6 +259,9 @@ class OptimizationService:
                 score_weights=score_weights,
                 opt_mode=OptimizationMode.ADVANCED,
                 conflict_priority=conflict_priority,
+                grouper_weight=grouper_weight,
+                separator_weight=separator_weight,
+                random_seed=random_seed,
                 timeout_seconds=timeout_seconds,
                 hints_by_fingerprint=hints_fp,
                 hints_by_index=hints_idx,
@@ -254,7 +271,7 @@ class OptimizationService:
                 participants, cfg, status_box=status_box
             )
         except (ValueError, KeyError) as e:
-            logger.error("OptimizationService validation failed: %s", e)
+            logger.error("OptimizationService validation failed", exc_info=True)
             metrics = {"status": "ERROR", "error": str(e), "elapsed": 0.0}
             return None, metrics
         except Exception:

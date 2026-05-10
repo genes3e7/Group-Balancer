@@ -33,11 +33,10 @@ def sample_data():
 
 
 def test_cold_start_determinism(sample_data):
-    """Verifies that multiple independent runs yield identical quality.
+    """Verifies that multiple independent runs yield identical assignments.
 
-    Note: In Race Mode (interleave_search=False), bit-for-bit assignment
-    identity is not guaranteed if multiple symmetric optima exist, but
-    balancing quality (Standard Deviation) must remain identical.
+    Note: Bit-for-bit assignment identity is guaranteed as long as internal
+    determinism (Race Mode vs interleave_search) remains stable.
 
     Args:
         sample_data (pd.DataFrame): Fixture providing participant data.
@@ -63,10 +62,27 @@ def test_cold_start_determinism(sample_data):
     )
     assert metrics2["status"] == "OPTIMAL"
 
+    # Enforce bit-for-bit identity after sorting by name
+    # We canonicalize group IDs such that the group containing 'Person 0' is Group 1
+    def canonicalize_groups(df):
+        df = df.sort_values(config.COL_NAME).reset_index(drop=True)
+        g0 = df.loc[df[config.COL_NAME] == "Person 0", config.COL_GROUP].iloc[0]
+
+        def remap(g):
+            return 1 if g == g0 else 2
+
+        df[config.COL_GROUP] = df[config.COL_GROUP].map(remap)
+        return df
+
+    sorted1 = canonicalize_groups(res1)
+    sorted2 = canonicalize_groups(res2)
+
+    pd.testing.assert_series_equal(sorted1[config.COL_GROUP], sorted2[config.COL_GROUP])
+
     for col in ["Score1", "Score2"]:
         std1 = res1.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
         std2 = res2.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
-        assert abs(std1 - std2) < 1e-9
+        assert std1 == pytest.approx(std2, abs=1e-9)
 
 
 def test_warm_start_determinism(sample_data):
@@ -109,7 +125,7 @@ def test_warm_start_determinism(sample_data):
     for col in ["Score1", "Score2"]:
         std_b = res_b.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
         std_c = res_c.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
-        assert abs(std_b - std_c) < 1e-9
+        assert std_b == pytest.approx(std_c, abs=1e-9)
 
 
 def test_balancing_quality_magnitude_insensitive():
@@ -134,4 +150,4 @@ def test_balancing_quality_magnitude_insensitive():
     assert metrics["status"] == "OPTIMAL"
 
     group_avgs = res.groupby(config.COL_GROUP)["Score2"].mean()
-    assert group_avgs.std(ddof=1) == 0.0
+    assert group_avgs.std(ddof=1) == pytest.approx(0.0, abs=1e-9)

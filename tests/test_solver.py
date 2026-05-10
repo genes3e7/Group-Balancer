@@ -226,7 +226,14 @@ def test_solver_zero_sum_weighted_error():
 
 
 def test_solver_tie_breaker_pressure():
-    """Verify the tie-breaker ensures canonical ordering for symmetric optima."""
+    """Verify the tie-breaker ensures canonical ordering for symmetric optima.
+
+    This test validates that the tie-breaker term in get_model:
+    sum(g * original_index * x_ig) forces P1 (original_index=1) into group 1
+    and P0 (original_index=0) into group 2, because the solver minimizes the
+    objective. P0 has the lower index, so the solver prefers assigning it to
+    the group with the higher index (group 2) to minimize g*index.
+    """
     p = [
         {"Name": "P0", "Score1": 10, "Separators": "A"},
         {"Name": "P1", "Score1": 10, "Separators": "B"},
@@ -296,16 +303,22 @@ def test_solver_clean_helpers():
     assert _clean_score_cell("not a float") == 0.0
     assert _clean_score_cell(12.5) == 12.5
     assert _clean_score_cell([]) == 0.0
+    assert _clean_score_cell(float("nan")) == 0.0
+    assert _clean_score_cell(float("inf")) == 0.0
 
 
 def test_solver_multi_dimension_symmetry_breaking():
     """Ensure group symmetry breaking only applies to the first canonical dimension.
 
-    We use two participants with identical S1 scores but different S2 scores.
-    The tie-breaker naturally favors an assignment that would violate
-    symmetry-breaking on S2 (G1_S2 <= G2_S2). If the solver returns that
-    assignment, it proves S2 symmetry was NOT broken.
+    Scenario 1: S1=10/10, S2=10/20. S1 is canonical (alphabetical).
+    Symmetry breaking on S1 is non-binding (g1_S1 <= g2_S1 is always 10 <= 10).
+    The tie-breaker favors P1 in G2 (lowest index in highest group).
+    If S2 symmetry was binding, P2 (higher S2) would forced into G2.
+
+    Scenario 2: Mirror swap. S1=10/20, S2=10/10. S1 is still canonical.
+    Symmetry breaking on S1 is now binding (g1_S1 <= g2_S1 -> G1 must have P1).
     """
+    # Case 1
     participants = [
         {"Name": "P1", "Score1": 10, "Score2": 10},
         {"Name": "P2", "Score1": 10, "Score2": 20},
@@ -313,9 +326,20 @@ def test_solver_multi_dimension_symmetry_breaking():
     cfg = get_solver_config(2, [1, 1], weights={"Score1": 1.0, "Score2": 1.0})
     results, status, _ = solver.solve_with_ortools(participants, cfg)
     assert status == cp_model.OPTIMAL
-
     p1 = next(r for r in results if r[config.COL_NAME] == "P1")
+    # P1 pushed to G2 by tie-breaker because S1 symmetry is not binding
     assert p1[config.COL_GROUP] == 2
+
+    # Case 2: Mirror swap. S1 is now binding.
+    p_mirror = [
+        {"Name": "P1", "Score1": 10, "Score2": 10},
+        {"Name": "P2", "Score1": 20, "Score2": 10},
+    ]
+    res_m, status_m, _ = solver.solve_with_ortools(p_mirror, cfg)
+    assert status_m == cp_model.OPTIMAL
+    p1_m = next(r for r in res_m if r[config.COL_NAME] == "P1")
+    # P1 MUST be in G1 because G1_S1 <= G2_S1 (10 <= 20)
+    assert p1_m[config.COL_GROUP] == 1
 
 
 def test_solver_hint_range_warning():
@@ -334,10 +358,16 @@ def test_solver_hint_range_warning():
 
 
 def test_solver_identity_buckets_complex():
-    """Exercise the symmetry-aware hint mapping logic with multiple candidates."""
+    """Exercise the symmetry-aware hint mapping logic with duplicate candidates.
+
+    Construction:
+    - P1 and P2 are identical (Name, Scores, Tags).
+    - Hints assign P1 to Group 1 and P2 to Group 2.
+    - The loop must consume these hints in canonical order.
+    """
     p = [
-        Participant(name="P1", scores={"S1": 10}, original_index=0),
-        Participant(name="P2", scores={"S1": 10}, original_index=1),
+        Participant(name="Identical", scores={"S1": 10}, original_index=0),
+        Participant(name="Identical", scores={"S1": 10}, original_index=1),
     ]
     cfg = SolverConfig(
         num_groups=2,
@@ -351,8 +381,12 @@ def test_solver_identity_buckets_complex():
     # Capture AddHint calls via monkeypatching the model
     with patch.object(builder.model, "AddHint") as mock_add_hint:
         builder.add_solution_hints()
-        # Verify that hints were consumed for both participants
+        # Verify that hints were consumed for both participants in the zip loop
         assert mock_add_hint.call_count == 2
+        # Check first hint: p0 in g0 (int(1)-1)
+        mock_add_hint.assert_any_call(builder.x[(0, 0)], 1)
+        # Check second hint: p1 in g1 (int(2)-1)
+        mock_add_hint.assert_any_call(builder.x[(1, 1)], 1)
 
 
 def test_solver_aggregate_objective_error():

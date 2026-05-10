@@ -38,4 +38,5 @@ def render_app() -> None:
         session_manager.go_to_step(1)
 
 
-render_app()
+if __name__ == "__main__":
+    render_app()

@@ -210,8 +210,8 @@ def test_stale_hints_logging():
         # 3. Indices mismatch (structural)
         # Corrupt indices while keeping fingerprints valid-ish (by dropping them)
         res_no_fp = res1.copy().drop(columns=["participant_fingerprint"])
-        res_no_fp.at[0, "_original_index"] = 999
         res_no_fp.attrs = res1.attrs.copy()
+        res_no_fp.at[0, "_original_index"] = 999
         OptimizationService.run(
             data,
             [1],
@@ -235,15 +235,17 @@ def test_optimization_service_catches_runtime_exceptions():
     """Verify that the service captures and re-raises unexpected runtime errors."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     # Cause an error inside the try block
-    with patch("src.core.services.Participant", side_effect=RuntimeError("Fail")):
-        with pytest.raises(RuntimeError, match="Fail"):
-            OptimizationService.run(
-                df,
-                [1],
-                {"S1": 1.0},
-                ConflictPriority.GROUPERS,
-                10,
-            )
+    with (
+        patch("src.core.services.Participant", side_effect=RuntimeError("Fail")),
+        pytest.raises(RuntimeError, match="Fail"),
+    ):
+        OptimizationService.run(
+            df,
+            [1],
+            {"S1": 1.0},
+            ConflictPriority.GROUPERS,
+            10,
+        )
 
 
 def test_optimization_service_invalid_input_none():

@@ -42,15 +42,6 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Clarification**: Proactively ask for clarifications if a request or review is ambiguous, instead of making assumptions that might lead to technical debt.
 - **Technical Pushback**: Provide clear, reasoned technical explanations when resisting a change. Use data, performance metrics, or architectural principles to support your stance.
 
-## 📦 Build & Distribution
-
-### 1. Automated Tree Shaking
-
-- **Mechanism:** The `build.py` script implements a `TreeShaker` class that performs static analysis of `src/` and `app.py` to identify imported top-level modules.
-- **Exclusion:** It automatically calculates the difference between installed packages and required imports, feeding the delta to PyInstaller's `--exclude-module` flag.
-- **Benefit:** Drastically reduces build times (~50% faster) and bundle size by ensuring dev tools (`ruff`, `pytest`, `vulture`) and heavy bloat (`tkinter`, `matplotlib`) are never packaged.
-- **Safety:** Always explicitly protects core runtime dependencies (`streamlit`, `pandas`, `ortools`, `numpy`).
-
 ## Streamlit UI & Components
 
 ### 1. Parameter Deprecation: `use_container_width`
@@ -91,6 +82,11 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Lesson:** Move all third-party imports (like `re`) to the top-level module block to comply with E402 and ensure consistent initialization.
 - **Risk:** Local imports can lead to redundant overhead or confusing dependency cycles in long-running processes like `pre_ci.py`.
 
+### 8. File Upload Resilience
+
+- **Lesson:** Use a cryptographic hash (MD5) of raw file bytes (`uploaded.getvalue()`) rather than metadata (filename/size) to detect content edits.
+- **Risk:** Filename and size remain identical if a user corrects a single cell and re-uploads, causing Streamlit to skip re-processing and leading to stale data.
+
 ## Optimization & Solver (OR-Tools)
 
 ### 1. Symmetry Breaking
@@ -118,33 +114,33 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Lesson:** While absolute determinism can be achieved with `interleave_search = True`, it significantly slows down the optimality proof. For production speed, we use `num_search_workers = 8` and `interleave_search = False` (Race Mode).
 - **Guarantee:** Due to internal iteration sorting and tie-breaking branching strategies, the solver still guarantees bit-for-bit identical personnel assignment identities (not just identical quality) as verified by functional tests.
 
-### 4. Integer Range & Overflows
+### 5. Integer Range & Overflows
 
 - **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 62) - 1`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
 - **Implementation:** Theoretical bounds are tracked globally via `max_abs_diff_bound` to ensure `max_dev` and `sq_diff` variables stay within the 64-bit domain.
 - **Fail-Fast Guard:** The solver implements a strict `ValueError` in `get_model` if the theoretical aggregate objective sum exceeds $(1 \ll 62) - 1$, preventing unsafe solves at the architecture level.
 
-### 5. Categorical Constraints (Groupers/Separators)
+### 6. Categorical Constraints (Groupers/Separators)
 
 - **Design:** Every character in the tag string is treated as a unique constraint.
 - **Canonicalization:** Tags must be order- and whitespace-insensitive. Logic is extracted into `src/core/tag_utils.py`.
 
-### 6. Capacity-Aware Bounds
+### 7. Capacity-Aware Bounds
 
 - **Lesson:** Distribution bounds must be calculated relative to each group's specific capacity, rather than using a flat global average.
 
-### 7. Standard Deviation of Group Averages
+### 8. Standard Deviation of Group Averages
 
 - **Lesson:** To balance groups effectively, the metric of interest is the dispersion between the group averages, not individual participants. Uses Sample Standard Deviation (`ddof=1`) of group means.
 
-### 8. Squared Exact Math (L2 Optimization)
+### 9. Squared Exact Math (L2 Optimization)
 
 - **Architecture:** The solver minimizes the **Sum of Squared Deviations** (L2) rather than Absolute Error (L1).
 - **Benefit:** L2 is significantly more aggressive at eliminating outliers, leading to the "Way Lower" optimal Standard Deviation results desired by users.
 - **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
 - **Precision Mandate:** Use **Dynamic Precision Scaling** to automatically calculate the highest possible resolution (up to **0.001 precision**) that stays within 64-bit safety bounds for the given participant count.
 
-### 9. Priority Tiering (Lexicographic Bit-Slicing)
+### 10. Priority Tiering (Lexicographic Bit-Slicing)
 
 - **Mandate:** Logical constraints MUST always be met before score balancing occurs.
 - **Dynamic Hierarchy:** The UI 'Priority' toggle dynamically swaps the primary and secondary bit-slices:
@@ -154,7 +150,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
   - **Tier 4: Balance (L2 Squared Error, $10^0$):** Quaternary priority (Overall balance).
 - **Stable Identity:** Anchored to `original_index` to ensure that sorting in the UI never shifts the preferred mathematical optimal.
 
-### 10. Search & Branching Strategy
+### 11. Search & Branching Strategy
 
 - **Worker Portfolio:** Uses 8 search workers with `interleave_search = False` (Race Mode) to utilize multi-core performance for rapid proof of optimality.
 - **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes. Uses a deterministic tie-breaker (Impact DESC, Original Index ASC) to ensure search stability.
@@ -180,9 +176,18 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 ## 🧪 Testing Standards
 
-### 1. Mocking Streamlit Cache
+### 1. Mocking Streamlit Architecture
 
-- **Lesson:** Ensure all mocked arguments to `@st.cache_data` are serializable (no `MagicMock`).
+- **Lesson:** Use `unittest.mock.MagicMock` with explicit identity decorators for `@st.fragment` and `@st.cache_data` in `conftest.py`.
+- **Constraint:** Ensure all mocked arguments to cached functions are serializable. Guard application entry points with `if __name__ == "__main__":` to allow safe imports of UI modules in non-Streamlit environments.
+
+## 📦 Build & Distribution
+
+### 1. Automated Tree Shaking
+
+- **Mechanism:** The `build.py` script implements a `TreeShaker` class that performs static analysis of `src/` and `app.py` to identify imported top-level modules.
+- **Exclusion Strategy:** It calculates the delta between installed packages and required imports, feeding it to PyInstaller's `--exclude-module` flag.
+- **Safety:** Explicitly protects core runtime dependencies (`streamlit`, `pandas`, `ortools`, `numpy`) and avoids dynamic dependency analysis of the entire environment to prevent stripping of indirect sub-dependencies.
 
 ## 🗒️ Complex Change Management (Planning & State)
 

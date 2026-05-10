@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Solver Hardening - Aggregate Objective Guard:** Implemented a Fail-Fast `ValueError` if the theoretical maximum objective sum exceeds CP-SAT's 64-bit limits, ensuring absolute numerical safety.
 - **Solver Hardening - Scaling Enforcement:** Added `tests/test_scaling_tiers.py` to programmatically lock in the bit-slicing priority hierarchy and resolution constants.
 - **UI Hardening - State Clamping:** Added defensive session state clamping for group capacities to prevent out-of-bounds rendering when switching datasets.
-- **UI Hardening - Upload Signatures:** Implemented content-based signatures (MD5) for file uploads to robustly detect edits even if filename and size remain identical.
+- **UI Hardening - Upload Resilience:** Implemented MD5 cryptographic signatures for file uploads to robustly detect edits even if filename and size remain identical.
 - **UI Hardening - Selective Reset:** Optimized the 'Start Over' logic to preserve the high-value configuration cache while securely purging session-specific participant data.
 - **Async High-Performance UI:** Native CSS progress bars and fragmented rendering to ensure the tool feels "alive" and responsive during engine initialization.
 - **Detailed Solver Error Reporting:** The UI now surfaces specific optimization failure reasons (e.g., `INFEASIBLE`, `MODEL_INVALID`) with actionable troubleshooting tips.
@@ -38,8 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Solver Stability:** Resolved CP-SAT integer overflow risks using global theoretical bounds tracking (`max_abs_diff_bound`).
-- **Search Determinism:** Implemented deterministic tie-breaking in branching strategy (Impact DESC, Index ASC).
+- **Build Stability:** Hardened `TreeShaker` to catch and log file system errors and removed risky dynamic dependency scanning to protect indirect sub-dependencies.
+- **Solver Stability:** Resolved CP-SAT integer overflow risks using global theoretical bounds tracking (`max_abs_diff_bound`) and surfaced `random_seed` for total search control.
+- **Search Determinism:** Implemented deterministic tie-breaking in branching strategy (Impact DESC, Index ASC) and canonicalized group ID comparison in tests.
 - **Data Ingestion:** Hardened file upload validation with column header normalization and robust numeric coercion.
 - **Warm Start Reliability:** Hardened fingerprint validation to safely fall back to index-based hints if duplicate participant profiles are detected.
 - **CI Integrity:** Fixed version sorting logic, added safety guards for README updates, and enforced secure workflow permissions.

@@ -34,6 +34,10 @@ except ImportError:
             return None
 
 
+# UI-only normalization factor to scale large objective values for display
+_DISPLAY_OBJECTIVE_DIVISOR_FACTOR = 100
+
+
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
     """Custom OR-Tools callback to pipe logs to Streamlit."""
 
@@ -69,7 +73,11 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
             elapsed = max(0.01, current_time - self.start_time)
 
             # Scale down to human readable units
-            display_obj = obj / (config.SCALE_FACTOR * self.num_people * 100)
+            display_obj = obj / (
+                config.SCALE_FACTOR
+                * self.num_people
+                * _DISPLAY_OBJECTIVE_DIVISOR_FACTOR
+            )
 
             if self.status_placeholder:
                 with self.status_placeholder.container():
@@ -163,7 +171,9 @@ def run_optimization(
                 ):
                     st.write(f"Computation time: {elapsed:.2f}s")
                     display_obj = solver_inst.ObjectiveValue() / (
-                        config.SCALE_FACTOR * len(participants) * 100
+                        config.SCALE_FACTOR
+                        * len(participants)
+                        * _DISPLAY_OBJECTIVE_DIVISOR_FACTOR
                     )
                     st.write(f"Final weighted objective: {display_obj:.4f}")
 
@@ -190,6 +200,8 @@ def run_optimization(
         result_df.attrs["score_weights"] = dict(cfg.score_weights)
         result_df.attrs["conflict_priority"] = cfg.conflict_priority
         result_df.attrs["group_capacities"] = list(cfg.group_capacities)
+        result_df.attrs["grouper_weight"] = cfg.grouper_weight
+        result_df.attrs["separator_weight"] = cfg.separator_weight
 
         return result_df, metrics
 

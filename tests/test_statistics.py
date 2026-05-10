@@ -2,6 +2,7 @@
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from src.core import config
 from src.utils import group_helpers
@@ -42,9 +43,8 @@ def test_calculate_balancing_stats_exclude_unassigned():
     # Weighted Global Avg = (10*2 + 20*2) / (2+2) = 60/4 = 15.0
     # Std Dev of [10, 20] ≈ 7.0711
     assert stats[0]["Global Avg"] == 15.0
-    assert (
-        stats[0]["Avg Std Dev (Balance)"] < 10.0
-    )  # Definitely didn't include the 1000.0
+    expected_std = pd.Series([10.0, 20.0]).std(ddof=1)
+    assert stats[0]["Avg Std Dev (Balance)"] == pytest.approx(expected_std)
 
 
 def test_statistical_parity_between_ui_paths():

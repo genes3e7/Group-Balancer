@@ -32,7 +32,7 @@ def apply_solver_tuning(solver_inst: cp_model.CpSolver, cfg: SolverConfig) -> No
     solver_inst.parameters.num_search_workers = max(1, cfg.num_workers)
     # Race Mode: Use multiple workers without interleaving for speed
     solver_inst.parameters.interleave_search = False
-    solver_inst.parameters.random_seed = 42
+    solver_inst.parameters.random_seed = cfg.random_seed
 
     # Partitioning specific tuning
     solver_inst.parameters.linearization_level = 0
@@ -243,7 +243,7 @@ class ConstraintBuilder:
                 participant indices.
         """
         total_p = self.num_people
-        penalty = self.sep_multiplier
+        penalty_base = self.sep_multiplier
 
         for tag in sorted(separators.keys()):
             s_set = separators[tag]
@@ -261,6 +261,7 @@ class ConstraintBuilder:
                 overflow = self.model.NewIntVar(0, n_tag, f"overflow_{tag}_{g}")
                 self.model.Add(overflow >= count - limit)
 
+                penalty = int(penalty_base * self.cfg.separator_weight)
                 self.objectives.append(overflow * penalty)
                 self.objective_bounds.append(n_tag * penalty)
 
@@ -271,6 +272,7 @@ class ConstraintBuilder:
             strategy (ScoringStrategy): Scoring strategy to use.
         """
         vectors = strategy.get_score_vectors(self.participants, self.cfg)
+        max_int_limit = (1 << 62) - 1
 
         for name, scores, weight in vectors:
             total_score = sum(scores)
@@ -317,14 +319,14 @@ class ConstraintBuilder:
                 self.model.Add(diff == g_sums[g] * self.num_people - target_product)
 
                 # Lexicographical Fairness Component (Tier 3)
-                a_diff = self.model.NewIntVar(0, local_diff_bound, f"abs_{name}_{g}")
+                capped_abs_bound = min(max_int_limit, local_diff_bound)
+                a_diff = self.model.NewIntVar(0, capped_abs_bound, f"abs_{name}_{g}")
                 self.model.AddAbsEquality(a_diff, diff)
                 abs_diffs.append(a_diff)
 
                 # L2 Squared Error (Tier 4)
                 # Capped at (1 << 62) - 1 for 64-bit safe math
-                sq_limit = (1 << 62) - 1
-                capped_sq_bound = min(sq_limit, local_diff_bound**2)
+                capped_sq_bound = min(max_int_limit, local_diff_bound**2)
                 sq_diff = self.model.NewIntVar(0, capped_sq_bound, f"sq_{name}_{g}")
                 self.model.AddMultiplicationEquality(sq_diff, [diff, diff])
 
@@ -337,7 +339,7 @@ class ConstraintBuilder:
 
             # Max-Min Fairness Tier
             # Dynamically compute upper bound to prevent 32-bit overflow errors.
-            computed_max_bound = min((1 << 62) - 1, max_abs_diff_bound)
+            computed_max_bound = min(max_int_limit, max_abs_diff_bound)
             max_dev = self.model.NewIntVar(0, computed_max_bound, f"maxdev_{name}")
             self.model.AddMaxEquality(max_dev, abs_diffs)
 
@@ -422,21 +424,22 @@ class ConstraintBuilder:
             if group_id is not None:
                 try:
                     g_idx = int(group_id) - 1
-                    if 0 <= g_idx < self.num_groups:
-                        hinted_groups[p_idx] = g_idx
-                    else:  # pragma: no cover
-                        logger.warning(
-                            "Warm-start hint out of range for Participant#%d: %s",
-                            p_idx,
-                            group_id,
-                        )
-                except (ValueError, TypeError):  # pragma: no cover
+                except (ValueError, TypeError):
                     logger.warning(
                         "Invalid warm-start hint type for Participant#%d: %s",
                         p_idx,
                         group_id,
                     )
                     continue
+
+                if 0 <= g_idx < self.num_groups:
+                    hinted_groups[p_idx] = g_idx
+                else:
+                    logger.warning(
+                        "Warm-start hint out of range for Participant#%d: %s",
+                        p_idx,
+                        group_id,
+                    )
 
         # Symmetry-aware hint mapping:
         # Prevents identical participants from drifting by consuming hints
@@ -461,7 +464,7 @@ class ConstraintBuilder:
                 hinted_groups[idx] for idx in indices if idx in hinted_groups
             )
             zipped_hints = zip(indices, valid_hinted_g_idxs, strict=False)
-            for p_idx, g_idx in zipped_hints:  # pragma: no cover
+            for p_idx, g_idx in zipped_hints:
                 self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
     def add_branching_strategy(self) -> None:

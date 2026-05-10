@@ -19,13 +19,15 @@ def test_load_uploaded_file_missing_cols():
     mock_file = MagicMock()
     mock_file.name = "test.csv"
     bad_df = pd.DataFrame({"Wrong": [1]})
-    with patch("src.ui.steps.st") as mock_st:
-        with patch("pandas.read_csv", return_value=bad_df):
-            success, _ = steps._process_uploaded_file(mock_file)
-            assert not success
-            mock_st.error.assert_called_with(
-                "File missing required columns: Name and Score*"
-            )
+    with (
+        patch("src.ui.steps.st") as mock_st,
+        patch("pandas.read_csv", return_value=bad_df),
+    ):
+        success, _ = steps._process_uploaded_file(mock_file)
+        assert not success
+        mock_st.error.assert_called_with(
+            "File missing required columns: Name and Score*"
+        )
 
 
 def test_process_uploaded_file_excel_read_failure():
@@ -88,7 +90,10 @@ def test_render_step_2_no_data_back_navigation():
 
 
 def test_render_step_2_solver_fail_metrics():
-    """Verify that solver failure metrics are correctly surfaced in UI state."""
+    """Verify that solver failure metrics are correctly surfaced in UI state.
+
+    This test exercises the .get() access pattern for warm_start_cache.
+    """
     mock_df = pd.DataFrame(
         {
             config.COL_NAME: ["P1"],
@@ -98,7 +103,6 @@ def test_render_step_2_solver_fail_metrics():
         }
     )
     mock_state = MagicMock()
-    mock_state.warm_start_cache = {}
     mock_state.get.side_effect = lambda k, d=None: {
         "participants_df": mock_df,
         "score_cols": ["Score1"],
@@ -120,7 +124,6 @@ def test_render_step_2_solver_fail_metrics():
         mock_st.number_input.return_value = 1
         mock_st.radio.return_value = "groupers"
         mock_st.slider.return_value = 10
-        # Correctly size columns for all calls
         mock_st.columns.side_effect = lambda n, **_: (
             [MagicMock()] * (n if isinstance(n, int) else len(n))
         )

@@ -78,14 +78,14 @@ def test_results_renderer_grid_branches():
     score_cols = ["Score1"]
 
     with (
-        patch("streamlit.columns", return_value=[MagicMock()] * 3),
+        patch("streamlit.columns", return_value=[MagicMock()] * 3) as mock_cols,
         patch("src.ui.results_renderer._render_single_card"),
     ):
         results_renderer.render_group_cards(df, score_cols)
-        assert True
+        assert mock_cols.called
 
 
-def test_results_renderer_single_card_with_members():
+def test_results_renderer_single_card_with_members(mock_streamlit_columns):
     """Verify card rendering with members and tags."""
     group = {
         "id": 1,
@@ -104,15 +104,10 @@ def test_results_renderer_single_card_with_members():
 
     mock_state = DummySessionState({"num_groups_target": 2})
 
-    def mock_cols(n, **_):
-        m = MagicMock()
-        m.number_input.return_value = 1.0
-        return [m] * (n if isinstance(n, int) else len(n))
-
     with (
         patch("streamlit.container"),
         patch("streamlit.markdown"),
-        patch("streamlit.columns", side_effect=mock_cols),
+        patch("streamlit.columns", side_effect=mock_streamlit_columns),
         patch("streamlit.data_editor") as mock_editor,
         patch("streamlit.expander"),
         patch("streamlit.metric"),
@@ -127,6 +122,10 @@ def test_results_renderer_single_card_with_members():
         results_renderer._render_single_card(group, ["Score1"])
 
         mock_editor.assert_called_once()
+        df_arg = mock_editor.call_args[0][0]
+        assert "Groupers" in df_arg.columns
+        assert "Score1" in df_arg.columns
+        assert "Group" in df_arg.columns
 
 
 def test_steps_render_3_cards():
@@ -167,13 +166,13 @@ def test_components_header_branches():
             components.render_step_progress(s)
 
 
-def test_steps_render_footer_actions():
+def test_steps_render_footer_actions(mock_streamlit_columns):
     """Verify footer actions render correctly."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Group": [1]})
     mock_state = DummySessionState({"interactive_df": mock_df})
 
     with (
-        patch("streamlit.columns", return_value=[MagicMock()] * 2),
+        patch("streamlit.columns", side_effect=mock_streamlit_columns),
         patch("src.utils.exporter.generate_excel_bytes", return_value=b"bytes"),
         patch("streamlit.download_button") as mock_dl,
         patch("streamlit.button"),
@@ -199,7 +198,7 @@ def test_steps_render_1():
         assert mock_editor.call_count == 1
 
 
-def test_steps_render_2():
+def test_steps_render_2(mock_streamlit_columns):
     """Verify Step 2 renders configuration elements."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = DummySessionState(
@@ -211,15 +210,10 @@ def test_steps_render_2():
         }
     )
 
-    def mock_cols(n, **_):
-        m = MagicMock()
-        m.number_input.return_value = 1.0
-        return [m] * (n if isinstance(n, int) else len(n))
-
     with (
         patch("streamlit.header"),
         patch("streamlit.subheader"),
-        patch("streamlit.columns", side_effect=mock_cols),
+        patch("streamlit.columns", side_effect=mock_streamlit_columns),
         patch("streamlit.number_input", return_value=1.0),
         patch("streamlit.radio", return_value="groupers"),
         patch("streamlit.slider") as mock_slider,
@@ -308,7 +302,7 @@ def test_steps_render_1_failure_paths():
         mock_err.assert_called_with("At least one score column is required.")
 
 
-def test_steps_render_2_navigation():
+def test_steps_render_2_navigation(mock_streamlit_columns):
     """Verify navigation buttons in Step 2."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = DummySessionState(
@@ -319,16 +313,10 @@ def test_steps_render_2_navigation():
         }
     )
 
-    def mock_cols(n, **_):
-        m = MagicMock()
-        m.number_input.return_value = 1.0
-        m.button.return_value = True
-        return [m] * (n if isinstance(n, int) else len(n))
-
     with (
         patch("streamlit.header"),
         patch("streamlit.subheader"),
-        patch("streamlit.columns", side_effect=mock_cols),
+        patch("streamlit.columns", side_effect=mock_streamlit_columns),
         patch("streamlit.button"),
         patch("streamlit.number_input", return_value=1.0),
         patch("streamlit.radio", return_value="groupers"),
@@ -450,7 +438,7 @@ def test_steps_start_over():
         mock_rerun.assert_called_once()
 
 
-def test_steps_render_2_clamped_groups():
+def test_steps_render_2_clamped_groups(mock_streamlit_columns):
     """Verify that groups are correctly clamped to participant count."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = DummySessionState(
@@ -461,15 +449,10 @@ def test_steps_render_2_clamped_groups():
         }
     )
 
-    def mock_cols(n, **_):
-        m = MagicMock()
-        m.number_input.return_value = 1.0
-        return [m] * (n if isinstance(n, int) else len(n))
-
     with (
         patch("streamlit.header"),
         patch("streamlit.subheader"),
-        patch("streamlit.columns", side_effect=mock_cols),
+        patch("streamlit.columns", side_effect=mock_streamlit_columns),
         patch("streamlit.number_input", return_value=1.0),
         patch("streamlit.radio", return_value="groupers"),
         patch("streamlit.slider"),
@@ -509,7 +492,7 @@ def test_render_step_2_initialization_fail():
             steps.render_step_2()
 
 
-def test_render_table_view_nan_std():
+def test_render_table_view_nan_std(mock_streamlit_columns):
     """Cover lines in steps.py where std_val might be NaN."""
     df = pd.DataFrame({config.COL_NAME: ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
     mock_state = DummySessionState(
@@ -520,7 +503,7 @@ def test_render_table_view_nan_std():
     )
 
     with (
-        patch("streamlit.columns", return_value=[MagicMock()] * 2),
+        patch("streamlit.columns", side_effect=mock_streamlit_columns),
         patch("streamlit.subheader"),
         patch("streamlit.data_editor", return_value=df),
         patch("streamlit.metric"),
@@ -530,7 +513,7 @@ def test_render_table_view_nan_std():
         steps._render_table_view(["S1"])
 
 
-def test_render_footer_reset_hit_proper_mock():
+def test_render_footer_reset_hit_proper_mock(mock_streamlit_columns):
     """Verify reset logic via 'Start Over' button."""
     df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
 
@@ -542,14 +525,13 @@ def test_render_footer_reset_hit_proper_mock():
     )
 
     with patch("pandas.DataFrame.copy", return_value=df_orig.copy()):
-        c_back = MagicMock()
-        c_reset = MagicMock()
-        c_back.button.return_value = False
-        c_reset.button.return_value = True
-
         with (
             patch("src.ui.steps.st") as mock_st_in_steps,
             patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"),
+            patch(
+                "src.ui.steps.pd.util.hash_pandas_object",
+                return_value=pd.Series([1]),
+            ),
         ):
             mock_state = MagicMock()
             mock_state.__getitem__.side_effect = session_state.__getitem__
@@ -559,7 +541,12 @@ def test_render_footer_reset_hit_proper_mock():
             mock_state.interactive_df = session_state["interactive_df"]
 
             mock_st_in_steps.session_state = mock_state
-            mock_st_in_steps.columns.return_value = [c_back, c_reset]
+
+            # Setup columns with button factory
+            m_back, m_reset = MagicMock(), MagicMock()
+            m_back.button.return_value = False
+            m_reset.button.return_value = True
+            mock_st_in_steps.columns.return_value = [m_back, m_reset]
 
             steps._render_footer_actions(["S1"])
             mock_st_in_steps.rerun.assert_called()
@@ -567,7 +554,7 @@ def test_render_footer_reset_hit_proper_mock():
             assert "warm_start_cache" in session_state
 
 
-def test_steps_render_2_solver_failure_surface():
+def test_steps_render_2_solver_failure_surface(mock_streamlit_columns):
     """Cover the failure branch in render_step_2 when result_df is None."""
     mock_df = pd.DataFrame(
         {
@@ -586,15 +573,10 @@ def test_steps_render_2_solver_failure_surface():
         }
     )
 
-    def mock_cols(n, **_):
-        m = MagicMock()
-        m.number_input.return_value = 1.0
-        return [m] * (n if isinstance(n, int) else len(n))
-
     with (
         patch("streamlit.header"),
         patch("streamlit.subheader"),
-        patch("streamlit.columns", side_effect=mock_cols),
+        patch("streamlit.columns", side_effect=mock_streamlit_columns),
         patch("streamlit.number_input", return_value=1.0),
         patch("streamlit.radio", return_value="groupers"),
         patch("streamlit.slider", return_value=10),
@@ -605,12 +587,19 @@ def test_steps_render_2_solver_failure_surface():
         patch("src.ui.session_manager.go_to_step") as mock_go,
         patch("streamlit.session_state", mock_state),
     ):
-        mock_run.return_value = (
-            None,
-            {"status": "INFEASIBLE", "elapsed": 0.5, "error": "No solution"},
-        )
+        c1, c2 = MagicMock(), MagicMock()
+        g_col = MagicMock()
+        c_back, c_go = MagicMock(), MagicMock()
+        c_go.button.return_value = True
+        c_back.button.return_value = False
 
-        steps.render_step_2()
+        with patch("streamlit.columns") as mock_cols:
+            mock_cols.side_effect = [[c1, c2], [g_col], [c_back, c_go]]
+            mock_run.return_value = (
+                None,
+                {"status": "INFEASIBLE", "elapsed": 0.5, "error": "No solution"},
+            )
+            steps.render_step_2()
 
         assert mock_state.get("results_df") is None
         assert mock_state.solver_error == "No solution"

@@ -92,36 +92,16 @@ class TreeShaker:
                     match = self.import_re.match(line.strip())
                     if match:
                         imports.add(match.group(1))
-        except Exception:
-            pass
+        except (FileNotFoundError, PermissionError, UnicodeDecodeError) as e:
+            print(f"⚠️ Warning: Failed to scan {path}: {e}")
         return imports
-
-    def get_installed_packages(self) -> set[str]:
-        """Queries the current environment for installed package names."""
-        try:
-            res = subprocess.run(
-                ["uv", "pip", "list"],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            packages = set()
-            for line in res.stdout.splitlines()[2:]:  # Skip headers
-                parts = line.split()
-                if parts:
-                    # Normalize names to lowercase for comparison
-                    packages.add(parts[0].lower().replace("-", "_"))
-            return packages
-        except Exception:
-            return set()
 
     def generate_exclusion_list(self) -> list[str]:
         """Computes the final list of modules to exclude from the bundle."""
         imported = {i.lower() for i in self.find_all_imports()}
-        installed = self.get_installed_packages()
 
-        # Logic: Exclude if (installed AND not imported) OR is
-        # BANNED_BLOAT OR is DEV_PACKAGES.
+        # Logic: Exclude if BANNED_BLOAT OR is DEV_PACKAGES.
+        # Dynamic exclusion is disabled to protect indirect dependencies.
         excludes = set()
 
         # 1. Add all dev packages
@@ -132,17 +112,6 @@ class TreeShaker:
         for bloat in self.BANNED_BLOAT:
             if bloat.lower() not in imported:
                 excludes.add(bloat)
-
-        # 3. Dynamic shake: installed packages that are NOT imported
-        # This is the most aggressive part.
-        for pkg in installed:
-            # Protect core dependencies and themselves
-            if pkg in imported or pkg in ["streamlit", "pandas", "numpy", "ortools"]:
-                continue
-            # Also protect standard project structure
-            if pkg == "src":
-                continue
-            excludes.add(pkg)
 
         return sorted(list(excludes))
 
