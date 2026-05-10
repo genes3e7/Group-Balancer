@@ -26,7 +26,17 @@ def make_participants(
     groupers: list[str] | None = None,
     separators: list[str] | None = None,
 ) -> list[dict]:
-    """Helper to generate mock participant data."""
+    """Helper to generate mock participant data.
+
+    Args:
+        count (int): Number of participants to create.
+        score (float): Default score for each participant.
+        groupers (list[str] | None): Optional list of grouper tags.
+        separators (list[str] | None): Optional list of separator tags.
+
+    Returns:
+        list[dict]: List of participant dictionaries.
+    """
     if groupers is None:
         groupers = [""] * count
     if separators is None:
@@ -56,7 +66,18 @@ def get_solver_config(
     mode: OptimizationMode = OptimizationMode.ADVANCED,
     priority: ConflictPriority = ConflictPriority.GROUPERS,
 ) -> SolverConfig:
-    """Helper to create SolverConfig."""
+    """Helper to create SolverConfig.
+
+    Args:
+        num_groups (int): Number of groups.
+        capacities (list[int]): Group capacities.
+        weights (dict[str, float] | None): Optional score weights.
+        mode (OptimizationMode): Optimization mode.
+        priority (ConflictPriority): Conflict priority.
+
+    Returns:
+        SolverConfig: The constructed configuration.
+    """
     if weights is None:
         weights = {SCORE_COL: 1.0}
     return SolverConfig(
@@ -219,29 +240,6 @@ def test_scoring_strategy_pass():
     with patch.multiple(ScoringStrategy, __abstractmethods__=frozenset()):
         strategy = ScoringStrategy()
         assert strategy.get_score_vectors([], None) is None
-
-
-def test_solver_extreme_value_error():
-    """Cover ValueError for safety bound violation."""
-    # Use two participants with different scores to ensure non-zero deviation
-    participants = [
-        Participant(name="P1", scores={"S1": 100.0}),
-        Participant(name="P2", scores={"S1": 0.0}),
-    ]
-    # Weight high enough to trigger safety bound (> 2^62)
-    huge_weight = 1e16
-    with patch("src.core.models.SolverConfig.validate_safety_bounds"):
-        cfg = SolverConfig(
-            num_groups=2, group_capacities=[1, 1], score_weights={"S1": huge_weight}
-        )
-    from src.core.solver import AdvancedScoring, ConstraintBuilder
-
-    strategy = AdvancedScoring()
-    builder = ConstraintBuilder(participants, cfg)
-    builder.build_variables()
-    msg = "Objective aggregate exceeds safety bound"
-    with pytest.raises(ValueError, match=msg):
-        builder.add_scoring_objectives(strategy)
 
 
 def test_solver_zero_sum_weighted_error():

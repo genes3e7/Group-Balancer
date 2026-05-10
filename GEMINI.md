@@ -84,8 +84,8 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Warm Start Logic:** `OptimizationService.run` validates the multiset of fingerprints and configuration. If identical, it applies assignments to seed the solver.
 - **Risk:** Using indices for warm starts after reordering causes "hallucinated" hints.
 
-### 3. Absolute Solver Determinism
-- **Lesson:** Absolute determinism is maintained even in multi-core modes by using `num_search_workers = 8` combined with `interleave_search = True` and a fixed `random_seed = 42`.
+### 3. Solver Determinism vs. Speed (Race Mode)
+- **Lesson:** While absolute determinism can be achieved with `interleave_search = True`, it significantly slows down the optimality proof. For production speed, we use `num_search_workers = 8` and `interleave_search = False` (Race Mode). This guarantees identical Standard Deviations (quality) on OPTIMAL, but personnel assignments might swap between identical profiles.
 - **Consistency:** All internal iterations (tags, participants) are explicitly sorted before adding constraints to ensure the search tree is built identically across runs.
 
 ### 4. Integer Range & Overflows
@@ -108,17 +108,17 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
 - **Precision Mandate:** Use `norm_multiplier = 1000 * len(participants)` to provide **0.001 precision**. This granularity is confirmed as necessary for L2 math to achieve peak balancing quality.
 
-### 9. Priority Tiering (Calibrated Bit-Slicing)
+### 9. Priority Tiering (Lexicographic Bit-Slicing)
 - **Mandate:** Logical constraints MUST always be met before score balancing occurs.
-- **Tiers:**
-    - **Tier 1: Separators ($10^{12}$):** Highest priority (Disperse). Max total $\approx 10^{15}$.
-    - **Tier 2: Groupers ($10^9$):** Secondary priority (Cohesion). Max total $\approx 10^{12}$.
-    - **Tier 3: Balance (L2 Squared Error, $\approx 10^{10}$):** Tertiary priority (Balancing). Multiplied by $100$ for tie-breaker separation.
-    - **Tier 4: Tie-Breaker ($10^0$):** Lowest priority (Determinism).
+- **Tiers (Multipliers):**
+    - **Tier 1: Separators ($10^{12}$):** Highest priority (Disperse).
+    - **Tier 2: Groupers ($10^9$):** Secondary priority (Cohesion).
+    - **Tier 3: Max-Min Fairness ($10^7$):** Tertiary priority (Minimize worst outlier).
+    - **Tier 4: Balance (L2 Squared Error, $10^0$):** Quaternary priority (Overall balance).
 - **Stable Identity:** Anchored to `original_index` to ensure that sorting in the UI never shifts the preferred mathematical optimal.
 
 ### 10. Search & Branching Strategy
-- **Worker Portfolio:** Uses 8 search workers with `interleave_search = True` to utilize multi-core performance while guaranteeing thread-safe, repeatable results.
+- **Worker Portfolio:** Uses 8 search workers with `interleave_search = False` (Race Mode) to utilize multi-core performance for rapid proof of optimality.
 - **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes. This prunes high-variance branches earlier in the search tree and accelerates both finding and proving optimality.
 
 ## Data Handling

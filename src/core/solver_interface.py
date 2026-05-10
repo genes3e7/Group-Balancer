@@ -204,7 +204,6 @@ def run_optimization(
         result_df.attrs["opt_mode"] = cfg.opt_mode
         result_df.attrs["conflict_priority"] = cfg.conflict_priority
         result_df.attrs["group_capacities"] = list(cfg.group_capacities)
-        result_df.attrs["strict_groupers"] = cfg.strict_groupers
 
         return result_df, metrics
 

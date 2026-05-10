@@ -108,6 +108,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   ├── test_exporter.py
 │   ├── test_infra.py
 │   ├── test_models_unit.py
+│   ├── test_scaling_tiers.py
 │   ├── test_services.py
 │   ├── test_solver.py
 │   ├── test_solver_interface.py
@@ -119,7 +120,6 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── tools/
 │   ├── __init__.py
 │   ├── pre_ci.py
-│   ├── test_determinism.py
 │   └── update_readme.py
 └── uv.lock
 ```

@@ -1,5 +1,4 @@
-"""
-Core optimization logic using Google OR-Tools.
+"""Core optimization logic using Google OR-Tools.
 
 Refactored to use Builder and Strategy patterns for professional standards,
 SRP, and Open/Closed principles.
@@ -27,7 +26,7 @@ def apply_solver_tuning(solver_inst: cp_model.CpSolver) -> None:
     """Applies optimal CP-SAT parameters for group partitioning math.
 
     Args:
-        solver_inst: The OR-Tools solver instance to configure.
+        solver_inst (cp_model.CpSolver): The OR-Tools solver instance to configure.
     """
     solver_inst.parameters.linearization_level = 0
     solver_inst.parameters.symmetry_level = 2
@@ -37,7 +36,11 @@ class SolutionPrinter(cp_model.CpSolverSolutionCallback):
     """Callback to log intermediate solutions found by the solver."""
 
     def __init__(self, start_time: float):
-        """Initializes the printer with the solver start time."""
+        """Initializes the printer with the solver start time.
+
+        Args:
+            start_time (float): Time the solver started execution.
+        """
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.__start_time = start_time
         self.__solution_count = 0
@@ -65,14 +68,30 @@ class TagProcessor:
 
     @staticmethod
     def get_tags(val: str) -> set[str]:
-        """Extracts unique characters as tags, ignoring whitespace and commas."""
+        """Extracts unique characters as tags, ignoring whitespace and commas.
+
+        Args:
+            val (str): Raw string containing tags.
+
+        Returns:
+            set[str]: Set of unique character tags.
+        """
         return canonicalize_tags(val)
 
     @classmethod
     def process_participants(
         cls, participants: list[Participant], priority: ConflictPriority
     ) -> tuple[dict[str, set[int]], dict[str, set[int]]]:
-        """Generates grouper and separator sets with conflict resolution."""
+        """Generates grouper and separator sets with conflict resolution.
+
+        Args:
+            participants (list[Participant]): List of participants to process.
+            priority (ConflictPriority): Priority to resolve overlapping tags.
+
+        Returns:
+            tuple[dict[str, set[int]], dict[str, set[int]]]: Mappings of tags to
+                participant indices.
+        """
         groupers: dict[str, set[int]] = {}
         separators: dict[str, set[int]] = {}
 
@@ -105,7 +124,15 @@ class ScoringStrategy(ABC):
     def get_score_vectors(
         self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Returns score vectors for each dimension to be optimized."""
+        """Returns score vectors for each dimension to be optimized.
+
+        Args:
+            participants (list[Participant]): List of participants.
+            cfg (SolverConfig): Solver configuration.
+
+        Returns:
+            list[tuple[str, list[int], int]]: List of (name, scores, weight) tuples.
+        """
         pass
 
 
@@ -115,7 +142,15 @@ class AdvancedScoring(ScoringStrategy):
     def get_score_vectors(
         self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Generates normalized score vectors for each dimension."""
+        """Generates normalized score vectors for each dimension.
+
+        Args:
+            participants (list[Participant]): List of participants.
+            cfg (SolverConfig): Solver configuration.
+
+        Returns:
+            list[tuple[str, list[int], int]]: List of normalized score vectors.
+        """
         vectors = []
         for col in sorted(cfg.score_weights.keys()):
             weight = cfg.score_weights[col]
@@ -129,8 +164,7 @@ class AdvancedScoring(ScoringStrategy):
             if raw_total == 0:
                 raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
 
-            # High-Resolution: 1,000 * N (0.001 precision)
-            # This provides the necessary granularity for superior L2 balancing.
+            # High-Resolution Baseline: 1,000 * N (0.001 precision)
             norm_multiplier = 1000 * len(participants)
             scores = [int(round((s * norm_multiplier) / raw_total)) for s in scaled_raw]
 
@@ -144,7 +178,16 @@ class SimpleScoring(ScoringStrategy):
     def get_score_vectors(
         self, participants: list[Participant], cfg: SolverConfig
     ) -> list[tuple[str, list[int], int]]:
-        """Generates a single pre-aggregated and normalized score vector."""
+        """Generates a single pre-aggregated and normalized score vector.
+
+        Args:
+            participants (list[Participant]): List of participants.
+            cfg (SolverConfig): Solver configuration.
+
+        Returns:
+            list[tuple[str, list[int], int]]: Single-entry list with the total
+                score vector.
+        """
         total_normalized_scores = [0.0] * len(participants)
 
         for col in sorted(cfg.score_weights.keys()):
@@ -159,7 +202,7 @@ class SimpleScoring(ScoringStrategy):
             if raw_total == 0:
                 raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
 
-            # High-Resolution: 1,000 * N
+            # High-Resolution Baseline: 1,000 * N
             norm_multiplier = 1000 * weight * len(participants)
             for i, s in enumerate(scaled_raw):
                 total_normalized_scores[i] += (s * norm_multiplier) / raw_total
@@ -172,7 +215,12 @@ class ConstraintBuilder:
     """Stateful builder for constructing the CP-SAT partition model."""
 
     def __init__(self, participants: list[Participant], cfg: SolverConfig):
-        """Initializes the model builder."""
+        """Initializes the model builder.
+
+        Args:
+            participants (list[Participant]): List of participants.
+            cfg (SolverConfig): Solver configuration.
+        """
         self.participants = participants
         self.cfg = cfg
         self.num_people = len(participants)
@@ -180,7 +228,6 @@ class ConstraintBuilder:
         self.model = cp_model.CpModel()
         self.x = {}  # (p_idx, g_idx) -> BoolVar
         self.objectives = []
-        self.max_objective_bound = 0
         self._symmetry_broken = False
 
     def build_variables(self) -> None:
@@ -197,7 +244,12 @@ class ConstraintBuilder:
             )
 
     def add_separator_penalties(self, separators: dict[str, set[int]]) -> None:
-        """Adds Tier 1 penalties ($10^12$) for separator violations."""
+        """Adds Tier 1 penalties ($10^12$) for separator violations.
+
+        Args:
+            separators (dict[str, set[int]]): Mapping of separator tags to
+                participant indices.
+        """
         total_p = self.num_people
         for tag in sorted(separators.keys()):
             s_set = separators[tag]
@@ -218,10 +270,13 @@ class ConstraintBuilder:
                 # Tier 1 Penalty ($10^12$)
                 penalty = 1_000_000_000_000
                 self.objectives.append(overflow * penalty)
-                self.max_objective_bound += n_tag * penalty
 
     def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
-        """Builds Tier 3 objectives using L2 (Squared Error) minimization."""
+        """Builds objectives using Max-Min Fairness and L2 Balance.
+
+        Args:
+            strategy (ScoringStrategy): Scoring strategy to use.
+        """
         vectors = strategy.get_score_vectors(self.participants, self.cfg)
 
         for name, scores, weight in vectors:
@@ -247,6 +302,7 @@ class ConstraintBuilder:
                         ):
                             self.model.Add(g_sums[g1] <= g_sums[g2])
 
+            abs_diffs = []
             for g in range(self.num_groups):
                 self.model.Add(
                     g_sums[g]
@@ -265,37 +321,34 @@ class ConstraintBuilder:
                 )
                 self.model.Add(diff == g_sums[g] * self.num_people - target_product)
 
-                # L2 Squared Error for peak Standard Deviation reduction
+                # 1. Component for Max-Min Fairness (Tier 3)
+                a_diff = self.model.NewIntVar(0, local_diff_bound, f"abs_{name}_{g}")
+                self.model.AddAbsEquality(a_diff, diff)
+                abs_diffs.append(a_diff)
+
+                # 2. L2 Squared Error (Tier 4)
                 sq_diff = self.model.NewIntVar(0, local_diff_bound**2, f"sq_{name}_{g}")
                 self.model.AddMultiplicationEquality(sq_diff, [diff, diff])
 
-                # Combine with user weight
-                w_sq_diff = self.model.NewIntVar(
-                    0, (local_diff_bound**2) * weight, f"wsq_{name}_{g}"
-                )
-                self.model.Add(w_sq_diff == sq_diff * weight)
+                # Balance objective (Tier 4)
+                # No extra multiplier here; sq_diff provides its own scale (~10^14).
+                self.objectives.append(sq_diff * weight)
 
-                self.objectives.append(w_sq_diff)
-                self.max_objective_bound += (local_diff_bound**2) * weight
+            # 3. Add Tier 3: Lexicographical Max-Min Fairness (Multiplier 10^7)
+            # This prioritizes fixing the worst group before the overall balance.
+            max_dev = self.model.NewIntVar(0, 2**31 - 1, f"maxdev_{name}")
+            self.model.AddMaxEquality(max_dev, abs_diffs)
 
-                if self.max_objective_bound > (1 << 62) - 1:
-                    raise ValueError("Objective aggregate exceeds safety bound.")
+            # Tier 3 (10^7) ensures fairness outweighs total balance sum
+            self.objectives.append(max_dev * weight * 10_000_000)
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
-        """Adds Tier 2 penalties ($10^9$) for splitting grouper tags."""
-        if self.cfg.strict_groupers:
-            for tag in sorted(groupers.keys()):
-                g_set = groupers[tag]
-                if len(g_set) <= 1:
-                    continue
-                sorted_g_set = sorted(g_set)
-                for g in range(self.num_groups):
-                    used = self.model.NewBoolVar(f"used_{tag}_{g}")
-                    self.model.Add(
-                        sum(self.x[(i, g)] for i in sorted_g_set) == len(g_set) * used
-                    )
-            return
+        """Adds Tier 2 penalties ($10^9$) for splitting grouper tags.
 
+        Args:
+            groupers (dict[str, set[int]]): Mapping of grouper tags to
+                participant indices.
+        """
         for tag in sorted(groupers.keys()):
             g_set = groupers[tag]
             if len(g_set) <= 1:
@@ -309,12 +362,7 @@ class ConstraintBuilder:
                 # Tier 2 Penalty ($10^9$)
                 weight = self.cfg.grouper_weight
                 penalty = int(1_000_000_000 * weight)
-
                 self.objectives.append(used * penalty)
-                self.max_objective_bound += penalty
-
-                if self.max_objective_bound > (1 << 62) - 1:
-                    raise ValueError("Objective aggregate exceeds safety bound.")
 
     def add_participant_symmetry_breaking(self) -> None:
         """Enforces ordering for identical participants."""
@@ -388,11 +436,7 @@ class ConstraintBuilder:
                 self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
     def add_branching_strategy(self) -> None:
-        """Guides the solver to decide on high-impact participants first.
-
-        Orders decision variables so that participants with the largest absolute
-        score magnitudes are assigned to groups earlier in the search tree.
-        """
+        """Guides the solver to decide on high-impact participants first."""
         impacts = []
         for i, p in enumerate(self.participants):
             total_abs_score = sum(abs(s) for s in p.scores.values())
@@ -412,7 +456,11 @@ class ConstraintBuilder:
         )
 
     def get_model(self) -> cp_model.CpModel:
-        """Finalizes and returns the model with tiering and stable tie-breaker."""
+        """Finalizes and returns the model with tiering and stable tie-breaker.
+
+        Returns:
+            cp_model.CpModel: The constructed CP-SAT model.
+        """
         main_objective = sum(self.objectives)
 
         # Lexicographic tie-breaker ($10^0$)
@@ -424,14 +472,19 @@ class ConstraintBuilder:
             for g in range(self.num_groups)
         )
 
-        # Multiplier of 1,000 ensures balance wins over tie-breaker
-        # stays safely below the 10^18 ceiling.
-        self.model.Minimize(main_objective * 1000 + tie_breaker)
+        self.model.Minimize(main_objective + tie_breaker)
         return self.model
 
 
 def _is_missing(value: object) -> bool:
-    """Returns True for None and any pandas/NumPy scalar missing value."""
+    """Returns True for None and any pandas/NumPy scalar missing value.
+
+    Args:
+        value (object): Value to check.
+
+    Returns:
+        bool: True if the value is missing.
+    """
     if value is None:
         return True
     try:
@@ -441,14 +494,28 @@ def _is_missing(value: object) -> bool:
 
 
 def _clean_tag_cell(value: object) -> str:
-    """Coerces a raw tag cell to a string, treating NaN/None as empty."""
+    """Coerces a raw tag cell to a string, treating NaN/None as empty.
+
+    Args:
+        value (object): Raw cell value.
+
+    Returns:
+        str: Coerced string value.
+    """
     if _is_missing(value):
         return ""
     return str(value)
 
 
 def _clean_score_cell(value: object) -> float:
-    """Coerces a raw score cell to float, treating missing/blank as 0.0."""
+    """Coerces a raw score cell to float, treating missing/blank as 0.0.
+
+    Args:
+        value (object): Raw cell value.
+
+    Returns:
+        float: Coerced float value.
+    """
     if _is_missing(value):
         return 0.0
     if isinstance(value, str) and not value.strip():
@@ -462,7 +529,15 @@ def _clean_score_cell(value: object) -> float:
 def solve_with_ortools(
     participants_raw: list[dict], cfg: SolverConfig
 ) -> tuple[list[dict], int, float]:
-    """Primary entry point for the solver."""
+    """Primary entry point for the solver.
+
+    Args:
+        participants_raw (list[dict]): Raw data records for participants.
+        cfg (SolverConfig): Optimization settings and weights.
+
+    Returns:
+        tuple[list[dict], int, float]: Results, solver status, and elapsed time.
+    """
     participants = []
     for i, p in enumerate(participants_raw):
         raw_name = p.get(config.COL_NAME)

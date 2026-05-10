@@ -88,7 +88,6 @@ class OptimizationService:
         *,
         status_box=None,
         previous_results: pd.DataFrame | None = None,
-        strict_groupers: bool = False,
     ) -> tuple[pd.DataFrame | None, dict]:
         """
         Runs the group balancing optimization.
@@ -106,7 +105,6 @@ class OptimizationService:
             status_box: Optional Streamlit placeholder for live updates.
             previous_results: Optional DataFrame containing previous assignments
                 for solution hinting (warm start).
-            strict_groupers: If True, cohesion tags are hard constraints.
 
         Returns:
             tuple: (Results DataFrame or None, Metrics dictionary)
@@ -145,7 +143,6 @@ class OptimizationService:
                     == conflict_priority
                     and previous_results.attrs.get("group_capacities")
                     == group_capacities
-                    and previous_results.attrs.get("strict_groupers") == strict_groupers
                 )
 
                 if not config_match:
@@ -222,7 +219,6 @@ class OptimizationService:
                 conflict_priority=conflict_priority,
                 timeout_seconds=timeout_seconds,
                 hints=hints,
-                strict_groupers=strict_groupers,
             )
 
             return solver_interface.run_optimization(
