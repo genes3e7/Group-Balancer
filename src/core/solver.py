@@ -286,6 +286,7 @@ class ConstraintBuilder:
                             self.model.Add(g_sums[g1] <= g_sums[g2])
 
             abs_diffs = []
+            max_abs_diff_bound = 0
             for g in range(self.num_groups):
                 self.model.Add(
                     g_sums[g]
@@ -298,6 +299,7 @@ class ConstraintBuilder:
                 min_diff = t_min * self.num_people - target_product
                 max_diff = t_max * self.num_people - target_product
                 local_diff_bound = max(abs(min_diff), abs(max_diff))
+                max_abs_diff_bound = max(max_abs_diff_bound, local_diff_bound)
 
                 diff = self.model.NewIntVar(
                     -local_diff_bound, local_diff_bound, f"diff_{name}_{g}"
@@ -319,7 +321,7 @@ class ConstraintBuilder:
 
             # Max-Min Fairness Tier
             # Dynamically compute upper bound to prevent 32-bit overflow errors.
-            computed_max_bound = min((1 << 62) - 1, local_diff_bound)
+            computed_max_bound = min((1 << 62) - 1, max_abs_diff_bound)
             max_dev = self.model.NewIntVar(0, computed_max_bound, f"maxdev_{name}")
             self.model.AddMaxEquality(max_dev, abs_diffs)
 

@@ -276,6 +276,10 @@ def test_solver_soft_groupers_clamping():
     results, status, _ = solver.solve_with_ortools(p, cfg)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
+    # Verify that participants with grouper "T" (P0, P1) are in the same group
+    t_groups = {r[config.COL_GROUP] for r in results if "T" in r[config.COL_GROUPER]}
+    assert len(t_groups) == 1
+
 
 def test_solver_clean_helpers():
     """Cover _clean_tag_cell and _clean_score_cell edge cases."""
