@@ -33,6 +33,7 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
     any modules are imported by the test collection process.
     """
     import sys
+    import types
 
     # Identity decorator to ensure Streamlit decorators don't block execution
     def identity_decorator(*args: Any, **kwargs: Any) -> Callable[..., Any]:
@@ -40,20 +41,20 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
             return args[0]
         return lambda func: func
 
-    # Create a permissive but pre-configured stub for streamlit
-    if "streamlit" not in sys.modules:
-        mock_st = MagicMock()
-        mock_st.fragment = identity_decorator
-        mock_st.cache_data = identity_decorator
-        mock_st.session_state = DummySessionState()
-        sys.modules["streamlit"] = mock_st
-    else:
+    # Create a strict fail-fast stub for streamlit if it's not installed
+    try:
         import streamlit as st
+    except ModuleNotFoundError:
+        st = types.SimpleNamespace()
+        sys.modules["streamlit"] = st
 
-        st.fragment = identity_decorator
-        st.cache_data = identity_decorator
-        if not hasattr(st, "session_state"):
-            st.session_state = DummySessionState()
+    # Inject identity decorators to prevent collection-time execution blocks
+    st.fragment = identity_decorator
+    st.cache_data = identity_decorator
+
+    # Ensure session_state exists as a reachable stub
+    if not hasattr(st, "session_state"):
+        st.session_state = DummySessionState()
 
 
 @pytest.fixture(autouse=True)

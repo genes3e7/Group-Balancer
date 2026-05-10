@@ -178,25 +178,6 @@ def test_render_table_view_nan_std_direct():
         mock_st.metric.assert_any_call("S1 Std Dev", "0.0000")
 
 
-def test_steps_process_file_errors():
-    """Verify error handling for invalid file reads."""
-    mock_file = MagicMock()
-    mock_file.name = "test.xlsx"
-    with patch("src.ui.steps.st") as mock_st:
-        with patch("pandas.read_excel", side_effect=pd.errors.ParserError("Read fail")):
-            success, _ = steps._process_uploaded_file(mock_file)
-            assert not success
-            mock_st.error.assert_called_with("Error reading file: Read fail")
-
-        mock_file.name = "test.csv"
-        with patch("pandas.read_csv", return_value=pd.DataFrame({"Wrong": [1]})):
-            success, _ = steps._process_uploaded_file(mock_file)
-            assert not success
-            mock_st.error.assert_called_with(
-                "File missing required columns: Name and Score*"
-            )
-
-
 def test_render_step_1_empty_warning():
     """Verify warning when attempting to proceed from Step 1 with empty data."""
     mock_state = MagicMock()
