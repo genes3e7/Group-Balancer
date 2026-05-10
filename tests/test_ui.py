@@ -12,14 +12,11 @@ from src.ui import components, results_renderer, session_manager, steps
 def test_session_manager_init():
     """Verify that session state is initialized correctly."""
     mock_state = MagicMock()
-    # Mocking 'in' operator
     mock_state.__contains__.return_value = False
 
     with patch("streamlit.session_state", mock_state):
         session_manager.init_session()
-        # Verify __setitem__ was called for defaults
         mock_state.__setitem__.assert_any_call("step", 1)
-        # Verify manual_df was set (via attribute access in the code)
         assert mock_state.manual_df is not None
 
 
@@ -35,7 +32,6 @@ def test_session_manager_navigation():
         assert mock_state.step == 2
         mock_rerun.assert_called_once()
 
-        # Test clamping
         session_manager.go_to_step(5)
         assert mock_state.step == 3
 
@@ -54,7 +50,6 @@ def test_components_header():
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.expander"),
     ):
-        # Mock columns to return 3 mocks for labels and 3 for bar segments
         mock_cols.side_effect = [
             [MagicMock(), MagicMock(), MagicMock()],
             [MagicMock(), MagicMock(), MagicMock()],
@@ -87,7 +82,6 @@ def test_results_renderer_grid_branches():
         patch("streamlit.columns") as mock_cols,
         patch("src.ui.results_renderer._render_single_card"),
     ):
-        # Grid of 2 columns
         mock_cols.return_value = [MagicMock(), MagicMock()]
         results_renderer.render_group_cards(df, score_cols)
         assert mock_cols.call_count >= 1
@@ -123,11 +117,10 @@ def test_results_renderer_single_card_with_members():
         patch("streamlit.session_state", mock_state),
     ):
         mock_cols.side_effect = [
-            [MagicMock(), MagicMock()],  # c1, c2
-            [MagicMock()],  # m_cols
+            [MagicMock(), MagicMock()],
+            [MagicMock()],
         ]
 
-        # Mock data_editor to return the same dataframe (no changes)
         def mock_data_editor(df, *args, **kwargs):
             return df
 
@@ -135,7 +128,6 @@ def test_results_renderer_single_card_with_members():
 
         results_renderer._render_single_card(group, ["Score1"])
 
-        # Check dataframe was rendered via data_editor
         mock_editor.assert_called_once()
         df_arg = mock_editor.call_args[0][0]
         assert "Groupers" in df_arg.columns
@@ -180,23 +172,21 @@ def test_steps_render_3_cards():
 
 
 def test_components_header_branches():
-    """Verify page header renders all steps (inactive/active)."""
+    """Verify page header renders all steps."""
     with (
         patch("streamlit.markdown"),
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.expander"),
     ):
-        # Mock calls for each step
         mock_cols.side_effect = [
-            [MagicMock(), MagicMock(), MagicMock()],  # s=1 labels
-            [MagicMock(), MagicMock(), MagicMock()],  # s=1 bar
-            [MagicMock(), MagicMock(), MagicMock()],  # s=2 labels
-            [MagicMock(), MagicMock(), MagicMock()],  # s=2 bar
-            [MagicMock(), MagicMock(), MagicMock()],  # s=3 labels
-            [MagicMock(), MagicMock(), MagicMock()],  # s=3 bar
+            [MagicMock(), MagicMock(), MagicMock()],
+            [MagicMock(), MagicMock(), MagicMock()],
+            [MagicMock(), MagicMock(), MagicMock()],
+            [MagicMock(), MagicMock(), MagicMock()],
+            [MagicMock(), MagicMock(), MagicMock()],
+            [MagicMock(), MagicMock(), MagicMock()],
         ]
 
-        # Test each step to hit all branches
         for s in [1, 2, 3]:
             components.render_page_header(s)
 
@@ -263,12 +253,12 @@ def test_steps_render_2():
         patch("streamlit.session_state", mock_state),
     ):
         mock_num.return_value = 1.0
-        mock_radio.side_effect = ["advanced", "groupers"]
+        mock_radio.return_value = "groupers"
         mock_slider.return_value = 1
         mock_cols.side_effect = [
-            [MagicMock(), MagicMock()],  # st.columns(2)
-            [MagicMock()],  # st.columns(num_groups)
-            [MagicMock(), MagicMock()],  # st.columns([1, 5])
+            [MagicMock(), MagicMock()],
+            [MagicMock()],
+            [MagicMock(), MagicMock()],
         ]
 
         steps.render_step_2()
@@ -313,7 +303,6 @@ def test_steps_add_score_column():
         patch("streamlit.session_state", mock_state),
     ):
         steps.render_step_1()
-        # Should have added Score2
         assert "Score2" in mock_state.manual_df.columns
         mock_rerun.assert_called_once()
 
@@ -335,7 +324,6 @@ def test_steps_render_1_failure_paths():
         steps.render_step_1()
         mock_warn.assert_called_with("Please add participants.")
 
-    # Test with participants but missing score cols
     with (
         patch("src.ui.steps.st.header"),
         patch("src.ui.steps.st.subheader"),
@@ -387,9 +375,9 @@ def test_steps_render_2_navigation():
         c_go.button.return_value = False
 
         mock_cols.side_effect = [
-            [c1, c2],  # st.columns(2)
-            [g_col],  # st.columns(num_groups)
-            [c_back, c_go],  # st.columns([1, 5])
+            [c1, c2],
+            [g_col],
+            [c_back, c_go],
         ]
 
         steps.render_step_2()
@@ -450,7 +438,7 @@ def test_steps_load_uploaded_file_none():
     mock_state = MagicMock()
     mock_state.u_file = None
     with patch("streamlit.session_state", mock_state):
-        steps._load_uploaded_file()  # Should just return
+        steps._load_uploaded_file()
 
 
 def test_steps_render_3_interactive():
@@ -483,7 +471,6 @@ def test_steps_render_3_interactive():
         patch("streamlit.success"),
         patch("streamlit.session_state", mock_state),
     ):
-        # Mock "Back" button
         mock_btn.side_effect = lambda label, **kwargs: label == "⬅ Back"
         steps.render_step_3()
         mock_go.assert_called_with(2)
@@ -520,7 +507,7 @@ def test_steps_start_over():
 
 def test_steps_render_2_clamped_groups():
     """Verify that groups are correctly clamped to participant count."""
-    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})  # total_p = 1
+    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = MagicMock()
     mock_state.participants_df = mock_df
 
@@ -544,7 +531,7 @@ def test_steps_render_2_clamped_groups():
         patch("streamlit.expander"),
         patch("streamlit.session_state", mock_state),
     ):
-        mock_radio.side_effect = ["Advanced", "Groupers"]
+        mock_radio.return_value = "Groupers"
         c1, c2 = MagicMock(), MagicMock()
         g_col = MagicMock()
         c_back, c_go = MagicMock(), MagicMock()
@@ -552,9 +539,9 @@ def test_steps_render_2_clamped_groups():
         c_go.button.return_value = False
 
         mock_cols.side_effect = [
-            [c1, c2],  # st.columns(2)
-            [g_col],  # st.columns(num_groups)
-            [c_back, c_go],  # st.columns([1, 5])
+            [c1, c2],
+            [g_col],
+            [c_back, c_go],
         ]
 
         steps.render_step_2()
@@ -579,7 +566,7 @@ def test_ui_steps_load_uploaded_file_exception():
 
 
 def test_render_step_2_initialization_fail():
-    """Cover render_step_2 initialization."""
+    """Cover render_step_2 initialization fail branch."""
     mock_state = MagicMock()
     mock_state.get.side_effect = lambda key, default=None: {
         "participants_df": None
@@ -599,7 +586,7 @@ def test_render_step_2_initialization_fail():
 
 
 def test_render_table_view_nan_std():
-    """Cover lines 292-293 in steps.py (NaN std_val)."""
+    """Cover lines in steps.py where std_val might be NaN."""
     df = pd.DataFrame({config.COL_NAME: ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
     mock_state = MagicMock()
     mock_state.interactive_df = df
@@ -619,7 +606,7 @@ def test_render_table_view_nan_std():
 
 
 def test_render_footer_reset_hit_proper_mock():
-    """Properly mock columns and button to hit reset logic."""
+    """Verify reset logic via 'Start Over' button."""
     df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
 
     mock_state = MagicMock()
@@ -659,7 +646,7 @@ def test_steps_render_2_solver_failure_surface():
         patch("streamlit.subheader"),
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.number_input", return_value=1),
-        patch("streamlit.radio", side_effect=["advanced", "groupers"]),
+        patch("streamlit.radio") as mock_radio,
         patch("streamlit.slider", return_value=10),
         patch("streamlit.button", side_effect=[False, True]),
         patch("streamlit.expander"),
@@ -668,6 +655,7 @@ def test_steps_render_2_solver_failure_surface():
         patch("src.ui.session_manager.go_to_step") as mock_go,
         patch("streamlit.session_state", mock_state),
     ):
+        mock_radio.return_value = "groupers"
         mock_run.return_value = (
             None,
             {"status": "INFEASIBLE", "elapsed": 0.5, "error": "No solution"},
@@ -689,7 +677,7 @@ def test_steps_render_2_solver_failure_surface():
 
 
 def test_results_renderer_std_else():
-    """Cover results_renderer.py line 48 else branch."""
+    """Cover results_renderer.py global stats display branch."""
     df = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
     with (
         patch("streamlit.subheader"),
@@ -700,7 +688,7 @@ def test_results_renderer_std_else():
 
 
 def test_results_renderer_reassignment():
-    """Cover the group reassignment logic in results_renderer."""
+    """Cover the group reassignment logic in results_renderer cards."""
     df = pd.DataFrame(
         {
             config.COL_NAME: ["P1"],
@@ -714,7 +702,6 @@ def test_results_renderer_reassignment():
     mock_state = MagicMock()
     mock_state.interactive_df = df.copy()
 
-    # Mock edited_df to have a different group, AND INCLUDE _original_index
     edited_df = pd.DataFrame(
         {
             config.COL_GROUP: [2],

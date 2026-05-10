@@ -14,7 +14,6 @@ from ortools.sat.python import cp_model
 
 from src.core import config, solver
 from src.core.models import (
-    OptimizationMode,
     Participant,
     SolverConfig,
 )
@@ -28,10 +27,10 @@ except ImportError:
     except ImportError:
 
         def add_script_run_ctx(_: Any, c: Any = None) -> None:
-            """Fallback for add_script_run_ctx if streamlit is not installed."""
+            """Fallback for add_script_run_ctx."""
 
         def get_script_run_ctx() -> Any:
-            """Fallback for get_script_run_ctx if streamlit is not installed."""
+            """Fallback for get_script_run_ctx."""
             return None
 
 
@@ -43,7 +42,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
 
         Args:
             status_placeholder: A Streamlit placeholder object to update.
-            num_people: Total count of participants for scaling metrics.
+            num_people (int): Total count of participants for scaling metrics.
         """
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.status_placeholder = status_placeholder
@@ -57,8 +56,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         """Update UI with live progress variables.
 
         Calculates elapsed time and current objective value, then updates the
-        Streamlit status placeholder with a progress summary including solution
-        count and weighted deviation.
+        Streamlit status placeholder with a progress summary.
         """
         self.solution_count += 1
         current_time = time.time()
@@ -70,7 +68,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
             obj = self.ObjectiveValue()
             elapsed = max(0.01, current_time - self.start_time)
 
-            # Scale down to human readable units (Weighted Average Absolute Error)
+            # Scale down to human readable units
             display_obj = obj / (config.SCALE_FACTOR * self.num_people * 100)
 
             if self.status_placeholder:
@@ -90,24 +88,21 @@ def run_optimization(
 ) -> tuple[pd.DataFrame | None, dict[str, Any]]:
     """Runs the optimization using Participant models and SolverConfig.
 
-    Orchestrates the entire solver lifecycle: model building, constraint
-    addition, scoring strategy execution, and the final solve process.
-    Updates the UI via the provided status_box placeholder.
+    Orchestrates the entire solver lifecycle and updates the UI via the
+    provided status_box placeholder.
 
     Args:
-        participants: List of strongly-typed Participant models.
-        cfg: The solver configuration parameters.
-        status_box: Optional Streamlit placeholder for live progress updates.
+        participants (list[Participant]): List of strongly-typed models.
+        cfg (SolverConfig): The solver configuration parameters.
+        status_box (Any): Optional Streamlit placeholder for updates.
 
     Returns:
-        A tuple of (results_df, metrics_dict). results_df is None if the
-        solver fails to find any feasible solution.
+        tuple[pd.DataFrame | None, dict[str, Any]]: Results and metrics.
     """
     if status_box:
         status_box.info("Solver Status: ⏳ Initializing...")
 
     start_time = time.time()
-    # 1. Build Model using Builder
     builder = solver.ConstraintBuilder(participants, cfg)
     builder.build_variables()
 
@@ -116,11 +111,8 @@ def run_optimization(
         cfg.conflict_priority,
     )
     builder.add_separator_penalties(separators)
-    strategy = (
-        solver.AdvancedScoring()
-        if cfg.opt_mode == OptimizationMode.ADVANCED
-        else solver.SimpleScoring()
-    )
+
+    strategy = solver.AdvancedScoring()
     builder.add_scoring_objectives(strategy)
     builder.add_cohesion_penalties(groupers)
     builder.add_participant_symmetry_breaking()
@@ -128,10 +120,11 @@ def run_optimization(
 
     model = builder.get_model()
 
-    # 2. Solve with Callback
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    solver_inst.parameters.num_search_workers = cfg.num_workers
+    solver_inst.parameters.num_search_workers = 8
+    solver_inst.parameters.interleave_search = False
+    solver_inst.parameters.random_seed = 42
 
     apply_solver_tuning(solver_inst)
 
@@ -166,7 +159,6 @@ def run_optimization(
         "error": error_msg,
     }
 
-    # 3. Results
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         if status_box:
             with status_box:
@@ -199,9 +191,7 @@ def run_optimization(
             results.append(p_dict)
 
         result_df = pd.DataFrame(results)
-        # Persist configuration metadata for warm-start validation
         result_df.attrs["score_weights"] = dict(cfg.score_weights)
-        result_df.attrs["opt_mode"] = cfg.opt_mode
         result_df.attrs["conflict_priority"] = cfg.conflict_priority
         result_df.attrs["group_capacities"] = list(cfg.group_capacities)
 

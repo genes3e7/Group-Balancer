@@ -10,7 +10,7 @@ import pandas as pd
 import streamlit as st
 
 from src.core import config
-from src.core.models import ConflictPriority, OptimizationMode
+from src.core.models import ConflictPriority
 from src.core.services import DataService, OptimizationService
 from src.ui import results_renderer, session_manager
 from src.utils import exporter, group_helpers
@@ -27,12 +27,9 @@ def _load_uploaded_file() -> None:
             else:
                 df_new = pd.read_excel(uploaded)
 
-            # Validate raw upload before cleaning
-            # Normalize headers consistent with DataService.clean_participants_df
             df_new.columns = df_new.columns.astype(str).str.strip()
             score_cols_raw = DataService.get_score_columns(df_new)
             if config.COL_NAME in df_new.columns and score_cols_raw:
-                # Use Service layer for cleaning
                 df_clean = DataService.clean_participants_df(df_new)
                 st.session_state.manual_df = df_clean
                 st.toast(f"✅ Imported {len(df_clean)} rows!", icon="📂")
@@ -56,7 +53,6 @@ def render_step_1() -> None:
 
     st.subheader("Edit Participants")
 
-    # Ensure default columns exist in session state
     for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
         if col not in st.session_state.manual_df.columns:
             st.session_state.manual_df[col] = ""
@@ -97,7 +93,7 @@ def render_step_2() -> None:
     """Renders Step 2: Configuration.
 
     Handles group count, capacity allocation, objective weighting, and
-    solver mode selection. Validates that capacities sum to total participants.
+    solver mode selection.
     """
     st.header("Step 2: Configuration")
     df = st.session_state.get("participants_df")
@@ -110,7 +106,6 @@ def render_step_2() -> None:
     total_p = len(df)
     score_cols = st.session_state.get("score_cols", [])
 
-    # Initialize or clamp stale groups_input if total_p shrank
     if "groups_input" not in st.session_state:
         st.session_state["groups_input"] = min(2, total_p)
     elif isinstance(st.session_state.get("groups_input"), (int, float)):
@@ -135,7 +130,6 @@ def render_step_2() -> None:
     cols = st.columns(num_groups)
     for i in range(num_groups):
         default = base + (1 if i < rem else 0)
-        # Use num_groups in key to force reset on count change
         cap = int(
             cols[i % len(cols)].number_input(
                 f"G{i + 1}", 0, total_p, default, key=f"cap_{num_groups}_{i}"
@@ -148,22 +142,11 @@ def render_step_2() -> None:
         st.error(f"Capacity mismatch: {sum(group_capacities)} != {total_p}")
 
     with st.expander("⚙️ Advanced Solver Controls", expanded=True):
-        mode_options = {
-            "simple": OptimizationMode.SIMPLE,
-            "advanced": OptimizationMode.ADVANCED,
-        }
         priority_options = {
             "groupers": ConflictPriority.GROUPERS,
             "separators": ConflictPriority.SEPARATORS,
         }
 
-        opt_mode_key = st.radio(
-            "Mode",
-            list(mode_options.keys()),
-            index=1,
-            key="optimization_mode",
-            format_func=lambda k: mode_options[k].value,
-        )
         priority_key = st.radio(
             "Priority",
             list(priority_options.keys()),
@@ -199,27 +182,22 @@ def render_step_2() -> None:
 
         status_box = st.empty()
 
-        # Prioritize interactive_df (with user edits) over initial results_df
         prev_results = st.session_state.get("interactive_df")
         cached_results = st.session_state.get("results_df")
 
         if prev_results is not None and cached_results is not None:
-            # Re-inject tracking columns for robust warm-start validation
             prev_results = prev_results.copy()
             for col in ["_original_index", "participant_fingerprint"]:
                 if col in cached_results.columns:
                     prev_results[col] = cached_results[col]
-            # Restore metadata for warm-start configuration matching
             prev_results.attrs = dict(cached_results.attrs)
         elif prev_results is None:
             prev_results = cached_results
 
-        # Use Service layer for optimization
         result_df, metrics = OptimizationService.run(
             df,
             group_capacities,
             score_weights,
-            mode_options[opt_mode_key],
             priority_options[priority_key],
             timeout,
             status_box=status_box,
@@ -228,7 +206,6 @@ def render_step_2() -> None:
 
         if result_df is not None:
             st.session_state.results_df = result_df
-            # Initialize public dataframe without internal tracking columns
             st.session_state.interactive_df = result_df.drop(
                 columns=["_original_index", "participant_fingerprint"], errors="ignore"
             )
@@ -238,8 +215,6 @@ def render_step_2() -> None:
             time.sleep(0.5)
             session_manager.go_to_step(3)
         else:
-            # Surface error state in results view
-            # Clear stale results so KPIs/cards don't show old data
             st.session_state.results_df = None
             st.session_state.interactive_df = None
             st.session_state.solver_status = metrics["status"]
@@ -264,7 +239,7 @@ def render_step_3() -> None:
             "💡 **Tips to resolve:**\n"
             "- Check for conflicting Separator tags.\n"
             "- Ensure group capacities are large enough for the number of tags.\n"
-            "- Try increasing the timeout or using 'Simple' mode."
+            "- Try increasing the timeout."
         )
         return
 
@@ -297,7 +272,7 @@ def _render_table_view(score_cols: list[str]) -> None:
     """Renders result table with live statistics.
 
     Args:
-        score_cols: List of score columns to display.
+        score_cols (list[str]): List of score columns to display.
     """
     stats_col, editor_col = st.columns([1, 3])
     with editor_col:
@@ -329,7 +304,6 @@ def _render_table_view(score_cols: list[str]) -> None:
 
     with stats_col:
         st.subheader("Live Stats")
-        # Use Service layer to aggregate groups for stats
         groups = group_helpers.aggregate_groups(
             st.session_state.interactive_df,
             config.COL_GROUP,
@@ -340,7 +314,6 @@ def _render_table_view(score_cols: list[str]) -> None:
 
         for i, col in enumerate(score_cols):
             st.markdown(f"**{col} Stats**")
-            # Filter display dataframe for specific group stats
             gdf = (
                 st.session_state.interactive_df.groupby(config.COL_GROUP)[col]
                 .agg(["count", "mean", "sum"])
@@ -348,7 +321,6 @@ def _render_table_view(score_cols: list[str]) -> None:
             )
             gdf.columns = ["Group", "Count", "Avg", "Sum"]
 
-            # Standard deviation from helper
             std_val = stats_data[i]["Avg Std Dev (Balance)"]
 
             st.metric(f"{col} Std Dev", f"{std_val:.4f}")
@@ -366,14 +338,13 @@ def _build_excel_bytes(
     """Memoized Excel generation to avoid redundant recomputes.
 
     Args:
-        df_key: Tuple of hash sum, length, and columns for cache keying.
-        _df: The result dataframe to export (excluded from cache hashing).
-        score_cols: Tuple of score columns to include.
+        df_key (tuple): Tuple of hash sum, length, and columns for cache keying.
+        _df (pd.DataFrame): The result dataframe to export.
+        score_cols (tuple): Tuple of score columns to include.
 
     Returns:
         bytes: The generated Excel file as a byte stream.
     """
-    # Use key explicitly to satisfy Vulture and reinforce cache keying intent
     _ = df_key
     return exporter.generate_excel_bytes(
         _df, config.COL_GROUP, list(score_cols), config.COL_NAME
@@ -384,10 +355,9 @@ def _render_footer_actions(score_cols: list[str]) -> None:
     """Footer buttons.
 
     Args:
-        score_cols: List of score columns to include in export.
+        score_cols (list[str]): List of score columns to include in export.
     """
     df = st.session_state.interactive_df
-    # Sanitize export by dropping internal tracking columns
     export_df = df.drop(
         columns=["_original_index", "participant_fingerprint"], errors="ignore"
     )

@@ -15,7 +15,6 @@ from src import logger
 from src.core import config
 from src.core.models import (
     ConflictPriority,
-    OptimizationMode,
     Participant,
     SolverConfig,
 )
@@ -158,57 +157,17 @@ class AdvancedScoring(ScoringStrategy):
                 continue
 
             raw_scores = [p.scores.get(col, 0.0) for p in participants]
-            scaled_raw = [int(round(s * 10_000_000_000)) for s in raw_scores]
+            scaled_raw = [int(round(s * config.SCALE_FACTOR)) for s in raw_scores]
             raw_total = sum(abs(s) for s in scaled_raw)
 
             if raw_total == 0:
                 raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
 
-            # High-Resolution Baseline: 1,000 * N (0.001 precision)
-            norm_multiplier = 1000 * len(participants)
+            norm_multiplier = config.RESOLUTION_BASE * len(participants)
             scores = [int(round((s * norm_multiplier) / raw_total)) for s in scaled_raw]
 
             vectors.append((col, scores, int(max(1, round(weight)))))
         return vectors
-
-
-class SimpleScoring(ScoringStrategy):
-    """Balances a single weighted total score with dimension normalization."""
-
-    def get_score_vectors(
-        self, participants: list[Participant], cfg: SolverConfig
-    ) -> list[tuple[str, list[int], int]]:
-        """Generates a single pre-aggregated and normalized score vector.
-
-        Args:
-            participants (list[Participant]): List of participants.
-            cfg (SolverConfig): Solver configuration.
-
-        Returns:
-            list[tuple[str, list[int], int]]: Single-entry list with the total
-                score vector.
-        """
-        total_normalized_scores = [0.0] * len(participants)
-
-        for col in sorted(cfg.score_weights.keys()):
-            weight = cfg.score_weights[col]
-            if weight == 0:
-                continue
-
-            raw_scores = [p.scores.get(col, 0.0) for p in participants]
-            scaled_raw = [int(round(s * 10_000_000_000)) for s in raw_scores]
-            raw_total = sum(abs(s) for s in scaled_raw)
-
-            if raw_total == 0:
-                raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
-
-            # High-Resolution Baseline: 1,000 * N
-            norm_multiplier = 1000 * weight * len(participants)
-            for i, s in enumerate(scaled_raw):
-                total_normalized_scores[i] += (s * norm_multiplier) / raw_total
-
-        final_scores = [int(round(s)) for s in total_normalized_scores]
-        return [("simple_total", final_scores, 1)]
 
 
 class ConstraintBuilder:
@@ -230,6 +189,13 @@ class ConstraintBuilder:
         self.objectives = []
         self._symmetry_broken = False
 
+        if cfg.conflict_priority == ConflictPriority.SEPARATORS:
+            self.sep_multiplier = config.TIER_HI_MULTIPLIER
+            self.group_multiplier = config.TIER_LO_MULTIPLIER
+        else:
+            self.sep_multiplier = config.TIER_LO_MULTIPLIER
+            self.group_multiplier = config.TIER_HI_MULTIPLIER
+
     def build_variables(self) -> None:
         """Initializes assignment variables and basic partitioning constraints."""
         for i in range(self.num_people):
@@ -244,13 +210,15 @@ class ConstraintBuilder:
             )
 
     def add_separator_penalties(self, separators: dict[str, set[int]]) -> None:
-        """Adds Tier 1 penalties ($10^12$) for separator violations.
+        """Adds bit-sliced penalties for separator violations.
 
         Args:
             separators (dict[str, set[int]]): Mapping of separator tags to
                 participant indices.
         """
         total_p = self.num_people
+        penalty = self.sep_multiplier
+
         for tag in sorted(separators.keys()):
             s_set = separators[tag]
             if not s_set:
@@ -267,8 +235,6 @@ class ConstraintBuilder:
                 overflow = self.model.NewIntVar(0, n_tag, f"overflow_{tag}_{g}")
                 self.model.Add(overflow >= count - limit)
 
-                # Tier 1 Penalty ($10^12$)
-                penalty = 1_000_000_000_000
                 self.objectives.append(overflow * penalty)
 
     def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
@@ -321,34 +287,33 @@ class ConstraintBuilder:
                 )
                 self.model.Add(diff == g_sums[g] * self.num_people - target_product)
 
-                # 1. Component for Max-Min Fairness (Tier 3)
+                # Lexicographical Fairness Component (Tier 3)
                 a_diff = self.model.NewIntVar(0, local_diff_bound, f"abs_{name}_{g}")
                 self.model.AddAbsEquality(a_diff, diff)
                 abs_diffs.append(a_diff)
 
-                # 2. L2 Squared Error (Tier 4)
+                # L2 Squared Error (Tier 4)
                 sq_diff = self.model.NewIntVar(0, local_diff_bound**2, f"sq_{name}_{g}")
                 self.model.AddMultiplicationEquality(sq_diff, [diff, diff])
 
-                # Balance objective (Tier 4)
-                # No extra multiplier here; sq_diff provides its own scale (~10^14).
-                self.objectives.append(sq_diff * weight)
+                self.objectives.append(
+                    sq_diff * weight * config.TIER_BALANCE_MULTIPLIER
+                )
 
-            # 3. Add Tier 3: Lexicographical Max-Min Fairness (Multiplier 10^7)
-            # This prioritizes fixing the worst group before the overall balance.
+            # Max-Min Fairness Tier
             max_dev = self.model.NewIntVar(0, 2**31 - 1, f"maxdev_{name}")
             self.model.AddMaxEquality(max_dev, abs_diffs)
-
-            # Tier 3 (10^7) ensures fairness outweighs total balance sum
-            self.objectives.append(max_dev * weight * 10_000_000)
+            self.objectives.append(max_dev * weight * config.TIER_FAIRNESS_MULTIPLIER)
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
-        """Adds Tier 2 penalties ($10^9$) for splitting grouper tags.
+        """Adds bit-sliced penalties for splitting grouper tags.
 
         Args:
             groupers (dict[str, set[int]]): Mapping of grouper tags to
                 participant indices.
         """
+        penalty_base = self.group_multiplier
+
         for tag in sorted(groupers.keys()):
             g_set = groupers[tag]
             if len(g_set) <= 1:
@@ -359,9 +324,7 @@ class ConstraintBuilder:
                 used = self.model.NewBoolVar(f"used_{tag}_{g}")
                 self.model.AddMaxEquality(used, [self.x[(i, g)] for i in sorted_g_set])
 
-                # Tier 2 Penalty ($10^9$)
-                weight = self.cfg.grouper_weight
-                penalty = int(1_000_000_000 * weight)
+                penalty = int(penalty_base * self.cfg.grouper_weight)
                 self.objectives.append(used * penalty)
 
     def add_participant_symmetry_breaking(self) -> None:
@@ -569,11 +532,7 @@ def solve_with_ortools(
     )
     builder.add_separator_penalties(separators)
 
-    strategy = (
-        AdvancedScoring()
-        if cfg.opt_mode == OptimizationMode.ADVANCED
-        else SimpleScoring()
-    )
+    strategy = AdvancedScoring()
     builder.add_scoring_objectives(strategy)
     builder.add_cohesion_penalties(groupers)
     builder.add_participant_symmetry_breaking()
@@ -584,7 +543,6 @@ def solve_with_ortools(
 
     solver_inst = cp_model.CpSolver()
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    # Step 2: Maximum multi-core search speed (Race Mode)
     solver_inst.parameters.num_search_workers = 8
     solver_inst.parameters.interleave_search = False
     solver_inst.parameters.random_seed = 42

@@ -4,13 +4,17 @@ import pandas as pd
 import pytest
 
 from src.core import config
-from src.core.models import ConflictPriority, OptimizationMode
+from src.core.models import ConflictPriority
 from src.core.services import OptimizationService
 
 
 @pytest.fixture
 def sample_data():
-    """16 participants, 2 groups, with identical scores to test symmetry."""
+    """16 participants, 2 groups, with identical scores to test symmetry.
+
+    Returns:
+        pd.DataFrame: Sample participant data.
+    """
     data = {
         config.COL_NAME: [f"Person {i}" for i in range(16)],
         "Score1": [10, 10, 10, 10, 20, 20, 20, 20, 30, 30, 30, 30, 40, 40, 40, 40],
@@ -24,12 +28,8 @@ def sample_data():
 def test_cold_start_determinism(sample_data):
     """Verifies that multiple cold starts yield identical assignments.
 
-    Ensures that for a fixed random seed and single search worker, the CP-SAT
-    solver reaches the exact same solution across independent runs.
-
     Args:
-        sample_data: Fixture providing a DataFrame of participants with
-            identical Score1 and Score2 values to test symmetry.
+        sample_data (pd.DataFrame): Fixture providing symmetric participant data.
     """
     group_capacities = [8, 8]
     score_weights = {"Score1": 1.0, "Score2": 1.0}
@@ -38,7 +38,6 @@ def test_cold_start_determinism(sample_data):
         sample_data,
         group_capacities,
         score_weights,
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
     )
@@ -48,14 +47,11 @@ def test_cold_start_determinism(sample_data):
         sample_data,
         group_capacities,
         score_weights,
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
     )
     assert metrics2["status"] == "OPTIMAL"
 
-    # Assert identical Standard Deviation (Quality parity)
-    # Personnel might swap between identical groups in non-deterministic mode
     for col in ["Score1", "Score2"]:
         std1 = res1.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
         std2 = res2.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
@@ -65,12 +61,10 @@ def test_cold_start_determinism(sample_data):
 def test_weight_toggle_determinism(sample_data):
     """Verifies that toggling weights back and forth yields the same result.
 
-    Replicates a common user workflow where weights are changed and then
-    restored (1:0 -> 0:1 -> 1:0). It ensures that warm-start metadata
-    restoration prevents solution drift and ensures identical optima.
+    Ensures that warm-start metadata restoration prevents solution drift.
 
     Args:
-        sample_data: Fixture providing a DataFrame of participants.
+        sample_data (pd.DataFrame): Fixture providing participant data.
     """
     group_capacities = [8, 8]
 
@@ -78,7 +72,6 @@ def test_weight_toggle_determinism(sample_data):
         sample_data,
         group_capacities,
         {"Score1": 1.0, "Score2": 0.0},
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
     )
@@ -87,7 +80,6 @@ def test_weight_toggle_determinism(sample_data):
         sample_data,
         group_capacities,
         {"Score1": 0.0, "Score2": 1.0},
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
         previous_results=res_a,
@@ -97,7 +89,6 @@ def test_weight_toggle_determinism(sample_data):
         sample_data,
         group_capacities,
         {"Score1": 1.0, "Score2": 0.0},
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
         previous_results=res_b,
@@ -109,9 +100,7 @@ def test_weight_toggle_determinism(sample_data):
 def test_balancing_quality_magnitude_insensitive():
     """Verifies that small-magnitude scores are balanced correctly.
 
-    Tests the fairness of multi-dimensional balancing when raw numeric ranges
-    differ significantly (e.g., Score1: 10..50, Score2: 0.1..0.5). It ensures
-    that user weights are the primary driver of priority, not raw magnitude.
+    Ensures that user weights are the primary driver of priority, not raw magnitude.
     """
     data = {
         config.COL_NAME: [f"P{i}" for i in range(4)],
@@ -127,7 +116,6 @@ def test_balancing_quality_magnitude_insensitive():
         df,
         group_capacities,
         {"Score1": 0.0, "Score2": 1.0},
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
     )

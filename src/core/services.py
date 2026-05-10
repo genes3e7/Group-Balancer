@@ -1,5 +1,4 @@
-"""
-Service layer for Group Balancer business logic.
+"""Service layer for Group Balancer business logic.
 
 This module provides high-level services for data processing and optimization,
 decoupling the UI from core internal logic and OR-Tools dependencies.
@@ -22,8 +21,7 @@ class DataService:
 
     @staticmethod
     def clean_participants_df(df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Cleans and sanitizes a raw participant DataFrame.
+        """Cleans and sanitizes a raw participant DataFrame.
 
         Trims whitespace from headers, coerces scores to numeric, and ensures
         categorical tag columns exist with proper string types.
@@ -37,7 +35,6 @@ class DataService:
         clean_df = df.copy()
         clean_df.columns = clean_df.columns.astype(str).str.strip()
 
-        # Required Name column - fillna before astype(str) to avoid "nan" string
         if config.COL_NAME not in clean_df.columns:
             clean_df[config.COL_NAME] = ""
         else:
@@ -45,14 +42,12 @@ class DataService:
                 clean_df[config.COL_NAME].fillna("").astype(str).str.strip()
             )
 
-        # Categorical constraints
         for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
             if col not in clean_df.columns:
                 clean_df[col] = ""
             else:
                 clean_df[col] = clean_df[col].fillna("").astype(str).str.strip()
 
-        # Score dimensions
         score_cols = DataService.get_score_columns(clean_df)
         for col in score_cols:
             clean_df[col] = pd.to_numeric(clean_df[col], errors="coerce").fillna(0.0)
@@ -61,8 +56,7 @@ class DataService:
 
     @staticmethod
     def get_score_columns(df: pd.DataFrame) -> list[str]:
-        """
-        Identifies all score-based columns based on prefix.
+        """Identifies all score-based columns based on prefix.
 
         Args:
             df (pd.DataFrame): The DataFrame to inspect.
@@ -82,15 +76,13 @@ class OptimizationService:
         participants_df: pd.DataFrame,
         group_capacities: list[int],
         score_weights: dict[str, float],
-        opt_mode: OptimizationMode,
         conflict_priority: ConflictPriority,
         timeout_seconds: int,
         *,
         status_box=None,
         previous_results: pd.DataFrame | None = None,
     ) -> tuple[pd.DataFrame | None, dict]:
-        """
-        Runs the group balancing optimization.
+        """Runs the group balancing optimization.
 
         Converts raw DataFrame data into strongly-typed Participant models
         and executes the OR-Tools solver interface.
@@ -98,16 +90,14 @@ class OptimizationService:
         Args:
             participants_df (pd.DataFrame): Sanitized participant data.
             group_capacities (list[int]): Desired size for each group.
-            score_weights (dict): Weight mapping for each score dimension.
-            opt_mode (OptimizationMode): Simple or Advanced balancing mode.
+            score_weights (dict[str, float]): Weight mapping for each score.
             conflict_priority (ConflictPriority): Resolution for tag collisions.
             timeout_seconds (int): Max search time in seconds.
             status_box: Optional Streamlit placeholder for live updates.
-            previous_results: Optional DataFrame containing previous assignments
-                for solution hinting (warm start).
+            previous_results (pd.DataFrame | None): Optional previous assignments.
 
         Returns:
-            tuple: (Results DataFrame or None, Metrics dictionary)
+            tuple[pd.DataFrame | None, dict]: Results DataFrame and metrics.
         """
         try:
             if participants_df is None:
@@ -116,7 +106,6 @@ class OptimizationService:
             if not group_capacities:
                 raise ValueError("Group capacities cannot be empty.")
 
-            # Convert to models
             participants = [
                 Participant(
                     name=str(row.get(config.COL_NAME, "")),
@@ -127,7 +116,6 @@ class OptimizationService:
                     },
                     groupers=str(row.get(config.COL_GROUPER, "")),
                     separators=str(row.get(config.COL_SEPARATOR, "")),
-                    # Anchor to the first-ever assigned index for tie-breaker stability
                     original_index=int(row.get("_original_index", i)),
                 )
                 for i, row in enumerate(participants_df.to_dict("records"))
@@ -135,10 +123,8 @@ class OptimizationService:
 
             hints = None
             if previous_results is not None and not previous_results.empty:
-                # Always validate snapshot against current configuration
                 config_match = (
                     previous_results.attrs.get("score_weights") == score_weights
-                    and previous_results.attrs.get("opt_mode") == opt_mode
                     and previous_results.attrs.get("conflict_priority")
                     == conflict_priority
                     and previous_results.attrs.get("group_capacities")
@@ -171,7 +157,6 @@ class OptimizationService:
                             )
                         )
                     elif "_original_index" in previous_results.columns:
-                        # Robust alignment check for duplicate fingerprints
                         current_pairs = sorted(
                             (p.original_index, p.fingerprint) for p in participants
                         )
@@ -192,7 +177,6 @@ class OptimizationService:
                             )
                         else:
                             logger.info("Ignoring stale hints (alignment error)")
-                # Legacy fallback for snapshots without fingerprints
                 elif (
                     config.COL_GROUP in previous_results.columns
                     and "_original_index" in previous_results.columns
@@ -215,7 +199,7 @@ class OptimizationService:
                 num_groups=len(group_capacities),
                 group_capacities=group_capacities,
                 score_weights=score_weights,
-                opt_mode=opt_mode,
+                opt_mode=OptimizationMode.ADVANCED,
                 conflict_priority=conflict_priority,
                 timeout_seconds=timeout_seconds,
                 hints=hints,

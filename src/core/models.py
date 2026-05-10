@@ -14,7 +14,6 @@ from src.core import config
 class OptimizationMode(str, Enum):
     """Available optimization topologies."""
 
-    SIMPLE = "Simple"
     ADVANCED = "Advanced"
 
 
@@ -30,11 +29,12 @@ class Participant:
     """Represents a single participant in the balancing process.
 
     Attributes:
-        name: The participant's identifier.
-        scores: Dictionary of score labels to their numeric values.
-        groupers: Raw tag string for cohesion constraints.
-        separators: Raw tag string for dispersion constraints.
-        original_index: The zero-based index of the participant in input data.
+        name (str): The participant's identifier.
+        scores (Mapping[str, float]): Dictionary of score labels to their
+            numeric values.
+        groupers (str): Raw tag string for cohesion constraints.
+        separators (str): Raw tag string for dispersion constraints.
+        original_index (int | None): Zero-based index of the participant in input data.
     """
 
     name: str
@@ -54,20 +54,23 @@ class Participant:
 
     @property
     def fingerprint(self) -> str:
-        """Returns a stable hash of the participant's identity."""
+        """Returns a stable hash of the participant's identity.
+
+        Returns:
+            str: Stable MD5 hash of the participant's content.
+        """
         import hashlib
         import json
 
         from src.core.tag_utils import canonicalize_tags
 
-        # Build payload for unambiguous serialization
         payload = {
             "name": self.name,
             "scores": sorted(self.scores.items()),
             "groupers": sorted(canonicalize_tags(self.groupers)),
             "separators": sorted(canonicalize_tags(self.separators)),
         }
-        # Compact JSON to guarantee deterministic payload
+        # Compact JSON guarantees deterministic payload
         raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
         return hashlib.md5(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
 
@@ -77,16 +80,16 @@ class SolverConfig:
     """Configuration for the CP-SAT solver.
 
     Attributes:
-        num_groups: Total number of groups to create.
-        group_capacities: Exactly how many people per group.
-        score_weights: Multipliers for each score dimension.
-        opt_mode: Whether to balance dimensions individually or as a total.
-        conflict_priority: Which constraint wins if tags overlap.
-        grouper_weight: Internal penalty for splitting groupers.
-        separator_weight: Internal penalty for clumping separators.
-        hints: Optional mapping of identity to group_id for warm starts.
-        timeout_seconds: Maximum wall-clock time for search.
-        num_workers: Number of parallel search threads.
+        num_groups (int): Total number of groups to create.
+        group_capacities (Sequence[int]): Exactly how many people per group.
+        score_weights (Mapping[str, float]): Multipliers for each score dimension.
+        opt_mode (OptimizationMode): Mode for score balancing topology.
+        conflict_priority (ConflictPriority): Which constraint wins if tags overlap.
+        grouper_weight (int): Internal penalty for splitting groupers.
+        separator_weight (int): Internal penalty for clumping separators.
+        hints (Mapping[str | int, int] | None): Optional mapping for warm starts.
+        timeout_seconds (int): Maximum wall-clock time for search.
+        num_workers (int): Number of parallel search threads.
     """
 
     num_groups: int
@@ -106,7 +109,6 @@ class SolverConfig:
         Raises:
             ValueError: If configurations are logically inconsistent.
         """
-        # Ensure deep immutability
         object.__setattr__(self, "group_capacities", tuple(self.group_capacities))
         object.__setattr__(
             self, "score_weights", MappingProxyType(dict(self.score_weights))
@@ -141,7 +143,6 @@ class SolverConfig:
         if any(c < 0 for c in self.group_capacities):
             raise ValueError("Group capacities cannot be negative.")
 
-        # Validate score weights
         if not self.score_weights:
             raise ValueError("At least one score weight must be provided.")
 
@@ -159,7 +160,6 @@ class SolverConfig:
         if not has_positive_weight:
             raise ValueError("At least one score weight must be positive.")
 
-        # Validate penalty weights
         for name, weight in [
             ("grouper_weight", self.grouper_weight),
             ("separator_weight", self.separator_weight),

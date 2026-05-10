@@ -12,7 +12,6 @@ from ortools.sat.python import cp_model
 from src.core import config, solver
 from src.core.models import (
     ConflictPriority,
-    OptimizationMode,
     Participant,
     SolverConfig,
 )
@@ -42,7 +41,6 @@ def make_participants(
     if separators is None:
         separators = [""] * count
 
-    # Ensure lists match count
     groupers = (groupers + [""] * count)[:count]
     separators = (separators + [""] * count)[:count]
 
@@ -63,7 +61,6 @@ def get_solver_config(
     num_groups: int,
     capacities: list[int],
     weights: dict[str, float] | None = None,
-    mode: OptimizationMode = OptimizationMode.ADVANCED,
     priority: ConflictPriority = ConflictPriority.GROUPERS,
 ) -> SolverConfig:
     """Helper to create SolverConfig.
@@ -72,7 +69,6 @@ def get_solver_config(
         num_groups (int): Number of groups.
         capacities (list[int]): Group capacities.
         weights (dict[str, float] | None): Optional score weights.
-        mode (OptimizationMode): Optimization mode.
         priority (ConflictPriority): Conflict priority.
 
     Returns:
@@ -84,7 +80,6 @@ def get_solver_config(
         num_groups=num_groups,
         group_capacities=capacities,
         score_weights=weights,
-        opt_mode=mode,
         conflict_priority=priority,
         timeout_seconds=10,
     )
@@ -134,23 +129,17 @@ def test_solver_multi_dimensional_weighted():
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
     assert len(results) == 4
 
-    # Check that each group has one 100 and one 10 for Score1
     for gid in [1, 2]:
         members = [p for p in results if p[config.COL_GROUP] == gid]
         assert sum(m[SCORE_COL] for m in members) == 110
 
 
 def test_solver_pigeonhole_separator():
-    """Test separator spread.
-
-    With 4 participants (3 'A' tags) and 2 groups of size 2,
-    the proportional limit ceil(3 * 2 / 4) = 2 should be enforced.
-    """
+    """Test separator spread via proportional limits."""
     p = make_participants(4, separators=["A", "A", "A", ""])
-    cfg = get_solver_config(2, [2, 2])
+    cfg = get_solver_config(2, [2, 2], priority=ConflictPriority.SEPARATORS)
     results, _, _ = solver.solve_with_ortools(p, cfg)
 
-    # 3 'A's spread over 2 groups: limit 2
     g1_sep = sum(
         1
         for p in results
@@ -173,22 +162,19 @@ def test_solver_fractional_cohesion():
     cfg = get_solver_config(2, [3, 3])
     results, _, _ = solver.solve_with_ortools(p, cfg)
 
-    # Check if T's are together
     t_groups = {p[config.COL_GROUP] for p in results if "T" in p[config.COL_GROUPER]}
     assert len(t_groups) == 1
 
 
 def test_solver_conflict_resolution():
-    """Test priority resolution."""
+    """Test priority resolution between groupers and separators."""
     p = make_participants(4, groupers=["X", "X", "", ""], separators=["X", "X", "", ""])
 
-    # Priority: Groupers -> Together
     cfg_g = get_solver_config(2, [2, 2], priority=ConflictPriority.GROUPERS)
     res_g, _, _ = solver.solve_with_ortools(p, cfg_g)
     gids_g = {p[config.COL_GROUP] for p in res_g if "X" in p[config.COL_GROUPER]}
     assert len(gids_g) == 1
 
-    # Priority: Separators -> Apart
     cfg_s = get_solver_config(2, [2, 2], priority=ConflictPriority.SEPARATORS)
     res_s, _, _ = solver.solve_with_ortools(p, cfg_s)
     gids_s = {p[config.COL_GROUP] for p in res_s if "X" in p[config.COL_SEPARATOR]}
@@ -209,10 +195,9 @@ def test_solver_rounding_extreme():
 
 
 def test_circular_conflict_edge():
-    """Test solver behavior with circular or contradictory constraints."""
+    """Test solver behavior with contradictory constraints."""
     from src.core.solver_interface import run_optimization
 
-    # A groupers B, B groupers C, C separators A
     participants = [
         Participant(name="A", scores={"S": 10}, groupers="X", separators="Z"),
         Participant(name="B", scores={"S": 10}, groupers="X", separators=""),
@@ -223,7 +208,6 @@ def test_circular_conflict_edge():
         num_groups=2,
         group_capacities=[2, 1],
         score_weights={"S": 1.0},
-        opt_mode=OptimizationMode.SIMPLE,
         conflict_priority=ConflictPriority.GROUPERS,
     )
 
@@ -234,7 +218,7 @@ def test_circular_conflict_edge():
 
 
 def test_scoring_strategy_pass():
-    """Cover the abstract pass in ScoringStrategy (line 112)."""
+    """Cover the abstract pass in ScoringStrategy."""
     from src.core.solver import ScoringStrategy
 
     with patch.multiple(ScoringStrategy, __abstractmethods__=frozenset()):
@@ -250,13 +234,7 @@ def test_solver_zero_sum_weighted_error():
 
 
 def test_solver_tie_breaker_pressure():
-    """Verify the tie-breaker ensures canonical ordering for symmetric optima.
-
-    With symmetric scores (10 and 20, target 15 each), there are two optimal
-    arrangements with identical objective values. The tie-breaker should
-    force P0 into G2 and P1 into G1 to minimize penalty (0 vs 1).
-    We use different capacities to avoid group symmetry breaking.
-    """
+    """Verify the tie-breaker ensures canonical ordering for symmetric optima."""
     p = [
         {"Name": "P0", "Score1": 10, "Separators": "A"},
         {"Name": "P1", "Score1": 10, "Separators": "B"},
@@ -264,57 +242,35 @@ def test_solver_tie_breaker_pressure():
     cfg = get_solver_config(2, [1, 1])
     results, _, _ = solver.solve_with_ortools(p, cfg)
 
-    # Tie-breaker sum(g * i * x[i,g])
-    # Arr 1: P0 in G1 (0,0), P1 in G2 (1,1). Penalty 1.
-    # Arr 2: P0 in G2 (1,0), P1 in G1 (0,1). Penalty 0.
-    # Arr 2 is better. P0 should be in Group 2.
     p0 = next(r for r in results if r[config.COL_NAME] == "P0")
     assert p0[config.COL_GROUP] == 2
 
 
 def test_solver_quantization_preservation():
-    """Verify variance preservation for tight distributions with large N.
-
-    Ensures that scores like 3.51 and 3.49 are NOT crushed to the same integer.
-    """
+    """Verify variance preservation for tight distributions with large N."""
     participants = []
-    # 100 people: 50 have 3.51, 50 have 3.49
     for i in range(100):
         s = 3.51 if i < 50 else 3.49
         participants.append({"Name": f"P{i}", "Score1": s})
 
-    # Balance into 2 groups of 50
     cfg = get_solver_config(2, [50, 50])
     results, status, _ = solver.solve_with_ortools(participants, cfg)
 
     assert status == cp_model.OPTIMAL
 
-    # Each group should have 25 of 3.51 and 25 of 3.49 to be perfectly balanced
     df = pd.DataFrame(results)
     for gid in [1, 2]:
         group = df[df[config.COL_GROUP] == gid]
-        # Mean should be exactly 3.5.
-        # Relaxed bound for 100x resolution.
         assert abs(group[SCORE_COL].mean() - 3.5) < 0.01
-
-
-def test_solver_zero_sum_weighted_error_simple():
-    """Verify ValueError in SimpleScoring for zero-sum weighted dimensions."""
-    cfg = get_solver_config(1, [1], weights={"S1": 1.0}, mode=OptimizationMode.SIMPLE)
-    with pytest.raises(ValueError, match="has weight but sum is 0"):
-        solver.solve_with_ortools([{"Name": "P1", "Score1": 0.0}], cfg)
 
 
 def test_solver_soft_groupers():
     """Verify soft grouper cohesion penalties are added."""
-    # 2 groups of 2. P0, P1 both have tag 'T'.
-    p = make_participants(4, groupers=["T", "T", "", ""])
-    # Not strict
+    p = make_participants(4, groupers=["T", "T", " ", " "])
     cfg = get_solver_config(2, [2, 2])
     results, status, _ = solver.solve_with_ortools(p, cfg)
 
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
-    # They should be together because it's optimal
     t_groups = {p[config.COL_GROUP] for p in results if "T" in p[config.COL_GROUPER]}
     assert len(t_groups) == 1
 
@@ -322,30 +278,13 @@ def test_solver_soft_groupers():
 def test_solver_soft_groupers_clamping():
     """Trigger the cohesion penalty clamping logic with a safe but high weight."""
     p = make_participants(4, groupers=["T", "T", "", ""])
-    # Max safe weight
     cfg = SolverConfig(
         num_groups=2,
         group_capacities=[2, 2],
         score_weights={SCORE_COL: 1.0},
-        opt_mode=OptimizationMode.ADVANCED,
         grouper_weight=1_000,
     )
     results, status, _ = solver.solve_with_ortools(p, cfg)
-    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
-
-
-def test_solver_simple_multi_dimension():
-    """Verify SimpleScoring with multiple dimensions and symmetry breaking."""
-    s2 = f"{config.SCORE_PREFIX}2"
-    participants = [
-        {config.COL_NAME: "P1", SCORE_COL: 100, s2: 10},
-        {config.COL_NAME: "P2", SCORE_COL: 10, s2: 100},
-    ]
-    # Weight both.
-    cfg = get_solver_config(
-        2, [1, 1], weights={SCORE_COL: 1.0, s2: 1.0}, mode=OptimizationMode.SIMPLE
-    )
-    results, status, _ = solver.solve_with_ortools(participants, cfg)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
 
@@ -353,17 +292,14 @@ def test_solver_clean_helpers():
     """Cover _clean_tag_cell and _clean_score_cell edge cases."""
     from src.core.solver import _clean_score_cell, _clean_tag_cell
 
-    # Tag cleaning
     assert _clean_tag_cell(None) == ""
     assert _clean_tag_cell(pd.NA) == ""
     assert _clean_tag_cell("ABC") == "ABC"
 
-    # Score cleaning
     assert _clean_score_cell(None) == 0.0
     assert _clean_score_cell(" ") == 0.0
     assert _clean_score_cell("not a float") == 0.0
     assert _clean_score_cell(12.5) == 12.5
-    # Cover the TypeError/ValueError paths
     assert _clean_score_cell([]) == 0.0
 
 
@@ -374,7 +310,6 @@ def test_solver_multi_dimension_symmetry_breaking():
         {config.COL_NAME: "P1", SCORE_COL: 100, s2: 10},
         {config.COL_NAME: "P2", SCORE_COL: 10, s2: 100},
     ]
-    # Weight both. Symmetry breaking should happen for Score1.
     cfg = get_solver_config(2, [1, 1], weights={SCORE_COL: 1.0, s2: 1.0})
     results, status, _ = solver.solve_with_ortools(participants, cfg)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)

@@ -57,8 +57,8 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Risk:** Without stable keys, changing participant counts or reordering groups can cause Streamlit to attach stale values to the wrong inputs or trigger `StreamlitAPIException`.
 
 ### 4. Decoupling Logic from Display Text
-- **Lesson:** UI controls (like radio buttons) should map to stable tokens (e.g., `"simple"` or `"advanced"`) for backend logic, rather than forwarding full display labels.
-- **Risk:** Forwarding display strings into the core solver makes the logic brittle; changing a UI label could silently break `startswith` branching.
+- **Lesson:** UI controls (like radio buttons) should map to stable tokens (e.g., `"groupers"` or `"separators"`) for backend logic, rather than forwarding full display labels.
+- **Risk:** Forwarding display strings into the core solver makes the logic brittle; changing a UI label could silently break branching.
 
 ### 5. Defensive State Clamping
 - **Lesson**: When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
@@ -106,13 +106,13 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Architecture:** The solver minimizes the **Sum of Squared Deviations** (L2) rather than Absolute Error (L1).
 - **Benefit:** L2 is significantly more aggressive at eliminating outliers, leading to the "Way Lower" optimal Standard Deviation results desired by users.
 - **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
-- **Precision Mandate:** Use `norm_multiplier = 1000 * len(participants)` to provide **0.001 precision**. This granularity is confirmed as necessary for L2 math to achieve peak balancing quality.
+- **Precision Mandate:** Use `RESOLUTION_BASE = 1000` to provide **0.001 precision**. This granularity is confirmed as necessary for L2 math to achieve peak balancing quality.
 
 ### 9. Priority Tiering (Lexicographic Bit-Slicing)
 - **Mandate:** Logical constraints MUST always be met before score balancing occurs.
-- **Tiers (Multipliers):**
-    - **Tier 1: Separators ($10^{12}$):** Highest priority (Disperse).
-    - **Tier 2: Groupers ($10^9$):** Secondary priority (Cohesion).
+- **Dynamic Hierarchy:** The UI 'Priority' toggle dynamically swaps the primary and secondary bit-slices:
+    - **HI Priority Tier ($10^{12}$):** Assigned to user's choice (Separators or Groupers).
+    - **LO Priority Tier ($10^9$):** Secondary constraint layer.
     - **Tier 3: Max-Min Fairness ($10^7$):** Tertiary priority (Minimize worst outlier).
     - **Tier 4: Balance (L2 Squared Error, $10^0$):** Quaternary priority (Overall balance).
 - **Stable Identity:** Anchored to `original_index` to ensure that sorting in the UI never shifts the preferred mathematical optimal.

@@ -8,15 +8,12 @@ import streamlit as st
 
 
 def setup_page() -> None:
-    """Configures the global Streamlit page settings.
-
-    Sets the title, icon, and layout mode.
-    """
+    """Configures the global Streamlit page settings."""
     st.set_page_config(page_title="Group Balancer", page_icon="⚖️", layout="wide")
 
 
 def render_page_header(step: int) -> None:
-    """Renders the application header, description, and the progress steps bar.
+    """Renders the application header and the progress steps bar.
 
     Args:
         step (int): The current step number (1, 2, or 3) to highlight.
@@ -48,13 +45,11 @@ def render_page_header(step: int) -> None:
         3. **Generate:** The algorithm will balance the dimensions
            simultaneously based on your assigned weights, prioritizing
            constraints based on your solver setup. For highly complex setups,
-           increase the Max Runtime or use Simple Mode.
+           increase the Max Runtime.
         """)
 
     st.divider()
 
-    # Progress steps using standard, safe Streamlit components
-    # 1. Labels row
     cols_labels = st.columns(3)
     labels = ["1. Upload Data", "2. Configure", "3. Results"]
 
@@ -69,12 +64,8 @@ def render_page_header(step: int) -> None:
             else:
                 st.markdown(f"### :gray[{label}]")
 
-    # 2. Contiguous Bar row using SVG data URIs
-    # This provides the exact Red theme and contiguous look without XSS risk.
-    # It scales dynamically with the container width.
     cols_bar = st.columns(3, gap="small")
 
-    # Height is set to 1px for a sleek hairline look.
     red_svg = (
         "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' "
         "width='100' height='1'><rect width='100' height='1' "
@@ -94,4 +85,4 @@ def render_page_header(step: int) -> None:
             else:
                 st.image(gray_svg, width="stretch")
 
-    st.write("")  # Final padding
+    st.write("")

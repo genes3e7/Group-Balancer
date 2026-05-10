@@ -1,3 +1,5 @@
+"""Edge case tests for UI steps."""
+
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -8,7 +10,7 @@ from src.ui import steps
 
 
 def test_load_uploaded_file_missing_cols():
-    """Cover steps.py line 39."""
+    """Verify error message when uploaded file is missing required columns."""
     mock_file = MagicMock()
     mock_file.name = "test.csv"
     bad_df = pd.DataFrame({"Wrong": [1]})
@@ -22,20 +24,20 @@ def test_load_uploaded_file_missing_cols():
 
 
 def test_render_step_1_error_missing_scores():
-    """Cover steps.py line 106."""
+    """Verify error when navigating from Step 1 without score columns."""
     df = pd.DataFrame({"Name": ["A"]})
     mock_state = MagicMock()
     mock_state.manual_df = df
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state = mock_state
-        mock_st.button.side_effect = [False, True]  # AddScore=False, Next=True
+        mock_st.button.side_effect = [False, True]
         mock_st.data_editor.return_value = df
         steps.render_step_1()
         mock_st.error.assert_called_with("At least one score column is required.")
 
 
 def test_render_step_2_no_data_stop():
-    """Cover steps.py line 134."""
+    """Verify that Step 2 stops and warns if no data is found in session."""
     mock_state = MagicMock()
     mock_state.get.return_value = None
     with patch("src.ui.steps.st") as mock_st:
@@ -48,7 +50,7 @@ def test_render_step_2_no_data_stop():
 
 
 def test_render_step_2_solver_fail_metrics():
-    """Cover steps.py lines 200-206."""
+    """Verify that solver failure metrics are correctly surfaced in UI state."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = MagicMock()
     mock_state.get.side_effect = lambda k, d=None: {
@@ -57,16 +59,15 @@ def test_render_step_2_solver_fail_metrics():
     }.get(k, d)
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state = mock_state
-        mock_st.button.side_effect = [False, True]  # Back=False, Generate=True
+        mock_st.button.side_effect = [False, True]
         mock_st.number_input.return_value = 1
 
         c1, c2 = MagicMock(), MagicMock()
         g1 = MagicMock()
         cb, cg = MagicMock(), MagicMock()
-        # side_effect for st.columns calls: 2, 1, [1,5]
         mock_st.columns.side_effect = [[c1, c2], [g1], [cb, cg]]
 
-        mock_st.radio.side_effect = ["advanced", "groupers"]
+        mock_st.radio.return_value = "groupers"
         mock_st.slider.return_value = 10
         with patch(
             "src.ui.steps.OptimizationService.run",
@@ -87,7 +88,6 @@ def test_footer_reset_direct():
     mock_state.interactive_df = df_orig
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state = mock_state
-        # Force the 'Start Over' button branch
         mock_st.button.side_effect = lambda label, **kwargs: label == "🔄 Start Over"
 
         with patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"):
@@ -98,7 +98,7 @@ def test_footer_reset_direct():
 
 
 def test_render_table_view_nan_std_direct():
-    """Cover steps.py lines 292-293."""
+    """Verify table view handles standard deviation calculation edge cases."""
     df = pd.DataFrame({config.COL_NAME: ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
     mock_state = MagicMock()
     mock_state.interactive_df = df

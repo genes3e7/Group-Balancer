@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pandas as pd
 
 from src.core import config
-from src.core.models import ConflictPriority, OptimizationMode
+from src.core.models import ConflictPriority
 from src.core.services import DataService, OptimizationService
 
 
@@ -43,7 +43,12 @@ def test_optimization_service_success_path():
             config.COL_SEPARATOR: ["", ""],
         },
     )
-    mock_results = [{"Name": "A", "Group": 1}, {"Name": "B", "Group": 2}]
+    mock_results = pd.DataFrame(
+        [
+            {"Name": "A", "Group": 1, "Score1": 10},
+            {"Name": "B", "Group": 2, "Score1": 20},
+        ]
+    )
     mock_metrics = {"status": "OPTIMAL", "elapsed": 0.1}
 
     target = "src.core.services.solver_interface.run_optimization"
@@ -52,7 +57,6 @@ def test_optimization_service_success_path():
             df,
             [1, 1],
             {"Score1": 1.0},
-            OptimizationMode.SIMPLE,
             ConflictPriority.GROUPERS,
             10,
         )
@@ -73,7 +77,6 @@ def test_optimization_service_handles_solver_failure():
             df,
             [1],
             {"S1": 1.0},
-            OptimizationMode.ADVANCED,
             ConflictPriority.GROUPERS,
             10,
         )
@@ -88,7 +91,6 @@ def test_optimization_service_validates_group_capacities():
         df,
         [],
         {"S1": 1.0},
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
     )
@@ -109,17 +111,14 @@ def test_optimization_service_warm_start_hit():
     )
     weights = {"Score1": 1.0}
 
-    # First run
-    res1, metrics1 = OptimizationService.run(
-        data, [1, 1], weights, OptimizationMode.ADVANCED, ConflictPriority.GROUPERS, 10
+    res1, _ = OptimizationService.run(
+        data, [1, 1], weights, ConflictPriority.GROUPERS, 10
     )
 
-    # Second run with SAME config
     res2, metrics2 = OptimizationService.run(
         data,
         [1, 1],
         weights,
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
         previous_results=res1,
@@ -141,13 +140,12 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
     weights = {"Score1": 1.0}
 
     res1, _ = OptimizationService.run(
-        data, [1, 1], weights, OptimizationMode.ADVANCED, ConflictPriority.GROUPERS, 10
+        data, [1, 1], weights, ConflictPriority.GROUPERS, 10
     )
     res2, metrics2 = OptimizationService.run(
         data,
         [1, 1],
         weights,
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
         previous_results=res1,
@@ -172,7 +170,6 @@ def test_optimization_service_catches_runtime_exceptions():
             df,
             [1],
             {"S1": 1.0},
-            OptimizationMode.ADVANCED,
             ConflictPriority.GROUPERS,
             10,
         )
@@ -186,7 +183,6 @@ def test_optimization_service_invalid_input_none():
         None,
         [1],
         {"Score1": 1.0},
-        OptimizationMode.ADVANCED,
         ConflictPriority.GROUPERS,
         10,
     )
