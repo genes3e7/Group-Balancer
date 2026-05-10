@@ -29,10 +29,12 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Least Privilege Configuration**: CI workflows (`ci.yml`) should never grant global `permissions: contents: write`. Instead, write permissions are scoped exclusively to the specific job (e.g., `finalize-updates`) that needs to push automated commits back to the branch.
 
 ## 💻 Environment & Syntax
+
 - **Maintainer's local shell**: PowerShell — examples may use PowerShell syntax.
 - **POSIX Equivalents**: POSIX equivalents apply on Linux/macOS, and CI runners (e.g., `runs-on: ubuntu-latest`) should use POSIX syntax. The `PreCIPipeline` orchestrator and `uv` toolchain are designed to be strictly cross-platform.
 
 ## 🧠 AI Behavioral Mandates
+
 - **GitHub CLI Integration**: Always check if the GitHub CLI (`gh`) is available and authenticated. If so, use it to fetch PR reviews, check CI status, or manage issues before starting work on a branch or PR. This ensures you are aware of feedback or pending requests that might not be visible in the local git history.
 - **Anti-Sycophancy**: Do **NOT** blindly accept reviews or suggestions (from human or AI reviewers) if they contradict established design intent or architectural logic.
 - **Design Intent Integrity**: Always prioritize the long-term vision and stability of the codebase. If a change feels forced or illogical, question it.
@@ -49,10 +51,10 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
   - Use `width="content"` instead of `use_container_width=False`.
 - **Reasoning:** Ensures compatibility with Streamlit >= 1.49.0 and avoids runtime deprecation warnings.
 
-### 2. Progress Bar Implementation
+### 2. High-Performance Progress Bars
 
-- **Technique:** Custom SVG data URIs rendered via `st.image` are used to create a contiguous, themed progress bar.
-- **Quirk:** Must use `width="stretch"` to ensure the SVG fills the column container exactly.
+- **Technique:** Native HTML/CSS `div` elements are used instead of `st.image` SVG data URIs to bypass Streamlit's media manager.
+- **Result:** Instant rendering of progress bars without the "picture retrieval" lag observed in media-based implementations.
 
 ### 3. Stable Widget Keys
 
@@ -69,10 +71,10 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Lesson**: When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
 - **Risk**: Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
 
-### 6. Performance: UI Caching
+### 6. Async UI: Fragmentation & Lazy Loading
 
-- **Lesson**: Memoize heavy binary generation (e.g., `exporter.generate_excel_bytes`) using `@st.cache_data` to ensure the UI remains responsive during rapid reassignments.
-- **Risk**: Without caching, the entire Excel file is re-generated on every streamlit rerun, causing significant lag.
+- **Architecture:** The tool header (Description and Progress) is de-fragmented for instant primary page load. The tool body (Step content) is wrapped in `st.fragment` with **Lazy Loading** (OR-Tools imports are deferred inside the fragment).
+- **Benefit:** Ensures the tool skeleton and labels appear immediately while the heavy solver engine initializes in the background.
 
 ### 7. Import Hygiene
 
@@ -93,7 +95,14 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Warm Start Logic:** `OptimizationService.run` validates the multiset of fingerprints and configuration. If identical, it applies assignments to seed the solver.
 - **Risk:** Using indices for warm starts after reordering causes "hallucinated" hints.
 
-### 3. Solver Determinism vs. Speed (Race Mode)
+### 3. Configuration Cache (LRU Memoization)
+
+- **Architecture:** The application implements a high-level memoization layer using a `collections.OrderedDict` as a Least Recently Used (LRU) cache.
+- **Composite Key:** Each cache entry is keyed by a hash of both the **Dataset** (content-aware) and the **Configuration** (weights, capacities, priority).
+- **Behavior:** This allows users to switch between different weight profiles instantly. If the user reverts a data change, the system automatically retrieves the best-found solution for that specific state from memory, enabling "non-linear" iterative refinement.
+- **Capacity:** Capped at 50 configurations per active session to maintain strict memory hygiene while providing a massive refinement buffer.
+
+### 4. Solver Determinism vs. Speed (Race Mode)
 
 - **Lesson:** While absolute determinism can be achieved with `interleave_search = True`, it significantly slows down the optimality proof. For production speed, we use `num_search_workers = 8` and `interleave_search = False` (Race Mode). This guarantees identical Standard Deviations (quality) on OPTIMAL, but personnel assignments might swap between identical profiles.
 - **Consistency:** All internal iterations (tags, participants) are explicitly sorted before adding constraints to ensure the search tree is built identically across runs.
@@ -101,7 +110,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 ### 4. Integer Range & Overflows
 
 - **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 62) - 1`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
-- **Implementation:** Multipliers are calibrated into "Bit-Slices" to ensure high-priority terms always dominate lower ones without exceeding $9 \times 10^{18}$.
+- **Implementation:** Theoretical bounds are tracked globally via `max_abs_diff_bound` to ensure `max_dev` and `sq_diff` variables stay within the 64-bit domain.
 
 ### 5. Categorical Constraints (Groupers/Separators)
 
@@ -121,7 +130,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Architecture:** The solver minimizes the **Sum of Squared Deviations** (L2) rather than Absolute Error (L1).
 - **Benefit:** L2 is significantly more aggressive at eliminating outliers, leading to the "Way Lower" optimal Standard Deviation results desired by users.
 - **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
-- **Precision Mandate:** Use `RESOLUTION_BASE = 1000` to provide **0.001 precision**. This granularity is confirmed as necessary for L2 math to achieve peak balancing quality.
+- **Precision Mandate:** Use **Dynamic Precision Scaling** to automatically calculate the highest possible resolution (up to **0.001 precision**) that stays within 64-bit safety bounds for the given participant count.
 
 ### 9. Priority Tiering (Lexicographic Bit-Slicing)
 
@@ -136,7 +145,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 ### 10. Search & Branching Strategy
 
 - **Worker Portfolio:** Uses 8 search workers with `interleave_search = False` (Race Mode) to utilize multi-core performance for rapid proof of optimality.
-- **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes. This prunes high-variance branches earlier in the search tree and accelerates both finding and proving optimality.
+- **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes. Uses a deterministic tie-breaker (Impact DESC, Original Index ASC) to ensure search stability.
 
 ## Data Handling
 

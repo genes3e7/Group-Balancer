@@ -1,7 +1,10 @@
 """Unit tests for the solver module.
 
-Updated to match the professional standards refactor (models and result formats).
+Ensures that partition logic, constraint satisfaction, objective weighting,
+and search determinism behave correctly in the high-precision CP-SAT engine.
 """
+
+from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -308,16 +311,41 @@ def test_solver_multi_dimension_symmetry_breaking():
         {"Name": "P1", "Score1": 10, "Score2": 10},
         {"Name": "P2", "Score1": 10, "Score2": 20},
     ]
-    # S1 is first canonical dimension. S2 is second.
     cfg = get_solver_config(2, [1, 1], weights={"Score1": 1.0, "Score2": 1.0})
     results, status, _ = solver.solve_with_ortools(participants, cfg)
     assert status == cp_model.OPTIMAL
 
-    # Tie-breaker sum(g * i * x[i,g]) favors P1 in G2 (index 0, group 1)
-    # and P2 in G1 (index 1, group 0). Penalty = 1*0 + 0*1 = 0.
-    # In this 'Arrangement 2':
-    # G1 has P2 (S2:20)
-    # G2 has P1 (S2:10)
-    # 20 <= 10 is FALSE. If this result is returned, S2 symmetry is NOT broken.
     p1 = next(r for r in results if r[config.COL_NAME] == "P1")
     assert p1[config.COL_GROUP] == 2
+
+
+def test_solver_hint_range_warning():
+    """Verify that out-of-range warm-start hints trigger a warning log."""
+    p = [Participant(name="P1", scores={"S1": 10}, original_index=0)]
+    cfg = SolverConfig(
+        num_groups=1,
+        group_capacities=[1],
+        score_weights={"S1": 1.0},
+        hints_by_index={0: 99},
+    )
+    builder = solver.ConstraintBuilder(p, cfg)
+    with patch("src.core.solver.logger.warning") as mock_log:
+        builder.add_solution_hints()
+        assert mock_log.called
+
+
+def test_solver_identity_buckets_complex():
+    """Exercise the symmetry-aware hint mapping logic with multiple candidates."""
+    p = [
+        Participant(name="P1", scores={"S1": 10}, original_index=0),
+        Participant(name="P2", scores={"S1": 10}, original_index=1),
+    ]
+    cfg = SolverConfig(
+        num_groups=2,
+        group_capacities=[1, 1],
+        score_weights={"S1": 1.0},
+        hints_by_index={0: 1, 1: 2},
+    )
+    builder = solver.ConstraintBuilder(p, cfg)
+    builder.build_variables()
+    builder.add_solution_hints()

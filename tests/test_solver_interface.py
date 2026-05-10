@@ -1,4 +1,9 @@
-"""Unit tests for the solver interface module."""
+"""Unit tests for the solver interface module.
+
+Ensures that the Streamlit-integrated solver callback and the primary
+optimization runner handle UI updates, thread contexts, and error states
+gracefully.
+"""
 
 import importlib
 import sys

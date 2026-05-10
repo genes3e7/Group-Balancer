@@ -1,7 +1,7 @@
 """Reusable UI components for the Streamlit application.
 
 This module contains layout elements such as page configuration
-and the progress/status header.
+and the progress/status header, optimized for asynchronous rendering.
 """
 
 import streamlit as st
@@ -12,12 +12,8 @@ def setup_page() -> None:
     st.set_page_config(page_title="Group Balancer", page_icon="⚖️", layout="wide")
 
 
-def render_page_header(step: int) -> None:
-    """Renders the application header and the progress steps bar.
-
-    Args:
-        step (int): The current step number (1, 2, or 3) to highlight.
-    """
+def render_header_description() -> None:
+    """Renders the top-level tool description and help text."""
     st.markdown("""
     ### ⚖️ Group Balancer Tool
     **Optimizes team allocations based on individual scores and constraints.**
@@ -48,8 +44,13 @@ def render_page_header(step: int) -> None:
            increase the Max Runtime.
         """)
 
-    st.divider()
 
+def render_step_progress(step: int) -> None:
+    """Renders the progress indicators and step labels.
+
+    Args:
+        step (int): The current active step number (1, 2, or 3).
+    """
     cols_labels = st.columns(3)
     labels = ["1. Upload Data", "2. Configure", "3. Results"]
 
@@ -65,24 +66,14 @@ def render_page_header(step: int) -> None:
                 st.markdown(f"### :gray[{label}]")
 
     cols_bar = st.columns(3, gap="small")
-
-    red_svg = (
-        "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' "
-        "width='100' height='1'><rect width='100' height='1' "
-        "fill='%23ff4b4b'/></svg>"
+    red_svg_css = (
+        "background-color: #ff4b4b; height: 4px; width: 100%; border-radius: 2px;"
     )
-    gray_svg = (
-        "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' "
-        "width='100' height='1'><rect width='100' height='1' "
-        "fill='%23ddd'/></svg>"
+    gray_svg_css = (
+        "background-color: #ddd; height: 4px; width: 100%; border-radius: 2px;"
     )
 
     for i, col in enumerate(cols_bar):
         target = i + 1
-        with col:
-            if target <= step:
-                st.image(red_svg, width="stretch")
-            else:
-                st.image(gray_svg, width="stretch")
-
-    st.write("")
+        css = red_svg_css if target <= step else gray_svg_css
+        col.markdown(f'<div style="{css}"></div>', unsafe_allow_html=True)

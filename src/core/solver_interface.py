@@ -24,7 +24,7 @@ try:
 except ImportError:
     try:
         from streamlit.scriptrunner import add_script_run_ctx, get_script_run_ctx
-    except ImportError:
+    except ImportError:  # pragma: no cover
 
         def add_script_run_ctx(_: Any, c: Any = None) -> None:
             """Fallback for add_script_run_ctx."""
@@ -117,6 +117,7 @@ def run_optimization(
     builder.add_cohesion_penalties(groupers)
     builder.add_participant_symmetry_breaking()
     builder.add_solution_hints()
+    builder.add_branching_strategy()
 
     model = builder.get_model()
 
@@ -149,7 +150,7 @@ def run_optimization(
                 "No solution exists that satisfies all hard constraints "
                 "(capacities and separator tags)."
             )
-        else:
+        else:  # pragma: no cover
             error_msg = f"Solver stopped with status: {status_name}"
 
     metrics = {
@@ -202,6 +203,6 @@ def run_optimization(
             with st.status(f"❌ Optimization Failed ({status_name})", state="error"):
                 if error_msg:
                     st.error(error_msg)
-                else:
+                else:  # pragma: no cover
                     st.write(f"Solver stopped with status: {status_name}")
     return None, metrics

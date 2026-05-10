@@ -1,4 +1,9 @@
-"""Edge case tests for UI steps."""
+"""Edge case tests for UI steps.
+
+Verifies that multi-step navigation, file processing, and solver
+integration handle missing data, invalid inputs, and execution failures
+gracefully.
+"""
 
 from unittest.mock import MagicMock, patch
 
@@ -17,7 +22,7 @@ def test_load_uploaded_file_missing_cols():
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state.u_file = mock_file
         with patch("pandas.read_csv", return_value=bad_df):
-            steps._load_uploaded_file()
+            steps._process_uploaded_file(mock_file)
             mock_st.error.assert_called_with(
                 "File missing required columns: Name and Score*"
             )
@@ -30,45 +35,47 @@ def test_render_step_1_error_missing_scores():
     mock_state.manual_df = df
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state = mock_state
-        mock_st.button.side_effect = [False, True]
+        mock_st.button.side_effect = lambda label, **kwargs: label == "Next: Configure"
         mock_st.data_editor.return_value = df
         steps.render_step_1()
         mock_st.error.assert_called_with("At least one score column is required.")
 
 
-def test_render_step_2_no_data_stop():
-    """Verify that Step 2 stops and warns if no data is found in session."""
+def test_render_step_2_no_data_back_navigation():
+    """Verify that Step 2 Back button works when no data is found."""
     mock_state = MagicMock()
     mock_state.get.return_value = None
     with patch("src.ui.steps.st") as mock_st:
+        mock_state.manual_df = pd.DataFrame()
         mock_st.session_state = mock_state
-        mock_st.button.return_value = False
+        mock_st.button.side_effect = lambda label, **kwargs: label == "⬅ Back"
         mock_st.stop.side_effect = RuntimeError("stop")
-        with pytest.raises(RuntimeError, match="stop"):
-            steps.render_step_2()
-        mock_st.warning.assert_called_with("No data found.")
+        with patch("src.ui.session_manager.go_to_step") as mock_go:
+            with pytest.raises(RuntimeError, match="stop"):
+                steps.render_step_2()
+            mock_go.assert_called_with(1)
 
 
 def test_render_step_2_solver_fail_metrics():
     """Verify that solver failure metrics are correctly surfaced in UI state."""
-    mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
+    mock_df = pd.DataFrame({config.COL_NAME: ["P1"], "Score1": [10.0]})
     mock_state = MagicMock()
+    mock_state.warm_start_cache = {}
     mock_state.get.side_effect = lambda k, d=None: {
         "participants_df": mock_df,
         "score_cols": ["Score1"],
+        "warm_start_cache": {},
     }.get(k, d)
+
     with patch("src.ui.steps.st") as mock_st:
         mock_st.session_state = mock_state
-        mock_st.button.side_effect = [False, True]
+        mock_st.button.side_effect = lambda label, **kwargs: label == "🚀 Generate"
         mock_st.number_input.return_value = 1
-
-        c1, c2 = MagicMock(), MagicMock()
-        g1 = MagicMock()
-        cb, cg = MagicMock(), MagicMock()
-        mock_st.columns.side_effect = [[c1, c2], [g1], [cb, cg]]
-
         mock_st.radio.return_value = "groupers"
         mock_st.slider.return_value = 10
+        mock_st.columns.return_value = [MagicMock(), MagicMock()]
+        mock_st.empty.return_value = MagicMock()
+
         with patch(
             "src.ui.steps.OptimizationService.run",
             return_value=(
@@ -76,14 +83,15 @@ def test_render_step_2_solver_fail_metrics():
                 {"status": "INFEASIBLE", "elapsed": 0.1, "error": "No solution"},
             ),
         ):
-            steps.render_step_2()
-            assert mock_state.results_df is None
-            assert mock_state.solver_error == "No solution"
+            with patch("src.ui.session_manager.go_to_step"):
+                steps.render_step_2()
+                assert mock_state.results_df is None
+                assert mock_state.solver_error == "No solution"
 
 
 def test_footer_reset_direct():
     """Verify that 'Start Over' clears state and reruns."""
-    df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
+    df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "Score1": [10.0]})
     mock_state = MagicMock()
     mock_state.interactive_df = df_orig
     with patch("src.ui.steps.st") as mock_st:
@@ -109,3 +117,93 @@ def test_render_table_view_nan_std_direct():
         mock_st.data_editor.return_value = df
         steps._render_table_view(["S1"])
         mock_st.metric.assert_any_call("S1 Std Dev", "0.0000")
+
+
+def test_steps_process_file_errors():
+    """Verify error handling for invalid file reads."""
+    mock_file = MagicMock()
+    mock_file.name = "test.xlsx"
+    with patch("src.ui.steps.st") as mock_st:
+        # 1. Excel read fail
+        with patch("pandas.read_excel", side_effect=Exception("Read fail")):
+            steps._process_uploaded_file(mock_file)
+            mock_st.error.assert_called_with("Error reading file: Read fail")
+
+        # 2. CSV missing columns
+        mock_file.name = "test.csv"
+        with patch("pandas.read_csv", return_value=pd.DataFrame({"Wrong": [1]})):
+            steps._process_uploaded_file(mock_file)
+            mock_st.error.assert_called_with(
+                "File missing required columns: Name and Score*"
+            )
+
+
+def test_render_step_1_empty_warning():
+    """Verify warning when attempting to proceed from Step 1 with empty data."""
+    with patch("src.ui.steps.st") as mock_st:
+        mock_st.button.return_value = True  # Next button
+        mock_st.data_editor.return_value = None
+        steps.render_step_1()
+        mock_st.warning.assert_called_with("Please add participants.")
+
+
+def test_render_step_2_capacity_mismatch():
+    """Verify error reporting for group capacity mismatches."""
+    df = pd.DataFrame({config.COL_NAME: ["P1"], "S1": [10]})
+    mock_state = MagicMock()
+    mock_state.get.side_effect = lambda k, d=None: {
+        "participants_df": df,
+        "score_cols": ["S1"],
+    }.get(k, d)
+
+    with patch("src.ui.steps.st") as mock_st:
+        mock_st.session_state = mock_state
+        mock_st.number_input.return_value = 1
+        mock_st.radio.return_value = "groupers"
+
+        # Mock columns for capacities loop
+        mock_col = MagicMock()
+        mock_col.number_input.return_value = 5  # Total P is 1, Cap is 5
+        mock_st.columns.side_effect = [
+            [MagicMock(), MagicMock()],  # Groups input
+            [mock_col],  # Capacities loop
+            [MagicMock(), MagicMock()],  # Solver controls
+        ]
+
+        steps.render_step_2()
+        mock_st.error.assert_any_call("Capacity mismatch: 5 != 1")
+
+
+def test_render_step_3_status_messages():
+    """Verify various solver status messages in Step 3."""
+    mock_state = MagicMock()
+
+    # 1. OPTIMAL status
+    mock_state.get.side_effect = lambda k, d=None: {
+        "solver_status": "OPTIMAL",
+        "solver_elapsed": 1.5,
+        "interactive_df": pd.DataFrame({"A": [1]}),
+    }.get(k, d)
+    with patch("src.ui.steps.st") as mock_st:
+        mock_st.session_state = mock_state
+        mock_st.button.return_value = False
+        with patch("src.ui.steps._render_table_view"):
+            with patch("src.ui.steps._render_footer_actions"):
+                steps.render_step_3()
+                mock_st.success.assert_called()
+
+    # 2. Other status
+    mock_state.get.side_effect = lambda k, d=None: {
+        "solver_status": "TIMEOUT",
+        "solver_elapsed": 10.0,
+        "interactive_df": pd.DataFrame({"A": [1]}),
+    }.get(k, d)
+    with patch("src.ui.steps.st") as mock_st:
+        mock_st.session_state = mock_state
+        mock_st.button.return_value = False
+        with patch("src.ui.steps._render_table_view"):
+            with patch("src.ui.steps._render_footer_actions"):
+                steps.render_step_3()
+                mock_st.warning.assert_any_call(
+                    "⏳ Solver stopped in 10.00s (Status: TIMEOUT)"
+                )

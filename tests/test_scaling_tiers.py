@@ -1,7 +1,7 @@
-"""Unit tests to enforce and lock in the lexicographic bit-slicing scaling logic.
+"""Unit tests for the lexicographic bit-slicing scaling logic.
 
-Ensures that the priority tiers (Separators, Groupers, Fairness, Balance)
-are strictly respected and dynamically swappable via the Priority toggle.
+Ensures that priority tiers (Separators, Groupers, Fairness, Balance) are
+strictly respected and correctly toggled via the Priority settings.
 """
 
 from ortools.sat.python import cp_model
@@ -12,10 +12,10 @@ from src.core.solver import AdvancedScoring
 
 
 def test_scaling_constants_lock():
-    """Explicitly enforce the 'perfect' scaling constants in config.py.
+    """Explicitly enforce mathematical priority hierarchy constants.
 
-    This test serves as a sentinel to prevent any accidental drift in the
-    mathematical priority hierarchy or precision resolution.
+    Serves as a sentinel to prevent drift in bit-sliced multipliers or
+    precision resolution.
     """
     assert config.TIER_HI_MULTIPLIER == 10**12
     assert config.TIER_LO_MULTIPLIER == 10**9
@@ -26,15 +26,7 @@ def test_scaling_constants_lock():
 
 
 def test_priority_separators_wins():
-    """Verify HI Tier (Separators) strictly outweighs LO Tier (Groupers).
-
-    Scenario:
-    - 4 participants, 2 groups (Capacities: 2, 2).
-    - P0/P1 share Grouper 'G' (HI if Priority=Groupers).
-    - P0/P2 share Separator 'S' (HI if Priority=Separators).
-    - Setting Priority to SEPARATORS should force P0/P2 apart even if it
-      splits P0/P1.
-    """
+    """Verify HI Tier (Separators) strictly outweighs LO Tier (Groupers)."""
     participants = [
         {
             config.COL_NAME: "P0",
@@ -76,20 +68,11 @@ def test_priority_separators_wins():
     p0_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P0")
     p2_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P2")
 
-    # They MUST be separated because Separators have the HI_MULTIPLIER
     assert p0_group != p2_group
 
 
 def test_priority_groupers_wins():
-    """Verify HI Tier (Groupers) strictly outweighs LO Tier (Separators).
-
-    Scenario:
-    - 4 participants, 2 groups (Capacities: 2, 2).
-    - P0/P1 share Grouper 'G'.
-    - P0/P2 share Separator 'S'.
-    - Setting Priority to GROUPERS should force P0/P1 together even if it
-      clumps P0/P2.
-    """
+    """Verify HI Tier (Groupers) strictly outweighs LO Tier (Separators)."""
     participants = [
         {
             config.COL_NAME: "P0",
@@ -131,19 +114,11 @@ def test_priority_groupers_wins():
     p0_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P0")
     p1_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P1")
 
-    # They MUST be together because Groupers have the HI_MULTIPLIER
     assert p0_group == p1_group
 
 
 def test_tier_hi_over_tier3_fairness():
-    """Verify that the HI tier strictly outweighs Max-Min Fairness.
-
-    Scenario:
-    - 4 participants, 2 groups (Capacities: 2, 2).
-    - P0 and P1 share a Grouper tag 'G'.
-    - Imbalance {100, 100} vs {10, 10} is caused if they stay together.
-    - If Groupers (HI) > Fairness, they MUST stay together.
-    """
+    """Verify that the HI tier strictly outweighs Max-Min Fairness."""
     participants = [
         {config.COL_NAME: "P0", "Score1": 100, config.COL_GROUPER: "G"},
         {config.COL_NAME: "P1", "Score1": 100, config.COL_GROUPER: "G"},
@@ -169,13 +144,9 @@ def test_tier_hi_over_tier3_fairness():
 
 
 def test_norm_multiplier_precision():
-    """Verify that high-precision normalization (RESOLUTION_BASE) is active.
-
-    Ensures that small score differences are preserved after normalization.
-    """
+    """Verify that high-precision normalization is active and functional."""
     participants_raw = []
     for i in range(10):
-        # 1.002 vs 1.000 difference is preserved at RESOLUTION_BASE=1000
         s = 1.002 if i == 0 else 1.000
         participants_raw.append({config.COL_NAME: f"P{i}", "Score1": s})
 
@@ -194,5 +165,4 @@ def test_norm_multiplier_precision():
     vectors = strategy.get_score_vectors(participants, cfg)
 
     scores = vectors[0][1]
-    # P0 (1.002) and P1 (1.000) should have different integer scores
     assert scores[0] != scores[1]

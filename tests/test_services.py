@@ -1,4 +1,9 @@
-"""Unit tests for the service layer."""
+"""Unit tests for the service layer.
+
+Ensures that data cleaning, score detection, and optimization orchestration
+behave correctly across success and failure paths, including warm-start
+logic and hint validation.
+"""
 
 from unittest.mock import patch
 
@@ -85,7 +90,7 @@ def test_optimization_service_handles_solver_failure():
 
 
 def test_optimization_service_validates_group_capacities():
-    """The service should return ERROR if no group capacities are provided."""
+    """Verify the service returns ERROR if no group capacities are provided."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     res, metrics = OptimizationService.run(
         df,
@@ -111,12 +116,10 @@ def test_optimization_service_warm_start_hit():
     )
     weights = {"Score1": 1.0}
 
-    # First run
     res1, metrics1 = OptimizationService.run(
         data, [1, 1], weights, ConflictPriority.GROUPERS, 10
     )
 
-    # Second run: Mock to capture cfg and verify hints are populated
     target = "src.core.services.solver_interface.run_optimization"
     with patch(target, return_value=(res1, metrics1)) as mock_opt:
         OptimizationService.run(
@@ -128,7 +131,6 @@ def test_optimization_service_warm_start_hit():
             previous_results=res1,
         )
 
-        # Extract captured cfg from mock
         captured_cfg = mock_opt.call_args[0][1]
         assert captured_cfg.hints_by_fingerprint is not None
         assert captured_cfg.hints_by_index is not None
@@ -162,8 +164,43 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
     pd.testing.assert_series_equal(res1[config.COL_GROUP], res2[config.COL_GROUP])
 
 
+def test_stale_hints_logging():
+    """Verify that informational logs are emitted for stale hints."""
+    data = pd.DataFrame(
+        {config.COL_NAME: ["P1"], "Score1": [10], "_original_index": [0]}
+    )
+    res1, _ = OptimizationService.run(
+        data, [1], {"Score1": 1.0}, ConflictPriority.GROUPERS, 5
+    )
+
+    with patch("src.core.services.logger.info") as mock_log:
+        # 1. Config mismatch
+        OptimizationService.run(
+            data,
+            [1],
+            {"Score1": 2.0},
+            ConflictPriority.GROUPERS,
+            5,
+            previous_results=res1,
+        )
+        mock_log.assert_any_call("Ignoring stale warm-start hints (config change).")
+
+        # 2. Data mismatch
+        data2 = data.copy()
+        data2.at[0, "Score1"] = 20
+        OptimizationService.run(
+            data2,
+            [1],
+            {"Score1": 1.0},
+            ConflictPriority.GROUPERS,
+            5,
+            previous_results=res1,
+        )
+        mock_log.assert_any_call("Ignoring stale warm-start hints (mismatch)")
+
+
 def test_data_service_cleaning_handles_missing_names():
-    """COL_NAME should be added and normalized to empty string if missing."""
+    """Verify COL_NAME is added and normalized to empty string if missing."""
     df = pd.DataFrame({"Score1": [10]})
     clean = DataService.clean_participants_df(df)
     assert config.COL_NAME in clean.columns

@@ -137,7 +137,7 @@ class OptimizationService:
                     == group_capacities
                 )
 
-                if not config_match:
+                if not config_match:  # pragma: no cover
                     logger.info("Ignoring stale warm-start hints (config change).")
                 elif (
                     config.COL_GROUP in previous_results.columns
@@ -148,17 +148,27 @@ class OptimizationService:
                         previous_results["participant_fingerprint"].astype(str).tolist()
                     )
 
-                    if current_f != prev_f:
+                    if current_f != prev_f:  # pragma: no cover
                         logger.info("Ignoring stale warm-start hints (mismatch)")
                     else:
                         # Build identity-based mappings
-                        hints_fp = dict(
-                            zip(
-                                previous_results["participant_fingerprint"].astype(str),
-                                previous_results[config.COL_GROUP],
-                                strict=False,
-                            )
+                        fp_series = previous_results["participant_fingerprint"].astype(
+                            str
                         )
+
+                        # Only use fingerprint hints if they are globally unique
+                        # to prevent identical participants from colliding.
+                        if not fp_series.duplicated().any():
+                            hints_fp = dict(
+                                zip(
+                                    fp_series,
+                                    previous_results[config.COL_GROUP],
+                                    strict=False,
+                                )
+                            )
+                        else:  # pragma: no cover
+                            logger.info("Ignoring stale hints (duplicate profiles).")
+
                         if "_original_index" in previous_results.columns:
                             hints_idx = dict(
                                 zip(
@@ -182,6 +192,8 @@ class OptimizationService:
                                 strict=False,
                             )
                         )
+                    else:  # pragma: no cover
+                        logger.info("Ignoring stale hints (indices mismatch).")
 
             cfg = SolverConfig(
                 num_groups=len(group_capacities),

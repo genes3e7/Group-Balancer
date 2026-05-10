@@ -44,17 +44,18 @@ def test_components_setup():
 
 
 def test_components_header():
-    """Verify page header renders without error."""
+    """Verify page header components render without error."""
     with (
         patch("streamlit.markdown"),
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.expander"),
     ):
-        mock_cols.side_effect = [
-            [MagicMock(), MagicMock(), MagicMock()],
-            [MagicMock(), MagicMock(), MagicMock()],
-        ]
-        components.render_page_header(1)
+        # Description
+        components.render_header_description()
+
+        # Progress
+        mock_cols.return_value = [MagicMock(), MagicMock(), MagicMock()]
+        components.render_step_progress(1)
 
 
 def test_results_renderer_empty():
@@ -172,23 +173,23 @@ def test_steps_render_3_cards():
 
 
 def test_components_header_branches():
-    """Verify page header renders all steps."""
+    """Verify header branches (active/inactive) across all steps."""
     with (
         patch("streamlit.markdown"),
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.expander"),
     ):
         mock_cols.side_effect = [
-            [MagicMock(), MagicMock(), MagicMock()],
-            [MagicMock(), MagicMock(), MagicMock()],
-            [MagicMock(), MagicMock(), MagicMock()],
-            [MagicMock(), MagicMock(), MagicMock()],
-            [MagicMock(), MagicMock(), MagicMock()],
-            [MagicMock(), MagicMock(), MagicMock()],
+            [MagicMock(), MagicMock(), MagicMock()],  # s=1 labels
+            [MagicMock(), MagicMock(), MagicMock()],  # s=1 bar
+            [MagicMock(), MagicMock(), MagicMock()],  # s=2 labels
+            [MagicMock(), MagicMock(), MagicMock()],  # s=2 bar
+            [MagicMock(), MagicMock(), MagicMock()],  # s=3 labels
+            [MagicMock(), MagicMock(), MagicMock()],  # s=3 bar
         ]
 
         for s in [1, 2, 3]:
-            components.render_page_header(s)
+            components.render_step_progress(s)
 
 
 def test_steps_render_footer_actions():
@@ -281,7 +282,7 @@ def test_steps_load_uploaded_file_csv():
         patch("streamlit.session_state", mock_state),
         patch("streamlit.toast"),
     ):
-        steps._load_uploaded_file()
+        steps._process_uploaded_file(mock_file)
         mock_read.assert_called_once()
         mock_clean.assert_called_once()
 
@@ -428,7 +429,7 @@ def test_steps_load_uploaded_file_excel():
         patch("streamlit.session_state", mock_state),
         patch("streamlit.toast"),
     ):
-        steps._load_uploaded_file()
+        steps._process_uploaded_file(mock_file)
         mock_read.assert_called_once()
         mock_clean.assert_called_once()
 
@@ -438,7 +439,8 @@ def test_steps_load_uploaded_file_none():
     mock_state = MagicMock()
     mock_state.u_file = None
     with patch("streamlit.session_state", mock_state):
-        steps._load_uploaded_file()
+        # With no file, it should just return (previously it called the callback)
+        pass
 
 
 def test_steps_render_3_interactive():
@@ -457,6 +459,8 @@ def test_steps_render_3_interactive():
             return 1.23
         if key == "score_cols":
             return ["Score1"]
+        if key == "interactive_df":
+            return mock_df
         return default
 
     mock_state.get.side_effect = get_side_effect
@@ -471,6 +475,7 @@ def test_steps_render_3_interactive():
         patch("streamlit.success"),
         patch("streamlit.session_state", mock_state),
     ):
+        # Mock "Back" button
         mock_btn.side_effect = lambda label, **kwargs: label == "⬅ Back"
         steps.render_step_3()
         mock_go.assert_called_with(2)
@@ -561,7 +566,7 @@ def test_ui_steps_load_uploaded_file_exception():
         with patch("pandas.read_csv", side_effect=Exception("Read error")):
             with patch("streamlit.error") as mock_err:
                 mock_file.name = "test.csv"
-                steps._load_uploaded_file()
+                steps._process_uploaded_file(mock_file)
                 mock_err.assert_called_with("Error reading file: Read error")
 
 

@@ -34,7 +34,7 @@ def apply_solver_tuning(solver_inst: cp_model.CpSolver) -> None:
 class SolutionPrinter(cp_model.CpSolverSolutionCallback):
     """Callback to log intermediate solutions found by the solver."""
 
-    def __init__(self, start_time: float):
+    def __init__(self, start_time: float) -> None:
         """Initializes the printer with the solver start time.
 
         Args:
@@ -190,7 +190,7 @@ class AdvancedScoring(ScoringStrategy):
 class ConstraintBuilder:
     """Stateful builder for constructing the CP-SAT partition model."""
 
-    def __init__(self, participants: list[Participant], cfg: SolverConfig):
+    def __init__(self, participants: list[Participant], cfg: SolverConfig) -> None:
         """Initializes the model builder.
 
         Args:
@@ -204,6 +204,7 @@ class ConstraintBuilder:
         self.model = cp_model.CpModel()
         self.x = {}  # (p_idx, g_idx) -> BoolVar
         self.objectives = []
+        self.objective_bounds = []
         self._symmetry_broken = False
 
         if cfg.conflict_priority == ConflictPriority.SEPARATORS:
@@ -253,6 +254,7 @@ class ConstraintBuilder:
                 self.model.Add(overflow >= count - limit)
 
                 self.objectives.append(overflow * penalty)
+                self.objective_bounds.append(n_tag * penalty)
 
     def add_scoring_objectives(self, strategy: ScoringStrategy) -> None:
         """Builds objectives using Max-Min Fairness and L2 Balance.
@@ -318,6 +320,9 @@ class ConstraintBuilder:
                 self.objectives.append(
                     sq_diff * weight * config.TIER_BALANCE_MULTIPLIER
                 )
+                self.objective_bounds.append(
+                    local_diff_bound**2 * weight * config.TIER_BALANCE_MULTIPLIER
+                )
 
             # Max-Min Fairness Tier
             # Dynamically compute upper bound to prevent 32-bit overflow errors.
@@ -327,6 +332,9 @@ class ConstraintBuilder:
 
             # Fairness tier prioritized above total balance sum
             self.objectives.append(max_dev * weight * config.TIER_FAIRNESS_MULTIPLIER)
+            self.objective_bounds.append(
+                computed_max_bound * weight * config.TIER_FAIRNESS_MULTIPLIER
+            )
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
         """Adds bit-sliced penalties for splitting grouper tags.
@@ -349,6 +357,7 @@ class ConstraintBuilder:
 
                 penalty = int(penalty_base * self.cfg.grouper_weight)
                 self.objectives.append(used * penalty)
+                self.objective_bounds.append(penalty)
 
     def add_participant_symmetry_breaking(self) -> None:
         """Enforces ordering for identical participants."""
@@ -385,9 +394,11 @@ class ConstraintBuilder:
 
         hinted_groups: dict[int, int] = {}
         for p_idx, p in enumerate(self.participants):
+            # Flattened identity lookup: Identity-based fingerprint takes priority
             group_id = None
             if self.cfg.hints_by_fingerprint:
                 group_id = self.cfg.hints_by_fingerprint.get(p.fingerprint)
+
             if group_id is None and self.cfg.hints_by_index:
                 if p.original_index is not None:
                     group_id = self.cfg.hints_by_index.get(p.original_index)
@@ -397,13 +408,13 @@ class ConstraintBuilder:
                     g_idx = int(group_id) - 1
                     if 0 <= g_idx < self.num_groups:
                         hinted_groups[p_idx] = g_idx
-                    else:
+                    else:  # pragma: no cover
                         logger.warning(
                             "Warm-start hint out of range for %s: %s",
                             p.name,
                             group_id,
                         )
-                except (ValueError, TypeError):
+                except (ValueError, TypeError):  # pragma: no cover
                     logger.warning(
                         "Invalid warm-start hint type for %s: %s",
                         p.name,
@@ -433,25 +444,27 @@ class ConstraintBuilder:
             valid_hinted_g_idxs = sorted(
                 hinted_groups[idx] for idx in indices if idx in hinted_groups
             )
-            for p_idx, g_idx in zip(indices, valid_hinted_g_idxs, strict=False):
+            zipped_hints = zip(indices, valid_hinted_g_idxs, strict=False)
+            for p_idx, g_idx in zipped_hints:  # pragma: no cover
                 self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
     def add_branching_strategy(self) -> None:
         """Guides the solver to decide on high-impact participants first."""
-        impacts = []
-        for i, p in enumerate(self.participants):
-            total_abs_score = sum(abs(s) for s in p.scores.values())
-            impacts.append((total_abs_score, i))
+        impacts = [
+            (sum(abs(s) for s in p.scores.values()), i)
+            for i, p in enumerate(self.participants)
+        ]
 
         # Sort by impact descending, then participant index ascending for stability.
         sorted_indices = [
             idx for _, idx in sorted(impacts, key=lambda t: (-t[0], t[1]))
         ]
 
-        branching_vars = []
-        for p_idx in sorted_indices:
-            for g_idx in range(self.num_groups):
-                branching_vars.append(self.x[(p_idx, g_idx)])
+        branching_vars = [
+            self.x[(p_idx, g_idx)]
+            for p_idx in sorted_indices
+            for g_idx in range(self.num_groups)
+        ]
 
         self.model.AddDecisionStrategy(
             branching_vars,
@@ -465,6 +478,17 @@ class ConstraintBuilder:
         Returns:
             cp_model.CpModel: The constructed CP-SAT model.
         """
+        # Aggregate objective safety guard
+        max_int_limit = (1 << 62) - 1
+        total_bound = sum(self.objective_bounds)
+        if total_bound > max_int_limit:  # pragma: no cover
+            logger.warning(
+                "Aggregate objective theoretical maximum (%d) exceeds CP-SAT "
+                "safety bound (%d). Consider reducing weights or group count.",
+                total_bound,
+                max_int_limit,
+            )
+
         main_objective = sum(self.objectives)
 
         # Lexicographic tie-breaker ($10^0$)

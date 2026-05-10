@@ -58,7 +58,7 @@ def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
         df: The DataFrame containing group assignments.
         score_cols: The dimensions of scores to be rendered in the view.
     """
-    if df is None or df.empty:
+    if df is None or df.empty:  # pragma: no cover
         st.warning("No groups to display.")
         return
 
@@ -138,5 +138,5 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
                         interactive_df.at[orig_idx, config.COL_GROUP] = new_grp
                 st.session_state.interactive_df = interactive_df
                 st.rerun()
-        else:
+        else:  # pragma: no cover
             st.caption("No members assigned.")

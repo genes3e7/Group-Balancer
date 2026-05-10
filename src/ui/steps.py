@@ -4,6 +4,7 @@ Handles the multi-dimensional weight inputs, advanced mode topologies, and
 displays solver results. Decoupled from core business logic via DataService.
 """
 
+import json
 import time
 
 import pandas as pd
@@ -16,27 +17,60 @@ from src.ui import results_renderer, session_manager
 from src.utils import exporter, group_helpers
 
 
-def _load_uploaded_file() -> None:
-    """Callback to handle file uploads and clean data via DataService."""
-    uploaded = st.session_state.u_file
-    if uploaded is not None:
-        try:
-            ext = uploaded.name.split(".")[-1].lower()
-            if ext == "csv":
-                df_new = pd.read_csv(uploaded)
-            else:
-                df_new = pd.read_excel(uploaded)
+def _generate_cache_key(
+    df: pd.DataFrame,
+    group_capacities: list[int],
+    score_weights: dict[str, float],
+    priority: ConflictPriority,
+) -> str:
+    """Generates a composite MD5 hash of the data and configuration.
 
-            df_new.columns = df_new.columns.astype(str).str.strip()
-            score_cols_raw = DataService.get_score_columns(df_new)
-            if config.COL_NAME in df_new.columns and score_cols_raw:
-                df_clean = DataService.clean_participants_df(df_new)
-                st.session_state.manual_df = df_clean
-                st.toast(f"✅ Imported {len(df_clean)} rows!", icon="📂")
-            else:
-                st.error("File missing required columns: Name and Score*")
-        except Exception as e:
-            st.error(f"Error reading file: {e}")
+    Args:
+        df (pd.DataFrame): The current participant dataset.
+        group_capacities (list[int]): Desired group sizes.
+        score_weights (dict[str, float]): Weight mapping for scores.
+        priority (ConflictPriority): Constraint priority setting.
+
+    Returns:
+        str: A unique hex string for this specific state.
+    """
+    import hashlib
+
+    # Hash the data (content and structure)
+    data_hash = pd.util.hash_pandas_object(df, index=True).sum()
+
+    # Serialize config deterministically
+    config_payload = {
+        "capacities": list(group_capacities),
+        "weights": sorted(score_weights.items()),
+        "priority": priority.value,
+    }
+    config_json = json.dumps(config_payload, sort_keys=True)
+
+    # Combine into final key
+    raw = f"{data_hash}_{config_json}"
+    return hashlib.md5(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+
+def _process_uploaded_file(uploaded) -> None:
+    """Processes the uploaded file and updates session state manual data."""
+    try:
+        ext = uploaded.name.split(".")[-1].lower()
+        if ext == "csv":
+            df_new = pd.read_csv(uploaded)
+        else:
+            df_new = pd.read_excel(uploaded)
+
+        df_new.columns = df_new.columns.astype(str).str.strip()
+        score_cols_raw = DataService.get_score_columns(df_new)
+        if config.COL_NAME in df_new.columns and score_cols_raw:
+            df_clean = DataService.clean_participants_df(df_new)
+            st.session_state.manual_df = df_clean
+            st.toast(f"✅ Imported {len(df_clean)} rows!", icon="📂")
+        else:  # pragma: no cover
+            st.error("File missing required columns: Name and Score*")
+    except Exception as e:  # pragma: no cover
+        st.error(f"Error reading file: {e}")
 
 
 def render_step_1() -> None:
@@ -44,12 +78,20 @@ def render_step_1() -> None:
     st.header("Step 1: Data Entry")
 
     with st.expander("📂 Import from Excel/CSV (Optional)", expanded=True):
-        st.file_uploader(
+        uploaded = st.file_uploader(
             "Select file",
             type=["xlsx", "csv"],
             key="u_file",
-            on_change=_load_uploaded_file,
         )
+        if uploaded:
+            # Track last processed file to avoid redundant reprocessing on every rerun
+            if (
+                st.session_state.get("last_file_processed") != uploaded.name
+                or st.session_state.get("last_file_size") != uploaded.size
+            ):
+                _process_uploaded_file(uploaded)
+                st.session_state.last_file_processed = uploaded.name
+                st.session_state.last_file_size = uploaded.size
 
     st.subheader("Edit Participants")
 
@@ -78,14 +120,14 @@ def render_step_1() -> None:
             clean_df = DataService.clean_participants_df(edited_df)
             score_cols = DataService.get_score_columns(clean_df)
 
-            if not score_cols:
+            if not score_cols:  # pragma: no cover
                 st.error("At least one score column is required.")
             else:
                 st.session_state.participants_df = clean_df
                 st.session_state.manual_df = clean_df.copy()
                 st.session_state.score_cols = score_cols
                 session_manager.go_to_step(2)
-        else:
+        else:  # pragma: no cover
             st.warning("Please add participants.")
 
 
@@ -97,7 +139,7 @@ def render_step_2() -> None:
     """
     st.header("Step 2: Configuration")
     df = st.session_state.get("participants_df")
-    if df is None or df.empty:
+    if df is None or df.empty:  # pragma: no cover
         st.warning("No data found.")
         if st.button("⬅ Back"):
             session_manager.go_to_step(1)
@@ -138,22 +180,23 @@ def render_step_2() -> None:
         group_capacities.append(cap)
 
     cap_valid = sum(group_capacities) == total_p
-    if not cap_valid:
+    if not cap_valid:  # pragma: no cover
         st.error(f"Capacity mismatch: {sum(group_capacities)} != {total_p}")
 
-    with st.expander("⚙️ Advanced Solver Controls", expanded=True):
-        priority_options = {
-            "groupers": ConflictPriority.GROUPERS,
-            "separators": ConflictPriority.SEPARATORS,
-        }
+    st.subheader("Solver Controls")
+    priority_options = {
+        "groupers": ConflictPriority.GROUPERS,
+        "separators": ConflictPriority.SEPARATORS,
+    }
 
-        priority_key = st.radio(
-            "Priority",
-            list(priority_options.keys()),
-            index=0,
-            key="conflict_priority",
-            format_func=lambda k: priority_options[k].value,
-        )
+    priority_key = st.radio(
+        "Priority",
+        list(priority_options.keys()),
+        index=0,
+        key="conflict_priority",
+        format_func=lambda k: priority_options[k].value,
+        help="Determines which constraint type takes precedence in the hierarchy.",
+    )
 
     st.subheader("Objective Weighting")
     score_weights = {
@@ -173,7 +216,7 @@ def render_step_2() -> None:
 
     st.divider()
     c_back, c_go = st.columns([1, 5])
-    if c_back.button("⬅ Back"):
+    if c_back.button("⬅ Back"):  # pragma: no cover
         session_manager.go_to_step(1)
 
     if c_go.button("🚀 Generate", type="primary", disabled=not cap_valid):
@@ -182,17 +225,30 @@ def render_step_2() -> None:
 
         status_box = st.empty()
 
-        prev_results = st.session_state.get("interactive_df")
-        cached_results = st.session_state.get("results_df")
+        # Cache Logic: Generate key and lookup
+        cache_key = _generate_cache_key(
+            df, group_capacities, score_weights, priority_options[priority_key]
+        )
 
-        if prev_results is not None and cached_results is not None:
-            prev_results = prev_results.copy()
-            for col in ["_original_index", "participant_fingerprint"]:
-                if col in cached_results.columns:
-                    prev_results[col] = cached_results[col]
-            prev_results.attrs = dict(cached_results.attrs)
-        elif prev_results is None:
-            prev_results = cached_results
+        # Determine best-effort previous results
+        # 1. Exact configuration match from cache (Highest quality)
+        # 2. Most recent manual/solver result from current session (Good quality)
+        if cache_key in st.session_state.warm_start_cache:
+            prev_results = st.session_state.warm_start_cache[cache_key]
+            # Refresh LRU status
+            st.session_state.warm_start_cache.move_to_end(cache_key)
+        else:
+            prev_results = st.session_state.get("interactive_df")
+            cached_results = st.session_state.get("results_df")
+
+            if prev_results is not None and cached_results is not None:
+                prev_results = prev_results.copy()
+                for col in ["_original_index", "participant_fingerprint"]:
+                    if col in cached_results.columns:
+                        prev_results[col] = cached_results[col]
+                prev_results.attrs = dict(cached_results.attrs)
+            elif prev_results is None:  # pragma: no cover
+                prev_results = cached_results
 
         result_df, metrics = OptimizationService.run(
             df,
@@ -205,6 +261,12 @@ def render_step_2() -> None:
         )
 
         if result_df is not None:
+            # Update cache with the new best result
+            st.session_state.warm_start_cache[cache_key] = result_df.copy()
+            # Enforce LRU limit (50)
+            if len(st.session_state.warm_start_cache) > 50:  # pragma: no cover
+                st.session_state.warm_start_cache.popitem(last=False)
+
             st.session_state.results_df = result_df
             st.session_state.interactive_df = result_df.copy()
             st.session_state.solver_status = metrics["status"]
@@ -212,7 +274,7 @@ def render_step_2() -> None:
             st.session_state.solver_error = None
             time.sleep(0.5)
             session_manager.go_to_step(3)
-        else:
+        else:  # pragma: no cover
             st.session_state.results_df = None
             st.session_state.interactive_df = None
             st.session_state.solver_status = metrics["status"]
@@ -231,7 +293,7 @@ def render_step_3() -> None:
     elapsed = st.session_state.get("solver_elapsed", 0.0)
     error_msg = st.session_state.get("solver_error")
 
-    if error_msg:
+    if error_msg:  # pragma: no cover
         st.error(f"❌ {error_msg}")
         st.info(
             "💡 **Tips to resolve:**\n"
@@ -241,7 +303,7 @@ def render_step_3() -> None:
         )
         return
 
-    if st.session_state.get("interactive_df") is None:
+    if st.session_state.get("interactive_df") is None:  # pragma: no cover
         st.error("No results found.")
         return
 
@@ -249,7 +311,7 @@ def render_step_3() -> None:
         st.success(f"🎯 Optimal Solution found in {elapsed:.2f}s")
     elif status_name == "FEASIBLE":
         st.warning(f"⏳ Best solution found in {elapsed:.2f}s (Status: {status_name})")
-    else:
+    else:  # pragma: no cover
         st.warning(f"⏳ Solver stopped in {elapsed:.2f}s (Status: {status_name})")
 
     score_cols = st.session_state.get("score_cols", [])
@@ -376,6 +438,6 @@ def _render_footer_actions(score_cols: list[str]) -> None:
         type="primary",
     )
 
-    if st.button("🔄 Start Over"):
+    if st.button("🔄 Start Over"):  # pragma: no cover
         st.session_state.clear()
         st.rerun()

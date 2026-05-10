@@ -13,12 +13,12 @@
   - **Groupers:** Keep participants with matching tags together in the same group.
   - **Separators:** Spread participants with matching tags across as many different groups as possible (pigeonhole principle).
 - **Custom Group Sizes:** Define exact capacity requirements for every individual group.
-- **Mathematical Optimization:** Powered by **Google OR-Tools (CP-SAT)** to provide provably optimal or high-quality feasible solutions within seconds.
+- **Async High-Performance UI:** Responsive interface with native CSS progress bars and non-blocking fragmented rendering.
+- **Mathematical Optimization:** Powered by **Google OR-Tools (CP-SAT)** using **Squared Exact Math (L2)** for ultra-precise balancing.
 - **Security Hardened:**
   - Strict input validation and participant count limits.
   - Professional logging and error handling.
-  - Protected against common numeric overflows and large-scale DoS inputs.
-  - *Note: While path normalization and size checks are implemented, absolute path traversal prevention requires environment-level restricted file access.*
+  - Dynamic Precision Scaling to prevent 64-bit integer overflows.
 
 ## Getting Started
 
@@ -55,7 +55,7 @@ streamlit run app.py
 The tool uses a **Constraint Programming (CP)** approach. It models the group assignment as a set of boolean variables $x_{i,g}$ (is participant $i$ in group $g$). 
 
 1.  **Hard Constraints:** Enforce exact group capacities and Pigeonhole distribution for separator tags.
-2.  **Objective Function:** Minimizes the weighted sum of absolute deviations from the global average for every score dimension, while penalizing the splitting of grouper tags.
+2.  **Objective Function:** Minimizes the weighted **Sum of Squared Deviations (L2)** from the group target for every score dimension, while penalizing the splitting of grouper tags. L2 optimization is significantly more aggressive at eliminating outliers than standard absolute error models.
 
 ---
 
@@ -102,6 +102,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 ├── streamlit_launcher.py
 ├── tests/
 │   ├── __init__.py
+│   ├── conftest.py
 │   ├── test_config.py
 │   ├── test_data_loader.py
 │   ├── test_determinism.py
