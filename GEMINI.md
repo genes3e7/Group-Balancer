@@ -87,6 +87,11 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Lesson:** Use a cryptographic hash (MD5) of raw file bytes (`uploaded.getvalue()`) rather than metadata (filename/size) to detect content edits.
 - **Risk:** Filename and size remain identical if a user corrects a single cell and re-uploads, causing Streamlit to skip re-processing and leading to stale data.
 
+### 9. Row-Stable Interactive Sync
+
+- **Lesson:** Manual group reassignments in the results cards must be synchronized back to the global state using the `original_index` as the anchor.
+- **Risk:** Using positional indexing (`iloc`) causes data corruption if the user reorders the UI table (e.g., by name or score) before making a change.
+
 ## Optimization & Solver (OR-Tools)
 
 ### 1. Symmetry Breaking
@@ -156,7 +161,19 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 ### 11. Search & Branching Strategy
 
 - **Worker Portfolio:** Dynamically utilizes parallel search workers (defaulting to 4 or `os.cpu_count()`) with `interleave_search = False` (Race Mode) to utilize multi-core performance for rapid proof of optimality.
-- **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes. Uses a deterministic tie-breaker (Impact DESC, Original Index ASC) to ensure search stability.
+- **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes.
+- **Tie-Breaker:** Uses a deterministic tie-breaker (Impact DESC, Original Index ASC) to ensure search stability. Previous implementations using enumeration indices were brittle to UI reordering; the current implementation utilizes stable dataset indices.
+
+### 12. Relative Weight Scaling
+
+- **Problem:** Prematurely rounding fractional weights (e.g., 0.1) to integers can coarsen the objective function and distort user-defined importance ratios.
+- **Solution:** The normalization engine now identifies the smallest positive weight and scales all other weights relative to it (`weight / min_pos_w`) before integer coercion.
+- **Performance:** This produces smaller, more proportional integer coefficients. Smaller coefficients allow CP-SAT's **Presolve** and **Linear Relaxation** phases to prune the search tree more aggressively, leading to much faster convergence on the optimal solution.
+
+### 13. Dynamic Safety Bounds
+
+- **Mechanism:** Theoretical objective bounds are calculated using the actual maximum `original_index` and `num_groups` present in the current dataset.
+- **Safety:** This ensures that the `get_model` Fail-Fast check is precise, preventing unnecessary `ValueError` exceptions for small datasets while strictly blocking unsafe overflows for large-scale solves.
 
 ## Data Handling
 

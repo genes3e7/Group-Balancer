@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **Automated Build Optimization (Tree Shaking):** Integrated a custom 'Tree Shaker' into the build pipeline that dynamically prunes unused dependencies and development tools from the final executable, reducing bundle size and accelerating packaging.
 - **Multi-Dimensional Scoring:** Support for balancing groups across multiple score dimensions with user-configurable weights.
 - **Custom Group Capacities:** Ability to explicitly define exact capacities for each group instead of strictly balanced splits.
 - **Advanced Categorical Constraints:** Character-based `Groupers` (keep together) and `Separators` (spread apart) tags with proportional pigeonhole distribution.
+- **Automated Build Optimization (Tree Shaking):** Integrated a custom 'Tree Shaker' into the build pipeline that dynamically prunes unused dependencies and development tools from the final executable, reducing bundle size and accelerating packaging.
+- **Solver Optimization - Relative Weight Scaling:** Implemented a refined weight normalization engine that scales all coefficients relative to the smallest positive weight before integer conversion. This ensures that fractional user-defined ratios are perfectly preserved in the solver's objective function, leading to denser search trees and significantly faster pruning/convergence.
 - **Solver Optimization - Max-Min Fairness:** Integrated Lexicographical Max-Min Tier to accelerate proof times and eliminate outliers.
 - **Solver Optimization - Squared Exact Math (L2):** Architecture shift to minimize sum of squared deviations for aggressive balancing results.
 - **Solver Optimization - Symmetry Breaking:** Enforces ordering on identical participants and groups to drastically reduce search space.
@@ -39,9 +40,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Build Stability:** Hardened `TreeShaker` to catch and log file system errors and removed risky dynamic dependency scanning to protect indirect sub-dependencies.
 - **Solver Stability:** Resolved CP-SAT integer overflow risks using global theoretical bounds tracking (`max_abs_diff_bound`) and surfaced `random_seed` for total search control.
-- **Search Determinism:** Implemented deterministic tie-breaking in branching strategy (Impact DESC, Index ASC) and canonicalized group ID comparison in tests.
+- **Search Determinism:** Re-implemented the deterministic tie-breaker in branching strategy using stable dataset indices (Impact DESC, Original Index ASC).
+- **Build Stability:** Hardened `TreeShaker` to catch and log file system errors and utilized high-signal static exclusion lists to protect indirect sub-dependencies.
 - **Data Ingestion:** Hardened file upload validation with column header normalization and robust numeric coercion.
 - **Warm Start Reliability:** Hardened fingerprint validation to safely fall back to index-based hints if duplicate participant profiles are detected.
 - **CI Integrity:** Fixed version sorting logic, added safety guards for README updates, and enforced secure workflow permissions.
