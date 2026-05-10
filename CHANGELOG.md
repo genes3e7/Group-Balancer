@@ -13,8 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Solver Optimization - Tight Bounds**: Calculates tighter per-group theoretical objective bounds to reduce search domain.
 - **Solver Optimization - Max-Min Fairness**: Integrated Lexicographical Max-Min Tier to accelerate proof times and fix outliers.
 - **Solver Optimization - Advanced Parameters**: Tuned CP-SAT internal parameters (`linearization_level=0`, `symmetry_level=2`) for faster partition math.
-- **Cleanup - Removed Strict Grouping**: Removed the redundant "Strict Grouping" toggle and associated dead code to simplify the UI and solver logic.
-- **Cleanup - Removed Simple Mode**: Eliminated "Simple Mode" and associated `SimpleScoring` logic, as the optimized Advanced topology now consistently meets performance requirements.
+- **Architectural Refinement - Added then Removed: Strict Grouping**: Temporarily introduced strict grouping hard-constraints; subsequently removed in favor of high-performance soft cohesion to maintain solver speed.
+- **Architectural Refinement - Removed Simple Mode**: Eliminated "Simple Mode" and associated `SimpleScoring` logic, as the optimized Advanced topology now consistently meets performance requirements.
 - **Solver Hardening - Scaling Enforcement**: Added `tests/test_scaling_tiers.py` to programmatically lock in the bit-slicing priority hierarchy and precision.
 - **Pre-CI Refactoring:** Replaced legacy `tools/pre_ci.ps1` with a cross-platform Python orchestrator using `uv` (`tools/pre_ci.py`).
 - **Parallel Testing:** Added `pytest-xdist` to development dependencies to enable parallel execution of tests via `pytest -n auto`.

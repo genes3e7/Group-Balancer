@@ -28,6 +28,9 @@ def sample_data():
 def test_cold_start_determinism(sample_data):
     """Verifies that multiple cold starts yield identical assignments.
 
+    Ensures that for a fixed random seed and single search worker, the CP-SAT
+    solver reaches the exact same solution across independent runs.
+
     Args:
         sample_data (pd.DataFrame): Fixture providing symmetric participant data.
     """
@@ -52,10 +55,8 @@ def test_cold_start_determinism(sample_data):
     )
     assert metrics2["status"] == "OPTIMAL"
 
-    for col in ["Score1", "Score2"]:
-        std1 = res1.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
-        std2 = res2.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
-        assert abs(std1 - std2) < 1e-9
+    # Assert identical group assignment per participant
+    pd.testing.assert_series_equal(res1[config.COL_GROUP], res2[config.COL_GROUP])
 
 
 def test_weight_toggle_determinism(sample_data):

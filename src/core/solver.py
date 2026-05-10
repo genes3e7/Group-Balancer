@@ -132,7 +132,7 @@ class ScoringStrategy(ABC):
         Returns:
             list[tuple[str, list[int], int]]: List of (name, scores, weight) tuples.
         """
-        pass
+        pass  # pragma: no cover
 
 
 class AdvancedScoring(ScoringStrategy):
@@ -318,8 +318,12 @@ class ConstraintBuilder:
                 )
 
             # Max-Min Fairness Tier
-            max_dev = self.model.NewIntVar(0, 2**31 - 1, f"maxdev_{name}")
+            # Dynamically compute upper bound to prevent 32-bit overflow errors.
+            computed_max_bound = min((1 << 62) - 1, local_diff_bound)
+            max_dev = self.model.NewIntVar(0, computed_max_bound, f"maxdev_{name}")
             self.model.AddMaxEquality(max_dev, abs_diffs)
+
+            # Fairness tier prioritized above total balance sum
             self.objectives.append(max_dev * weight * config.TIER_FAIRNESS_MULTIPLIER)
 
     def add_cohesion_penalties(self, groupers: dict[str, set[int]]) -> None:
@@ -437,7 +441,10 @@ class ConstraintBuilder:
             total_abs_score = sum(abs(s) for s in p.scores.values())
             impacts.append((total_abs_score, i))
 
-        sorted_indices = [idx for _, idx in sorted(impacts, reverse=True)]
+        # Sort by impact descending, then participant index ascending for stability.
+        sorted_indices = [
+            idx for _, idx in sorted(impacts, key=lambda t: (-t[0], t[1]))
+        ]
 
         branching_vars = []
         for p_idx in sorted_indices:

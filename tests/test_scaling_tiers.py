@@ -8,6 +8,7 @@ from ortools.sat.python import cp_model
 
 from src.core import config, solver
 from src.core.models import ConflictPriority, SolverConfig
+from src.core.solver import AdvancedScoring
 
 
 def test_scaling_constants_lock():
@@ -177,8 +178,6 @@ def test_norm_multiplier_precision():
         # 1.002 vs 1.000 difference is preserved at RESOLUTION_BASE=1000
         s = 1.002 if i == 0 else 1.000
         participants_raw.append({config.COL_NAME: f"P{i}", "Score1": s})
-
-    from src.core.solver import AdvancedScoring
 
     cfg = SolverConfig(
         num_groups=2, group_capacities=[5, 5], score_weights={"Score1": 1.0}

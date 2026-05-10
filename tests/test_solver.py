@@ -3,8 +3,6 @@
 Updated to match the professional standards refactor (models and result formats).
 """
 
-from unittest.mock import patch
-
 import pandas as pd
 import pytest
 from ortools.sat.python import cp_model
@@ -217,15 +215,6 @@ def test_circular_conflict_edge():
     assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
 
 
-def test_scoring_strategy_pass():
-    """Cover the abstract pass in ScoringStrategy."""
-    from src.core.solver import ScoringStrategy
-
-    with patch.multiple(ScoringStrategy, __abstractmethods__=frozenset()):
-        strategy = ScoringStrategy()
-        assert strategy.get_score_vectors([], None) is None
-
-
 def test_solver_zero_sum_weighted_error():
     """Verify ValueError is raised if a weighted dimension has zero absolute sum."""
     cfg = get_solver_config(1, [1], weights={"S1": 1.0})
@@ -304,12 +293,27 @@ def test_solver_clean_helpers():
 
 
 def test_solver_multi_dimension_symmetry_breaking():
-    """Ensure group symmetry breaking only applies to the first canonical dimension."""
-    s2 = f"{config.SCORE_PREFIX}2"
+    """Ensure group symmetry breaking only applies to the first canonical dimension.
+
+    We use two participants with identical S1 scores but different S2 scores.
+    The tie-breaker naturally favors an assignment that would violate
+    symmetry-breaking on S2 (G1_S2 <= G2_S2). If the solver returns that
+    assignment, it proves S2 symmetry was NOT broken.
+    """
     participants = [
-        {config.COL_NAME: "P1", SCORE_COL: 100, s2: 10},
-        {config.COL_NAME: "P2", SCORE_COL: 10, s2: 100},
+        {"Name": "P1", "Score1": 10, "Score2": 10},
+        {"Name": "P2", "Score1": 10, "Score2": 20},
     ]
-    cfg = get_solver_config(2, [1, 1], weights={SCORE_COL: 1.0, s2: 1.0})
+    # S1 is first canonical dimension. S2 is second.
+    cfg = get_solver_config(2, [1, 1], weights={"Score1": 1.0, "Score2": 1.0})
     results, status, _ = solver.solve_with_ortools(participants, cfg)
-    assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
+    assert status == cp_model.OPTIMAL
+
+    # Tie-breaker sum(g * i * x[i,g]) favors P1 in G2 (index 0, group 1)
+    # and P2 in G1 (index 1, group 0). Penalty = 1*0 + 0*1 = 0.
+    # In this 'Arrangement 2':
+    # G1 has P2 (S2:20)
+    # G2 has P1 (S2:10)
+    # 20 <= 10 is FALSE. If this result is returned, S2 symmetry is NOT broken.
+    p1 = next(r for r in results if r[config.COL_NAME] == "P1")
+    assert p1[config.COL_GROUP] == 2

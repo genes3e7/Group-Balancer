@@ -111,20 +111,27 @@ def test_optimization_service_warm_start_hit():
     )
     weights = {"Score1": 1.0}
 
-    res1, _ = OptimizationService.run(
+    # First run
+    res1, metrics1 = OptimizationService.run(
         data, [1, 1], weights, ConflictPriority.GROUPERS, 10
     )
 
-    res2, metrics2 = OptimizationService.run(
-        data,
-        [1, 1],
-        weights,
-        ConflictPriority.GROUPERS,
-        10,
-        previous_results=res1,
-    )
-    assert metrics2["status"] == "OPTIMAL"
-    pd.testing.assert_series_equal(res1[config.COL_GROUP], res2[config.COL_GROUP])
+    # Second run: Mock to capture cfg and verify hints are populated
+    target = "src.core.services.solver_interface.run_optimization"
+    with patch(target, return_value=(res1, metrics1)) as mock_opt:
+        OptimizationService.run(
+            data,
+            [1, 1],
+            weights,
+            ConflictPriority.GROUPERS,
+            10,
+            previous_results=res1,
+        )
+
+        # Extract captured cfg from mock
+        captured_cfg = mock_opt.call_args[0][1]
+        assert captured_cfg.hints_by_fingerprint is not None
+        assert captured_cfg.hints_by_index is not None
 
 
 def test_optimization_service_warm_start_duplicate_fingerprints():
@@ -142,6 +149,7 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
     res1, _ = OptimizationService.run(
         data, [1, 1], weights, ConflictPriority.GROUPERS, 10
     )
+
     res2, metrics2 = OptimizationService.run(
         data,
         [1, 1],
@@ -151,6 +159,7 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
         previous_results=res1,
     )
     assert metrics2["status"] == "OPTIMAL"
+    pd.testing.assert_series_equal(res1[config.COL_GROUP], res2[config.COL_GROUP])
 
 
 def test_data_service_cleaning_handles_missing_names():
