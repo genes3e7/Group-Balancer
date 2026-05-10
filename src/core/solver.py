@@ -177,11 +177,6 @@ class AdvancedScoring(ScoringStrategy):
         res_per_p = max(1.0, min(1000.0, max_r_per_p))
         norm_multiplier = int(res_per_p * num_p)
 
-        # Weight Normalization: Preserve fractional ratios by scaling the
-        # smallest positive weight to 1.0 before integer conversion.
-        pos_weights = [w for w in cfg.score_weights.values() if w > 0]
-        min_pos_w = min(pos_weights) if pos_weights else 1.0
-
         vectors = []
         for col in sorted(cfg.score_weights.keys()):
             weight = cfg.score_weights[col]
@@ -197,9 +192,9 @@ class AdvancedScoring(ScoringStrategy):
 
             scores = [round((s * norm_multiplier) / raw_total) for s in scaled_raw]
 
-            # Scale relative to min_pos_w and ensure at least 1 for bit-slicing
-            norm_weight = int(max(1, round(weight / min_pos_w)))
-            vectors.append((col, scores, norm_weight))
+            # Use the provided weight directly as an integer.
+            # Assumes weights are already normalized/reduced by the service layer.
+            vectors.append((col, scores, int(max(1, round(weight)))))
         return vectors
 
 

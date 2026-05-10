@@ -258,9 +258,13 @@ def render_step_2() -> None:
 
         status_box = st.empty()
 
-        # Cache Logic: Generate key and lookup
+        # Backend Reduction: Simplify weights to irreducible integer ratios
+        # (e.g., 0.2:0.4 -> 1:2) to maximize solver speed and cache hits.
+        reduced_weights = OptimizationService.reduce_score_weights(score_weights)
+
+        # Cache Logic: Use reduced weights for the composite key
         cache_key = _generate_cache_key(
-            df, group_capacities, score_weights, priority_options[priority_key]
+            df, group_capacities, reduced_weights, priority_options[priority_key]
         )
 
         # Determine best-effort previous results
@@ -283,7 +287,7 @@ def render_step_2() -> None:
         result_df, metrics = OptimizationService.run(
             df,
             group_capacities,
-            score_weights,
+            reduced_weights,
             priority_options[priority_key],
             timeout,
             grouper_weight=config.DEFAULT_GROUPER_WEIGHT,

@@ -164,11 +164,12 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes.
 - **Tie-Breaker:** Uses a deterministic tie-breaker (Impact DESC, Original Index ASC) to ensure search stability. Previous implementations using enumeration indices were brittle to UI reordering; the current implementation utilizes stable dataset indices.
 
-### 12. Relative Weight Scaling
+### 12. Relative Weight Scaling & GCD Reduction
 
 - **Problem:** Prematurely rounding fractional weights (e.g., 0.1) to integers can coarsen the objective function and distort user-defined importance ratios.
-- **Solution:** The normalization engine now identifies the smallest positive weight and scales all other weights relative to it (`weight / min_pos_w`) before integer coercion.
-- **Performance:** This produces smaller, more proportional integer coefficients. Smaller coefficients allow CP-SAT's **Presolve** and **Linear Relaxation** phases to prune the search tree more aggressively, leading to much faster convergence on the optimal solution.
+- **Solution:** The normalization engine (now handled safely in `OptimizationService`) identifies all positive weights, scales them by $10^3$ to handle up to 0.001 UI precision, and then uses a **Greatest Common Divisor (GCD)** reduction to convert the weights into their simplest irreducible integer ratios (e.g., 0.2:0.4 becomes 1:2).
+- **Performance:** This produces smaller, strictly proportional integer coefficients. Smaller coefficients allow CP-SAT's **Presolve** and **Linear Relaxation** phases to prune the search tree more aggressively, leading to much faster convergence on the optimal solution.
+- **UI Integration:** The reduced weights are passed to the solver and used as part of the `Configuration Cache` composite key, ensuring that equivalent fractional ratios (e.g., 1:2 and 2:4) hit the same cache entry.
 
 ### 13. Dynamic Safety Bounds
 

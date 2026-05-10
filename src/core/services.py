@@ -177,6 +177,35 @@ class OptimizationService:
     """Service for orchestrating the CP-SAT solver process."""
 
     @staticmethod
+    def reduce_score_weights(weights: dict[str, float]) -> dict[str, float]:
+        """Reduces weights to their simplest integer ratios using GCD.
+
+        Ensures that user-defined importance ratios (e.g., 0.2:0.4) are
+        represented by the smallest possible integers (1:2) to optimize
+        solver convergence and search tree density.
+
+        Args:
+            weights (dict[str, float]): Raw weight mapping from UI.
+
+        Returns:
+            dict[str, float]: Reduced weight mapping.
+        """
+        import math
+
+        if not weights:
+            return weights
+
+        # Scale to handle resolution down to 0.001 (UI resolution is 0.1)
+        scaled = {k: round(v * 1000) for k, v in weights.items()}
+        non_zero = [v for v in scaled.values() if v > 0]
+
+        if not non_zero:
+            return weights
+
+        common = math.gcd(*non_zero)
+        return {k: float(v // common) if v > 0 else 0.0 for k, v in scaled.items()}
+
+    @staticmethod
     def run(
         participants_df: pd.DataFrame,
         group_capacities: list[int],
