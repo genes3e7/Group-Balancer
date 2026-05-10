@@ -16,6 +16,106 @@ from src.core.models import (
 )
 
 
+def _resolve_warm_start_hints(
+    participants: list[Participant],
+    previous_results: pd.DataFrame,
+    score_weights: dict[str, float],
+    conflict_priority: ConflictPriority,
+    group_capacities: list[int],
+) -> tuple[dict[str, int] | None, dict[int, int] | None]:
+    """Validates and constructs hint mappings from a previous result snapshot.
+
+    Args:
+        participants (list[Participant]): Current participant models.
+        previous_results (pd.DataFrame): Result snapshot from a prior run.
+        score_weights (dict[str, float]): Current optimization weights.
+        conflict_priority (ConflictPriority): Current priority setting.
+        group_capacities (list[int]): Current capacity configuration.
+
+    Returns:
+        tuple[dict | None, dict | None]: Hints by fingerprint and by index.
+    """
+    hints_fp = None
+    hints_idx = None
+
+    # Snapshot validation: Hints are only safe if the high-level configuration matches.
+    config_match = (
+        previous_results.attrs.get("score_weights") == score_weights
+        and previous_results.attrs.get("conflict_priority") == conflict_priority
+        and previous_results.attrs.get("group_capacities") == group_capacities
+    )
+
+    if not config_match:
+        logger.info("Ignoring stale warm-start hints (config change).")
+        return None, None
+
+    # Dataset validation: Snapshots are only safe if the personnel multiset matches.
+    if (
+        config.COL_GROUP in previous_results.columns
+        and "participant_fingerprint" in previous_results.columns
+    ):
+        current_f = sorted(p.fingerprint for p in participants)
+        prev_f = sorted(
+            previous_results["participant_fingerprint"].astype(str).tolist()
+        )
+
+        if current_f != prev_f:
+            logger.info("Ignoring stale warm-start hints (mismatch)")
+            return None, None
+
+        # Build identity-based mappings
+        fp_series = previous_results["participant_fingerprint"].astype(str)
+
+        # Only use fingerprint hints if they are globally unique
+        # to prevent identical participants from colliding in the search tree.
+        if not fp_series.duplicated().any():
+            hints_fp = dict(
+                zip(
+                    fp_series,
+                    previous_results[config.COL_GROUP],
+                    strict=False,
+                )
+            )
+        else:
+            logger.info("Ignoring stale hints (duplicate profiles).")
+
+        # Always try to build index-based hints as a secondary layer
+        if "_original_index" in previous_results.columns:
+            mask = previous_results["_original_index"].notna()
+            valid_rows = previous_results[mask]
+            hints_idx = dict(
+                zip(
+                    valid_rows["_original_index"].astype(int),
+                    valid_rows[config.COL_GROUP],
+                    strict=False,
+                )
+            )
+    elif (
+        config.COL_GROUP in previous_results.columns
+        and "_original_index" in previous_results.columns
+    ):
+        # Legacy fallback for results missing fingerprints
+        current_indices = sorted(
+            [p.original_index for p in participants if p.original_index is not None]
+        )
+        prev_indices = sorted(previous_results["_original_index"].dropna().unique())
+
+        if current_indices == prev_indices:
+            mask = previous_results["_original_index"].notna()
+            valid_rows = previous_results[mask]
+            hints_idx = dict(
+                zip(
+                    valid_rows["_original_index"].astype(int),
+                    valid_rows[config.COL_GROUP],
+                    strict=False,
+                )
+            )
+        else:
+            logger.info("Ignoring stale hints (indices mismatch).")
+
+    return hints_fp, hints_idx
+
+
 class DataService:
     """Service for cleaning and extracting structured data from DataFrames."""
 
@@ -129,74 +229,15 @@ class OptimizationService:
                     )
                 )
 
-            hints_fp = None
-            hints_idx = None
+            hints_fp, hints_idx = None, None
             if previous_results is not None and not previous_results.empty:
-                config_match = (
-                    previous_results.attrs.get("score_weights") == score_weights
-                    and previous_results.attrs.get("conflict_priority")
-                    == conflict_priority
-                    and previous_results.attrs.get("group_capacities")
-                    == group_capacities
+                hints_fp, hints_idx = _resolve_warm_start_hints(
+                    participants,
+                    previous_results,
+                    score_weights,
+                    conflict_priority,
+                    group_capacities,
                 )
-
-                if not config_match:
-                    logger.info("Ignoring stale warm-start hints (config change).")
-                elif (
-                    config.COL_GROUP in previous_results.columns
-                    and "participant_fingerprint" in previous_results.columns
-                ):
-                    current_f = sorted(p.fingerprint for p in participants)
-                    prev_f = sorted(
-                        previous_results["participant_fingerprint"].astype(str).tolist()
-                    )
-
-                    if current_f != prev_f:
-                        logger.info("Ignoring stale warm-start hints (mismatch)")
-                    else:
-                        # Build identity-based mappings
-                        fp_series = previous_results["participant_fingerprint"].astype(
-                            str
-                        )
-
-                        # Only use fingerprint hints if they are globally unique
-                        # to prevent identical participants from colliding.
-                        if not fp_series.duplicated().any():
-                            hints_fp = dict(
-                                zip(
-                                    fp_series,
-                                    previous_results[config.COL_GROUP],
-                                    strict=False,
-                                )
-                            )
-                        else:
-                            logger.info("Ignoring stale hints (duplicate profiles).")
-
-                        if "_original_index" in previous_results.columns:
-                            hints_idx = dict(
-                                zip(
-                                    previous_results["_original_index"].astype(int),
-                                    previous_results[config.COL_GROUP],
-                                    strict=False,
-                                )
-                            )
-                elif (
-                    config.COL_GROUP in previous_results.columns
-                    and "_original_index" in previous_results.columns
-                ):
-                    current_indices = sorted([p.original_index for p in participants])
-                    prev_indices = sorted(previous_results["_original_index"].unique())
-
-                    if current_indices == prev_indices:
-                        hints_idx = dict(
-                            zip(
-                                previous_results["_original_index"].astype(int),
-                                previous_results[config.COL_GROUP],
-                                strict=False,
-                            )
-                        )
-                    else:
-                        logger.info("Ignoring stale hints (indices mismatch).")
 
             cfg = SolverConfig(
                 num_groups=len(group_capacities),
@@ -212,7 +253,10 @@ class OptimizationService:
             return solver_interface.run_optimization(
                 participants, cfg, status_box=status_box
             )
-        except Exception as e:
-            logger.exception("OptimizationService.run failed")
+        except (ValueError, KeyError) as e:
+            logger.error("OptimizationService validation failed: %s", e)
             metrics = {"status": "ERROR", "error": str(e), "elapsed": 0.0}
             return None, metrics
+        except Exception:
+            logger.exception("OptimizationService.run failed unexpectedly")
+            raise

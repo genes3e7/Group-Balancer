@@ -69,13 +69,14 @@ def test_cold_start_determinism(sample_data):
         assert abs(std1 - std2) < 1e-9
 
 
-def test_weight_toggle_determinism(sample_data):
-    """Verifies that iterative weight toggling is stable across runs.
+def test_warm_start_determinism(sample_data):
+    """Verifies that iterative solving is stable across runs with hints.
 
     Args:
         sample_data (pd.DataFrame): Fixture providing participant data.
     """
     group_capacities = [8, 8]
+    weights = {"Score1": 0.0, "Score2": 1.0}
 
     res_a, _ = OptimizationService.run(
         sample_data,
@@ -85,28 +86,30 @@ def test_weight_toggle_determinism(sample_data):
         10,
     )
 
+    # Initial target solve
     res_b, _ = OptimizationService.run(
         sample_data,
         group_capacities,
-        {"Score1": 0.0, "Score2": 1.0},
+        weights,
         ConflictPriority.GROUPERS,
         10,
         previous_results=res_a,
     )
 
+    # Re-solve with same weights to verify hint stability
     res_c, _ = OptimizationService.run(
         sample_data,
         group_capacities,
-        {"Score1": 1.0, "Score2": 0.0},
+        weights,
         ConflictPriority.GROUPERS,
         10,
         previous_results=res_b,
     )
 
     for col in ["Score1", "Score2"]:
-        std1 = res_a.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
-        std2 = res_c.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
-        assert abs(std1 - std2) < 1e-9
+        std_b = res_b.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
+        std_c = res_c.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
+        assert abs(std_b - std_c) < 1e-9
 
 
 def test_balancing_quality_magnitude_insensitive():

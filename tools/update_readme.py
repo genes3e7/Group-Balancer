@@ -136,7 +136,7 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
     pattern = re.compile(
         f"{re.escape(start_marker)}.*?{re.escape(end_marker)}", re.DOTALL
     )
-    content = pattern.sub(f"{start_marker}\n{tree}\n{end_marker}", content)
+    content = pattern.sub(f"{start_marker}\n\n{tree}\n\n{end_marker}", content)
     logger.info("Updated project tree.")
 
     # 2. Update Version Badge

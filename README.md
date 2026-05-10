@@ -1,69 +1,61 @@
 # Group Balancer
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app/)
-[![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python 3.10 through 3.14](https://img.shields.io/badge/python-3.10%20--%203.14-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python: 3.10-3.14](https://img.shields.io/badge/Python-3.10--3.14-blue.svg)](https://www.python.org/downloads/)
 
-**Group Balancer** is an advanced mathematical partitioning tool designed to solve the "Fair Team" problem. Whether you are organizing a classroom, a corporate workshop, or a gaming tournament, this tool ensures your groups are balanced by skill, diverse by expertise, and respectful of social dynamics.
+A high-performance team optimization engine built with Streamlit and Google OR-Tools. Efficiently partitions participants into groups while balancing multiple score dimensions and satisfying categorical constraints (Groupers and Separators).
 
-## Key Features
+## 🌟 Key Features
 
-- **Multi-Dimensional Balancing:** Balance groups across multiple numeric scores simultaneously (e.g., Skill, Experience, Strength).
-- **Categorical Constraints (Tags):**
+- **Multi-Dimensional Balancing:** Simultaneously balance groups across an unlimited number of scoring categories (e.g., Skill, Experience, Seniority).
+- **Proportional Categorical Distribution:**
   - **Groupers:** Keep participants with matching tags together in the same group.
-  - **Separators:** Spread participants with matching tags across as many different groups as possible (pigeonhole principle).
-- **Custom Group Sizes:** Define exact capacity requirements for every individual group.
-- **Configuration Cache (Memoization):** Remembers the best-found solutions for up to 50 distinct weight/capacity combinations, enabling instant comparison and continuous iterative refinement.
-- **Async High-Performance UI:** Responsive interface with native CSS progress bars and non-blocking fragmented rendering.
-- **Mathematical Optimization:** Powered by **Google OR-Tools (CP-SAT)** using **Squared Exact Math (L2)** for ultra-precise balancing.
-- **Identity-Determinism:** Guarantees bit-for-bit identical personnel assignments on every run through internal iteration sorting and deterministic branching strategies.
+  - **Separators:** Spread participants with matching tags across as many different groups as possible (proportional pigeonhole distribution).
+- **Custom Group Capacities:** Define exact group sizes or use strictly balanced defaults.
+- **Deterministic Quality Metrics:** Ensures consistent balancing quality (identical standard deviations) across runs via stable warm-starts and seed-based search. (Bit-for-bit assignment identity is guaranteed when `interleave_search=True` is enabled).
 - **Security Hardened:**
   - Strict input validation and participant count limits.
   - Fail-Fast architecture that prevents unsafe numerical overflows ($> 2^{62}-1$).
   - Dynamic Precision Scaling to maximize balancing quality within 64-bit safety.
 
-## Getting Started
+## 🚀 Quick Start
 
-### 1. Requirements
-*   Python 3.10 through 3.14
-*   Git (to clone the repo).
+- **Installation:**
 
-### 2. Installation
+  ```powershell
+  uv sync
+  ```
 
-#### Using uv (Recommended)
-```bash
-# Install dependencies and setup environment from uv.lock
-uv sync
+- **Running the App:**
 
-# Launch the UI
-uv run streamlit run app.py
+  ```powershell
+  uv run streamlit run app.py
+  ```
+
+## 🛠️ Developer Workflow
+
+The project utilizes `uv` for dependency management and a custom Pre-CI gate for quality enforcement.
+
+### Validation Pipeline
+
+Before submitting code, run the local validation gate:
+
+```powershell
+uv run python tools/pre_ci.py
 ```
 
-#### Using pip
-```bash
-# Setup virtual environment
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
+This gate enforces:
 
-# Install dependencies from pyproject.toml
-pip install .
+- **Linting & Formatting:** Ruff (Python) and Markdown standards.
+- **Static Analysis:** Vulture (Dead code) and Interrogate (Docstring coverage).
+- **Testing:** 100% pass rate with >95% functional coverage.
+- **Build Integrity:** PyInstaller verification.
 
-# Run the app
-streamlit run app.py
-```
-
-## How it Works
-
-The tool uses a **Constraint Programming (CP)** approach. It models the group assignment as a set of boolean variables $x_{i,g}$ (is participant $i$ in group $g$). 
-
-1.  **Hard Constraints:** Enforce exact group capacities and Pigeonhole distribution for separator tags.
-2.  **Objective Function:** Minimizes the weighted **Sum of Squared Deviations (L2)** from the group target for every score dimension, while penalizing the splitting of grouper tags. L2 optimization is significantly more aggressive at eliminating outliers than standard absolute error models.
-
----
-
-## Project Structure
+## 📂 Project Structure
 
 <!-- PROJECT_TREE_START -->
+
 ```text
 .
 ├── .coderabbit.yaml
@@ -72,6 +64,7 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   └── workflows/
 │       └── ci.yml
 ├── .gitignore
+├── .pymarkdownrc
 ├── CHANGELOG.md
 ├── GEMINI.md
 ├── LICENSE
@@ -126,12 +119,8 @@ The tool uses a **Constraint Programming (CP)** approach. It models the group as
 │   └── update_readme.py
 └── uv.lock
 ```
+
 <!-- PROJECT_TREE_END -->
 
-## Development
-
-The project follows high-quality engineering standards:
-- **SOLID & SRP:** Decoupled Service, UI, and Core layers.
-- **Type Safety:** Strong typing with `dataclasses` and `TypedDict`.
-- **Testing:** 95% functional coverage with isolated sandboxed test execution.
-- **CI/CD:** Automated testing across Python 3.10 through 3.14 using `uv`.
+---
+Built with ❤️ for balanced teams.

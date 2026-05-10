@@ -421,6 +421,19 @@ class PreCIPipeline:
                     ["uv", "run", "--no-sync", "ruff", "format", "--check", "."],
                     "Ruff Formatting",
                 )
+                self.run_command(
+                    [
+                        "uv",
+                        "run",
+                        "--no-sync",
+                        "pymarkdown",
+                        "--disable",
+                        "md013",
+                        "scan",
+                        ".",
+                    ],
+                    "Markdown Linting",
+                )
             elif self.all_passed():
                 # Locally, allow auto-fixing if logic is sound.
                 self.run_command(
@@ -428,11 +441,26 @@ class PreCIPipeline:
                     "Ruff Linting",
                 )
                 self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "format", "."], "Ruff Formatting"
+                    ["uv", "run", "--no-sync", "ruff", "format", "."],
+                    "Ruff Formatting",
+                )
+                self.run_command(
+                    [
+                        "uv",
+                        "run",
+                        "--no-sync",
+                        "pymarkdown",
+                        "--disable",
+                        "md013",
+                        "scan",
+                        ".",
+                    ],
+                    "Markdown Linting",
                 )
             else:
                 self.record_result("Ruff Linting", "SKIPPED")
                 self.record_result("Ruff Formatting", "SKIPPED")
+                self.record_result("Markdown Linting", "SKIPPED")
 
             # 6. Build Verification Gate
             if self.all_passed():

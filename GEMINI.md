@@ -6,21 +6,22 @@ This file documents architectural decisions, framework-specific quirks, and less
 
 This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` or `git push` operation. It serves as a mandatory local Pre-CI check to ensure technical integrity and minimize redundant CI failures.
 
-1.  **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
-2.  **Architecture Verification**: Verify that the changes align with the established design patterns and have not introduced an unintended "architecture shift."
-3.  **Documentation & Changelog Update**: 
-    -   Review and update all related documentation (README, help text, etc.) to reflect the changes.
-    -   **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
-4.  **Automated Technical Validation**: Run `uv run python tools/pre_ci.py`. This script is the **final gate** and ensures:
-    -   **EXCEPTION**: If the changes are strictly limited to non-code and non-configuration files (e.g., `.txt`, `CHANGELOG.md`), this step may be skipped.
-    -   **MANDATORY**: Any change to code, tests, configuration (e.g., `.yaml`, `.toml`, `.gitignore`), or `README.md` (which is auto-updated by the script) **MUST** trigger a full validation.
-    -   Dependencies are synced (`uv sync`).
-    -   Ruff linting and formatting compliance (0 errors).
-    -   Dead code analysis (`vulture` > 80% confidence, ensuring effectively 0 dead code).
-    -   Docstring coverage (`interrogate` == 100%).
-    -   Functional test coverage (`pytest-cov` >= 95%).
-    -   README tree and metadata are updated.
-    -   Build integrity is verified.
+1. **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
+2. **Architecture Verification**: Verify that the changes align with the established design patterns and have not introduced an unintended "architecture shift."
+3. **Documentation & Changelog Update**:
+   - Review and update all related documentation (README, help text, etc.) to reflect the changes.
+   - **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
+4. **Automated Technical Validation**: Run `uv run python tools/pre_ci.py`. This script is the **final gate** and ensures:
+   - **EXCEPTION**: If the changes are strictly limited to non-code and non-configuration files (e.g., `.txt`, `CHANGELOG.md`), this step may be skipped.
+   - **MANDATORY**: Any change to code, tests, configuration (e.g., `.yaml`, `.toml`, `.gitignore`), or `README.md` (which is auto-updated by the script) **MUST** trigger a full validation.
+   - Dependencies are synced (`uv sync`).
+   - Ruff linting and formatting compliance (0 errors).
+   - Dead code analysis (`vulture` > 80% confidence, ensuring effectively 0 dead code).
+   - Docstring coverage (`interrogate` == 100%).
+   - Markdown standard compliance (`pymarkdownlnt`).
+   - Functional test coverage (`pytest-cov` >= 95%).
+   - README tree and metadata are updated.
+   - Build integrity is verified.
 
 ### 💡 CI/CD & Pipeline Learnings
 
@@ -41,12 +42,21 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Clarification**: Proactively ask for clarifications if a request or review is ambiguous, instead of making assumptions that might lead to technical debt.
 - **Technical Pushback**: Provide clear, reasoned technical explanations when resisting a change. Use data, performance metrics, or architectural principles to support your stance.
 
+## 📦 Build & Distribution
+
+### 1. Automated Tree Shaking
+
+- **Mechanism:** The `build.py` script implements a `TreeShaker` class that performs static analysis of `src/` and `app.py` to identify imported top-level modules.
+- **Exclusion:** It automatically calculates the difference between installed packages and required imports, feeding the delta to PyInstaller's `--exclude-module` flag.
+- **Benefit:** Drastically reduces build times (~50% faster) and bundle size by ensuring dev tools (`ruff`, `pytest`, `vulture`) and heavy bloat (`tkinter`, `matplotlib`) are never packaged.
+- **Safety:** Always explicitly protects core runtime dependencies (`streamlit`, `pandas`, `ortools`, `numpy`).
+
 ## Streamlit UI & Components
 
 ### 1. Parameter Deprecation: `use_container_width`
 
 - **Observation:** As of April 2026, Streamlit has deprecated `use_container_width` in favor of a more unified `width` parameter.
-- **Constraint:** 
+- **Constraint:**
   - Use `width="stretch"` instead of `use_container_width=True`.
   - Use `width="content"` instead of `use_container_width=False`.
 - **Reasoning:** Ensures compatibility with Streamlit >= 1.49.0 and avoids runtime deprecation warnings.
@@ -63,13 +73,13 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 ### 4. Decoupling Logic from Display Text
 
-- **Lesson:** UI controls (like radio buttons) should map to stable tokens (e.g., `"groupers"` or `"separators"`) for backend logic, rather than forwarding full display labels.
+- **Lesson:** UI controls (like radio buttons) should map to stable tokens (e.g., `"groupers"`) for backend logic, rather than forwarding full display labels.
 - **Risk:** Forwarding display strings into the core solver makes the logic brittle; changing a UI label could silently break branching.
 
 ### 5. Defensive State Clamping
 
-- **Lesson**: When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
-- **Risk**: Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
+- **Lesson:** When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
+- **Risk:** Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
 
 ### 6. Async UI: Fragmentation & Lazy Loading
 
@@ -78,8 +88,8 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 ### 7. Import Hygiene
 
-- **Lesson**: Move all third-party imports (like `re`) to the top-level module block to comply with E402 and ensure consistent initialization.
-- **Risk**: Local imports can lead to redundant overhead or confusing dependency cycles in long-running processes like `pre_ci.py`.
+- **Lesson:** Move all third-party imports (like `re`) to the top-level module block to comply with E402 and ensure consistent initialization.
+- **Risk:** Local imports can lead to redundant overhead or confusing dependency cycles in long-running processes like `pre_ci.py`.
 
 ## Optimization & Solver (OR-Tools)
 
@@ -138,10 +148,10 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 - **Mandate:** Logical constraints MUST always be met before score balancing occurs.
 - **Dynamic Hierarchy:** The UI 'Priority' toggle dynamically swaps the primary and secondary bit-slices:
-    - **HI Priority Tier ($10^{12}$):** Assigned to user's choice (Separators or Groupers).
-    - **LO Priority Tier ($10^9$):** Secondary constraint layer.
-    - **Tier 3: Max-Min Fairness ($10^7$):** Tertiary priority (Minimize worst outlier).
-    - **Tier 4: Balance (L2 Squared Error, $10^0$):** Quaternary priority (Overall balance).
+  - **HI Priority Tier ($10^{12}$):** Assigned to user's choice (Separators or Groupers).
+  - **LO Priority Tier ($10^9$):** Secondary constraint layer.
+  - **Tier 3: Max-Min Fairness ($10^7$):** Tertiary priority (Minimize worst outlier).
+  - **Tier 4: Balance (L2 Squared Error, $10^0$):** Quaternary priority (Overall balance).
 - **Stable Identity:** Anchored to `original_index` to ensure that sorting in the UI never shifts the preferred mathematical optimal.
 
 ### 10. Search & Branching Strategy
@@ -161,22 +171,23 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 ### 3. Path Sanitization
 
-- **Implementation**: CLI path inputs must be stripped of shell artifacts before validation.
+- **Implementation:** CLI path inputs must be stripped of shell artifacts before validation.
 
 ## 🛡️ Defensive Programming & Data Safety
 
-- **Fail-Fast**: The program MUST terminate immediately if a validation step fails or a critical configuration is missing.
-- **Supply Chain Security**: All GitHub Actions must be pinned to 40-character **immutable commit SHAs**.
+- **Fail-Fast:** The program MUST terminate immediately if a validation step fails or a critical configuration is missing.
+- **Supply Chain Security:** All GitHub Actions must be pinned to 40-character **immutable commit SHAs**.
 
 ## 🧪 Testing Standards
 
 ### 1. Mocking Streamlit Cache
 
-- **Lesson**: Ensure all mocked arguments to `@st.cache_data` are serializable (no `MagicMock`).
+- **Lesson:** Ensure all mocked arguments to `@st.cache_data` are serializable (no `MagicMock`).
 
 ## 🗒️ Complex Change Management (Planning & State)
 
 For large-scale refactorings, follow this integrated lifecycle:
+
 1. Drafting the Plan (Plan Mode).
 2. Spec Sheet: Save as `REFACTOR_PLAN.md`.
 3. Iterative Execution & Validation: Phased approach, Post-Phase Validation (`uv run python tools/pre_ci.py`).

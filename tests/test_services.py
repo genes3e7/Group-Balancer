@@ -208,17 +208,17 @@ def test_stale_hints_logging():
         mock_log.assert_any_call("Ignoring stale warm-start hints (mismatch)")
 
         # 3. Indices mismatch (structural)
-        # Mock a result that has fingerprints matching but different indices
-        res_weird = res1.copy().drop(columns=["participant_fingerprint"])
-        res_weird.at[0, "_original_index"] = 999
-        res_weird.attrs = res1.attrs.copy()
+        # Corrupt indices while keeping fingerprints valid-ish (by dropping them)
+        res_no_fp = res1.copy().drop(columns=["participant_fingerprint"])
+        res_no_fp.at[0, "_original_index"] = 999
+        res_no_fp.attrs = res1.attrs.copy()
         OptimizationService.run(
             data,
             [1],
             {"Score1": 1.0},
             ConflictPriority.GROUPERS,
             5,
-            previous_results=res_weird,
+            previous_results=res_no_fp,
         )
         mock_log.assert_any_call("Ignoring stale hints (indices mismatch).")
 
@@ -232,19 +232,18 @@ def test_data_service_cleaning_handles_missing_names():
 
 
 def test_optimization_service_catches_runtime_exceptions():
-    """Verify that the service captures and reports unexpected runtime errors."""
+    """Verify that the service captures and re-raises unexpected runtime errors."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     # Cause an error inside the try block
     with patch("src.core.services.Participant", side_effect=RuntimeError("Fail")):
-        _, metrics = OptimizationService.run(
-            df,
-            [1],
-            {"S1": 1.0},
-            ConflictPriority.GROUPERS,
-            10,
-        )
-        assert metrics["status"] == "ERROR"
-        assert "Fail" in metrics["error"]
+        with pytest.raises(RuntimeError, match="Fail"):
+            OptimizationService.run(
+                df,
+                [1],
+                {"S1": 1.0},
+                ConflictPriority.GROUPERS,
+                10,
+            )
 
 
 def test_optimization_service_invalid_input_none():

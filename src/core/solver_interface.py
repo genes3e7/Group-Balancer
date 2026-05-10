@@ -122,12 +122,7 @@ def run_optimization(
     model = builder.get_model()
 
     solver_inst = cp_model.CpSolver()
-    solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    solver_inst.parameters.num_search_workers = 8
-    solver_inst.parameters.interleave_search = False
-    solver_inst.parameters.random_seed = 42
-
-    apply_solver_tuning(solver_inst)
+    apply_solver_tuning(solver_inst, cfg)
 
     cb = StreamlitSolverCallback(status_box, len(participants))
     status = solver_inst.Solve(model, cb)
@@ -150,7 +145,7 @@ def run_optimization(
                 "No solution exists that satisfies all hard constraints "
                 "(capacities and separator tags)."
             )
-        else:  # pragma: no cover
+        else:
             error_msg = f"Solver stopped with status: {status_name}"
 
     metrics = {
@@ -203,6 +198,6 @@ def run_optimization(
             with st.status(f"❌ Optimization Failed ({status_name})", state="error"):
                 if error_msg:
                     st.error(error_msg)
-                else:  # pragma: no cover
+                else:
                     st.write(f"Solver stopped with status: {status_name}")
     return None, metrics

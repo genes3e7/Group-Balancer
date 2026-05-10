@@ -21,12 +21,20 @@ from src.core.models import (
 from src.core.tag_utils import canonicalize_tags
 
 
-def apply_solver_tuning(solver_inst: cp_model.CpSolver) -> None:
+def apply_solver_tuning(solver_inst: cp_model.CpSolver, cfg: SolverConfig) -> None:
     """Applies optimal CP-SAT parameters for group partitioning math.
 
     Args:
         solver_inst (cp_model.CpSolver): The OR-Tools solver instance to configure.
+        cfg (SolverConfig): The solver configuration containing timeout and threads.
     """
+    solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
+    solver_inst.parameters.num_search_workers = max(1, cfg.num_workers)
+    # Race Mode: Use multiple workers without interleaving for speed
+    solver_inst.parameters.interleave_search = False
+    solver_inst.parameters.random_seed = 42
+
+    # Partitioning specific tuning
     solver_inst.parameters.linearization_level = 0
     solver_inst.parameters.symmetry_level = 2
 
@@ -418,14 +426,14 @@ class ConstraintBuilder:
                         hinted_groups[p_idx] = g_idx
                     else:  # pragma: no cover
                         logger.warning(
-                            "Warm-start hint out of range for %s: %s",
-                            p.name,
+                            "Warm-start hint out of range for Participant#%d: %s",
+                            p_idx,
                             group_id,
                         )
                 except (ValueError, TypeError):  # pragma: no cover
                     logger.warning(
-                        "Invalid warm-start hint type for %s: %s",
-                        p.name,
+                        "Invalid warm-start hint type for Participant#%d: %s",
+                        p_idx,
                         group_id,
                     )
                     continue
@@ -491,7 +499,17 @@ class ConstraintBuilder:
         """
         # Aggregate objective safety guard
         max_int_limit = (1 << 62) - 1
-        total_bound = sum(self.objective_bounds)
+
+        # Include worst-case tie-breaker in the bound check
+        # Tie-breaker sum: g * original_index * x_ig
+        # Max g = num_groups - 1
+        # Max index = num_people - 1
+        # Total participants = num_people
+        max_tie_breaker = (
+            (self.num_groups - 1) * (self.num_people - 1) * self.num_people
+        )
+        total_bound = sum(self.objective_bounds) + max_tie_breaker
+
         if total_bound > max_int_limit:
             raise ValueError(
                 f"Aggregate objective theoretical maximum ({total_bound}) "
@@ -546,7 +564,7 @@ def _clean_tag_cell(value: object) -> str:
 
 
 def _clean_score_cell(value: object) -> float:
-    """Coerces a raw score cell to float, treating missing/blank as 0.0.
+    """Coerces a raw score cell to float, treating missing/blank/invalid as 0.0.
 
     Args:
         value (object): Raw cell value.
@@ -559,7 +577,10 @@ def _clean_score_cell(value: object) -> float:
     if isinstance(value, str) and not value.strip():
         return 0.0
     try:
-        return float(value)
+        val = float(value)
+        if math.isnan(val) or math.isinf(val):
+            return 0.0
+        return val
     except (TypeError, ValueError):
         return 0.0
 
@@ -617,12 +638,7 @@ def solve_with_ortools(
     model = builder.get_model()
 
     solver_inst = cp_model.CpSolver()
-    solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    solver_inst.parameters.num_search_workers = 8
-    solver_inst.parameters.interleave_search = False
-    solver_inst.parameters.random_seed = 42
-
-    apply_solver_tuning(solver_inst)
+    apply_solver_tuning(solver_inst, cfg)
 
     status = solver_inst.Solve(model, SolutionPrinter(start_time))
     elapsed = time.time() - start_time

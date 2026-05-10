@@ -4,17 +4,23 @@ Handles the multi-dimensional weight inputs, advanced mode topologies, and
 displays solver results. Decoupled from core business logic via DataService.
 """
 
+import hashlib
 import json
+import pathlib
 import time
 
 import pandas as pd
 import streamlit as st
 
+from src import logger
 from src.core import config
 from src.core.models import ConflictPriority
 from src.core.services import DataService, OptimizationService
 from src.ui import results_renderer, session_manager
 from src.utils import exporter, group_helpers
+
+# Keys that should not be deleted when the user clicks 'Start Over'
+_RESET_PRESERVE_KEYS = frozenset({"warm_start_cache"})
 
 
 def _generate_cache_key(
@@ -34,8 +40,6 @@ def _generate_cache_key(
     Returns:
         str: A unique hex string for this specific state.
     """
-    import hashlib
-
     # Hash the data (content and structure)
     data_hash = pd.util.hash_pandas_object(df, index=True).sum()
 
@@ -61,9 +65,11 @@ def _process_uploaded_file(uploaded) -> tuple[bool, str]:
     Returns:
         tuple[bool, str]: Success flag and content-based signature.
     """
+    if uploaded is None:
+        return False, ""
     try:
-        ext = uploaded.name.split(".")[-1].lower()
-        if ext == "csv":
+        suffix = pathlib.Path(uploaded.name).suffix.lower().lstrip(".")
+        if suffix == "csv":
             df_new = pd.read_csv(uploaded)
         else:
             df_new = pd.read_excel(uploaded)
@@ -80,9 +86,13 @@ def _process_uploaded_file(uploaded) -> tuple[bool, str]:
 
         st.error("File missing required columns: Name and Score*")
         return False, ""
-    except Exception as e:
+    except (pd.errors.ParserError, UnicodeDecodeError) as e:
+        logger.exception("Data processing failed")
         st.error(f"Error reading file: {e}")
         return False, ""
+    except Exception:
+        logger.exception("Unexpected error during file upload")
+        raise
 
 
 def render_step_1() -> None:
@@ -97,11 +107,14 @@ def render_step_1() -> None:
         )
         if uploaded:
             # Use content-based signature to detect edits even with same name/size
-            current_sig = f"{uploaded.name}_{uploaded.size}"
-            if st.session_state.get("last_file_processed_meta") != current_sig:
+            meta_sig = f"{uploaded.name}_{uploaded.size}"
+            # Gate on content signature to ensure we handle same-name edits correctly
+            if st.session_state.get("last_file_processed_meta") != meta_sig or (
+                st.session_state.get("last_file_content_sig") is None
+            ):
                 success, content_sig = _process_uploaded_file(uploaded)
                 if success:
-                    st.session_state.last_file_processed_meta = current_sig
+                    st.session_state.last_file_processed_meta = meta_sig
                     st.session_state.last_file_content_sig = content_sig
 
     st.subheader("Edit Participants")
@@ -308,7 +321,8 @@ def render_step_3() -> None:
         st.info(
             "💡 **Tips to resolve:**\n"
             "- Check for conflicting Separator tags.\n"
-            "- Ensure group capacities are large enough for the number of tags.\n"
+            "- Ensure group capacities emerge from sufficient total "
+            "participant count.\n"
             "- Try increasing the timeout."
         )
         return
@@ -383,8 +397,9 @@ def _render_table_view(score_cols: list[str]) -> None:
             config.COL_NAME,
         )
         stats_data = group_helpers.calculate_balancing_stats(groups, score_cols)
+        stats_lookup = {s["Score Dimension"]: s for s in stats_data}
 
-        for i, col in enumerate(score_cols):
+        for col in score_cols:
             st.markdown(f"**{col} Stats**")
             gdf = (
                 st.session_state.interactive_df.groupby(config.COL_GROUP)[col]
@@ -393,7 +408,7 @@ def _render_table_view(score_cols: list[str]) -> None:
             )
             gdf.columns = ["Group", "Count", "Avg", "Sum"]
 
-            std_val = stats_data[i]["Avg Std Dev (Balance)"]
+            std_val = stats_lookup[col]["Avg Std Dev (Balance)"]
 
             st.metric(f"{col} Std Dev", f"{std_val:.4f}")
             st.dataframe(
@@ -451,6 +466,6 @@ def _render_footer_actions(score_cols: list[str]) -> None:
     if st.button("🔄 Start Over"):
         # Selective reset: Preserve the memoization cache but clear all project data
         for key in list(st.session_state.keys()):
-            if key != "warm_start_cache":
+            if key not in _RESET_PRESERVE_KEYS:
                 del st.session_state[key]
         st.rerun()
