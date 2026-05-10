@@ -72,7 +72,6 @@ This gate enforces:
 ├── app.py
 ├── build.py
 ├── group_balancer.py
-├── pr_comments.txt
 ├── pyproject.toml
 ├── src/
 │   ├── __init__.py
