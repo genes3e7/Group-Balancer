@@ -87,7 +87,8 @@ class SolverConfig:
         conflict_priority (ConflictPriority): Which constraint wins if tags overlap.
         grouper_weight (int): Internal penalty for splitting groupers.
         separator_weight (int): Internal penalty for clumping separators.
-        hints (Mapping[str | int, int] | None): Optional mapping for warm starts.
+        hints_by_fingerprint (Mapping[str, int] | None): Warm-start hints by identity.
+        hints_by_index (Mapping[int, int] | None): Warm-start hints by index.
         timeout_seconds (int): Maximum wall-clock time for search.
         num_workers (int): Number of parallel search threads.
     """
@@ -99,7 +100,8 @@ class SolverConfig:
     conflict_priority: ConflictPriority = ConflictPriority.GROUPERS
     grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT
     separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT
-    hints: Mapping[str | int, int] | None = None
+    hints_by_fingerprint: Mapping[str, int] | None = None
+    hints_by_index: Mapping[int, int] | None = None
     timeout_seconds: int = 60
     num_workers: int = 4
 
@@ -113,8 +115,16 @@ class SolverConfig:
         object.__setattr__(
             self, "score_weights", MappingProxyType(dict(self.score_weights))
         )
-        if self.hints is not None:
-            object.__setattr__(self, "hints", MappingProxyType(dict(self.hints)))
+        if self.hints_by_fingerprint is not None:
+            object.__setattr__(
+                self,
+                "hints_by_fingerprint",
+                MappingProxyType(dict(self.hints_by_fingerprint)),
+            )
+        if self.hints_by_index is not None:
+            object.__setattr__(
+                self, "hints_by_index", MappingProxyType(dict(self.hints_by_index))
+            )
 
         self.validate_safety_bounds()
 

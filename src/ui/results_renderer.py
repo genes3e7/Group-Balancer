@@ -111,6 +111,8 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
                     "Group", min_value=1, max_value=max_groups, format="%d"
                 ),
                 config.COL_NAME: st.column_config.TextColumn(disabled=True),
+                "_original_index": None,
+                "participant_fingerprint": None,
             }
             for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
                 col_configs[col] = st.column_config.TextColumn(disabled=True)

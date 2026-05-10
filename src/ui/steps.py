@@ -206,9 +206,7 @@ def render_step_2() -> None:
 
         if result_df is not None:
             st.session_state.results_df = result_df
-            st.session_state.interactive_df = result_df.drop(
-                columns=["_original_index", "participant_fingerprint"], errors="ignore"
-            )
+            st.session_state.interactive_df = result_df.copy()
             st.session_state.solver_status = metrics["status"]
             st.session_state.solver_elapsed = metrics["elapsed"]
             st.session_state.solver_error = None
@@ -287,6 +285,8 @@ def _render_table_view(score_cols: list[str]) -> None:
             config.COL_NAME: st.column_config.TextColumn(disabled=True),
             config.COL_GROUPER: st.column_config.TextColumn(disabled=True),
             config.COL_SEPARATOR: st.column_config.TextColumn(disabled=True),
+            "_original_index": None,
+            "participant_fingerprint": None,
         }
         for col in score_cols:
             editor_configs[col] = st.column_config.NumberColumn(disabled=True)

@@ -21,7 +21,7 @@ def test_scaling_constants_lock():
     assert config.TIER_FAIRNESS_MULTIPLIER == 10**7
     assert config.TIER_BALANCE_MULTIPLIER == 10**0
     assert config.RESOLUTION_BASE == 1000
-    assert config.SCALE_FACTOR == 100000
+    assert config.SCALE_FACTOR == 10**5
 
 
 def test_priority_separators_wins():
@@ -29,10 +29,10 @@ def test_priority_separators_wins():
 
     Scenario:
     - 4 participants, 2 groups (Capacities: 2, 2).
-    - P0 and P1 share a Separator tag 'S'.
-    - P0 and P1 share a Grouper tag 'G'.
-    - Priority is set to SEPARATORS.
-    - Result: P0 and P1 MUST be separated.
+    - P0/P1 share Grouper 'G' (HI if Priority=Groupers).
+    - P0/P2 share Separator 'S' (HI if Priority=Separators).
+    - Setting Priority to SEPARATORS should force P0/P2 apart even if it
+      splits P0/P1.
     """
     participants = [
         {
@@ -45,13 +45,13 @@ def test_priority_separators_wins():
             config.COL_NAME: "P1",
             "Score1": 10,
             config.COL_GROUPER: "G",
-            config.COL_SEPARATOR: "S",
+            config.COL_SEPARATOR: "",
         },
         {
             config.COL_NAME: "P2",
             "Score1": 10,
             config.COL_GROUPER: "",
-            config.COL_SEPARATOR: "",
+            config.COL_SEPARATOR: "S",
         },
         {
             config.COL_NAME: "P3",
@@ -73,9 +73,10 @@ def test_priority_separators_wins():
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
 
     p0_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P0")
-    p1_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P1")
+    p2_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P2")
 
-    assert p0_group != p1_group
+    # They MUST be separated because Separators have the HI_MULTIPLIER
+    assert p0_group != p2_group
 
 
 def test_priority_groupers_wins():
@@ -83,10 +84,10 @@ def test_priority_groupers_wins():
 
     Scenario:
     - 4 participants, 2 groups (Capacities: 2, 2).
-    - P0 and P1 share a Separator tag 'S'.
-    - P0 and P1 share a Grouper tag 'G'.
-    - Priority is set to GROUPERS.
-    - Result: P0 and P1 MUST be together.
+    - P0/P1 share Grouper 'G'.
+    - P0/P2 share Separator 'S'.
+    - Setting Priority to GROUPERS should force P0/P1 together even if it
+      clumps P0/P2.
     """
     participants = [
         {
@@ -99,13 +100,13 @@ def test_priority_groupers_wins():
             config.COL_NAME: "P1",
             "Score1": 10,
             config.COL_GROUPER: "G",
-            config.COL_SEPARATOR: "S",
+            config.COL_SEPARATOR: "",
         },
         {
             config.COL_NAME: "P2",
             "Score1": 10,
             config.COL_GROUPER: "",
-            config.COL_SEPARATOR: "",
+            config.COL_SEPARATOR: "S",
         },
         {
             config.COL_NAME: "P3",
@@ -129,6 +130,7 @@ def test_priority_groupers_wins():
     p0_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P0")
     p1_group = next(r[config.COL_GROUP] for r in results if r[config.COL_NAME] == "P1")
 
+    # They MUST be together because Groupers have the HI_MULTIPLIER
     assert p0_group == p1_group
 
 

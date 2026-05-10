@@ -42,6 +42,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 ## Streamlit UI & Components
 
 ### 1. Parameter Deprecation: `use_container_width`
+
 - **Observation:** As of April 2026, Streamlit has deprecated `use_container_width` in favor of a more unified `width` parameter.
 - **Constraint:** 
   - Use `width="stretch"` instead of `use_container_width=True`.
@@ -49,66 +50,81 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Reasoning:** Ensures compatibility with Streamlit >= 1.49.0 and avoids runtime deprecation warnings.
 
 ### 2. Progress Bar Implementation
+
 - **Technique:** Custom SVG data URIs rendered via `st.image` are used to create a contiguous, themed progress bar.
 - **Quirk:** Must use `width="stretch"` to ensure the SVG fills the column container exactly.
 
 ### 3. Stable Widget Keys
+
 - **Lesson:** UI widgets (e.g., `st.number_input`) must have explicit, stable keys based on data identity (e.g., `key=f"cap_{num_groups}_{i}"`) or scale (e.g., incorporating `total_p`) rather than relying on positional rendering.
 - **Risk:** Without stable keys, changing participant counts or reordering groups can cause Streamlit to attach stale values to the wrong inputs or trigger `StreamlitAPIException`.
 
 ### 4. Decoupling Logic from Display Text
+
 - **Lesson:** UI controls (like radio buttons) should map to stable tokens (e.g., `"groupers"` or `"separators"`) for backend logic, rather than forwarding full display labels.
 - **Risk:** Forwarding display strings into the core solver makes the logic brittle; changing a UI label could silently break branching.
 
 ### 5. Defensive State Clamping
+
 - **Lesson**: When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
 - **Risk**: Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
 
 ### 6. Performance: UI Caching
+
 - **Lesson**: Memoize heavy binary generation (e.g., `exporter.generate_excel_bytes`) using `@st.cache_data` to ensure the UI remains responsive during rapid reassignments.
 - **Risk**: Without caching, the entire Excel file is re-generated on every streamlit rerun, causing significant lag.
 
 ### 7. Import Hygiene
+
 - **Lesson**: Move all third-party imports (like `re`) to the top-level module block to comply with E402 and ensure consistent initialization.
 - **Risk**: Local imports can lead to redundant overhead or confusing dependency cycles in long-running processes like `pre_ci.py`.
 
 ## Optimization & Solver (OR-Tools)
 
 ### 1. Symmetry Breaking
+
 - **Lesson:** In multi-dimensional problems, symmetry breaking (ordering groups) must be restricted to a single "canonical" dimension (the first one with a positive weight).
 - **Risk:** Over-constraining secondary dimensions or zero-weight dimensions can lead to sub-optimal solutions or unnecessary infeasibility.
 
 ### 2. Participant Identity & Warm Starts
+
 - **Lesson:** For robust iterative optimization (warm starts), participants must be identified via a stable content-based fingerprint rather than row indices.
 - **Implementation:** `Participant.fingerprint` computes a stable MD5 hash of Name, Scores, and canonicalized Tags.
 - **Warm Start Logic:** `OptimizationService.run` validates the multiset of fingerprints and configuration. If identical, it applies assignments to seed the solver.
 - **Risk:** Using indices for warm starts after reordering causes "hallucinated" hints.
 
 ### 3. Solver Determinism vs. Speed (Race Mode)
+
 - **Lesson:** While absolute determinism can be achieved with `interleave_search = True`, it significantly slows down the optimality proof. For production speed, we use `num_search_workers = 8` and `interleave_search = False` (Race Mode). This guarantees identical Standard Deviations (quality) on OPTIMAL, but personnel assignments might swap between identical profiles.
 - **Consistency:** All internal iterations (tags, participants) are explicitly sorted before adding constraints to ensure the search tree is built identically across runs.
 
 ### 4. Integer Range & Overflows
+
 - **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 62) - 1`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
 - **Implementation:** Multipliers are calibrated into "Bit-Slices" to ensure high-priority terms always dominate lower ones without exceeding $9 \times 10^{18}$.
 
 ### 5. Categorical Constraints (Groupers/Separators)
+
 - **Design:** Every character in the tag string is treated as a unique constraint.
 - **Canonicalization:** Tags must be order- and whitespace-insensitive. Logic is extracted into `src/core/tag_utils.py`.
 
 ### 6. Capacity-Aware Bounds
+
 - **Lesson:** Distribution bounds must be calculated relative to each group's specific capacity, rather than using a flat global average.
 
 ### 7. Standard Deviation of Group Averages
+
 - **Lesson:** To balance groups effectively, the metric of interest is the dispersion between the group averages, not individual participants. Uses Sample Standard Deviation (`ddof=1`) of group means.
 
 ### 8. Squared Exact Math (L2 Optimization)
+
 - **Architecture:** The solver minimizes the **Sum of Squared Deviations** (L2) rather than Absolute Error (L1).
 - **Benefit:** L2 is significantly more aggressive at eliminating outliers, leading to the "Way Lower" optimal Standard Deviation results desired by users.
 - **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
 - **Precision Mandate:** Use `RESOLUTION_BASE = 1000` to provide **0.001 precision**. This granularity is confirmed as necessary for L2 math to achieve peak balancing quality.
 
 ### 9. Priority Tiering (Lexicographic Bit-Slicing)
+
 - **Mandate:** Logical constraints MUST always be met before score balancing occurs.
 - **Dynamic Hierarchy:** The UI 'Priority' toggle dynamically swaps the primary and secondary bit-slices:
     - **HI Priority Tier ($10^{12}$):** Assigned to user's choice (Separators or Groupers).
@@ -118,18 +134,22 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Stable Identity:** Anchored to `original_index` to ensure that sorting in the UI never shifts the preferred mathematical optimal.
 
 ### 10. Search & Branching Strategy
+
 - **Worker Portfolio:** Uses 8 search workers with `interleave_search = False` (Race Mode) to utilize multi-core performance for rapid proof of optimality.
 - **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes. This prunes high-variance branches earlier in the search tree and accelerates both finding and proving optimality.
 
 ## Data Handling
 
 ### 1. Column Coercion
+
 - **Lesson:** Column headers should be explicitly coerced to `str` before stripping/processing to avoid `AttributeError`.
 
 ### 2. Missing Value Normalization
+
 - **Lesson:** Missing values in text columns normalize to `""`, numeric to `0.0`.
 
 ### 3. Path Sanitization
+
 - **Implementation**: CLI path inputs must be stripped of shell artifacts before validation.
 
 ## 🛡️ Defensive Programming & Data Safety
@@ -140,6 +160,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 ## 🧪 Testing Standards
 
 ### 1. Mocking Streamlit Cache
+
 - **Lesson**: Ensure all mocked arguments to `@st.cache_data` are serializable (no `MagicMock`).
 
 ## 🗒️ Complex Change Management (Planning & State)

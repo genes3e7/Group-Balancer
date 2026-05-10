@@ -106,22 +106,28 @@ class OptimizationService:
             if not group_capacities:
                 raise ValueError("Group capacities cannot be empty.")
 
-            participants = [
-                Participant(
-                    name=str(row.get(config.COL_NAME, "")),
-                    scores={
-                        str(k): float(v)
-                        for k, v in row.items()
-                        if str(k).startswith(config.SCORE_PREFIX)
-                    },
-                    groupers=str(row.get(config.COL_GROUPER, "")),
-                    separators=str(row.get(config.COL_SEPARATOR, "")),
-                    original_index=int(row.get("_original_index", i)),
-                )
-                for i, row in enumerate(participants_df.to_dict("records"))
-            ]
+            participants = []
+            for i, row in enumerate(participants_df.to_dict("records")):
+                # Robust index extraction
+                raw_idx = row.get("_original_index")
+                orig_idx = int(raw_idx) if pd.notna(raw_idx) else i
 
-            hints = None
+                participants.append(
+                    Participant(
+                        name=str(row.get(config.COL_NAME, "")),
+                        scores={
+                            str(k): float(v)
+                            for k, v in row.items()
+                            if str(k).startswith(config.SCORE_PREFIX)
+                        },
+                        groupers=str(row.get(config.COL_GROUPER, "")),
+                        separators=str(row.get(config.COL_SEPARATOR, "")),
+                        original_index=orig_idx,
+                    )
+                )
+
+            hints_fp = None
+            hints_idx = None
             if previous_results is not None and not previous_results.empty:
                 config_match = (
                     previous_results.attrs.get("score_weights") == score_weights
@@ -144,39 +150,23 @@ class OptimizationService:
 
                     if current_f != prev_f:
                         logger.info("Ignoring stale warm-start hints (mismatch)")
-                    elif (
-                        not previous_results["participant_fingerprint"]
-                        .duplicated()
-                        .any()
-                    ):
-                        hints = dict(
+                    else:
+                        # Build identity-based mappings
+                        hints_fp = dict(
                             zip(
                                 previous_results["participant_fingerprint"].astype(str),
                                 previous_results[config.COL_GROUP],
                                 strict=False,
                             )
                         )
-                    elif "_original_index" in previous_results.columns:
-                        current_pairs = sorted(
-                            (p.original_index, p.fingerprint) for p in participants
-                        )
-                        prev_pairs = sorted(
-                            zip(
-                                previous_results["_original_index"],
-                                previous_results["participant_fingerprint"].astype(str),
-                                strict=False,
-                            )
-                        )
-                        if current_pairs == prev_pairs:
-                            hints = dict(
+                        if "_original_index" in previous_results.columns:
+                            hints_idx = dict(
                                 zip(
-                                    previous_results["_original_index"],
+                                    previous_results["_original_index"].astype(int),
                                     previous_results[config.COL_GROUP],
                                     strict=False,
                                 )
                             )
-                        else:
-                            logger.info("Ignoring stale hints (alignment error)")
                 elif (
                     config.COL_GROUP in previous_results.columns
                     and "_original_index" in previous_results.columns
@@ -185,15 +175,13 @@ class OptimizationService:
                     prev_indices = sorted(previous_results["_original_index"].unique())
 
                     if current_indices == prev_indices:
-                        hints = dict(
+                        hints_idx = dict(
                             zip(
-                                previous_results["_original_index"],
+                                previous_results["_original_index"].astype(int),
                                 previous_results[config.COL_GROUP],
                                 strict=False,
                             )
                         )
-                    else:
-                        logger.info("Ignoring stale hints (indices mismatch).")
 
             cfg = SolverConfig(
                 num_groups=len(group_capacities),
@@ -202,12 +190,14 @@ class OptimizationService:
                 opt_mode=OptimizationMode.ADVANCED,
                 conflict_priority=conflict_priority,
                 timeout_seconds=timeout_seconds,
-                hints=hints,
+                hints_by_fingerprint=hints_fp,
+                hints_by_index=hints_idx,
             )
 
             return solver_interface.run_optimization(
                 participants, cfg, status_box=status_box
             )
         except Exception as e:
+            logger.exception("OptimizationService.run failed")
             metrics = {"status": "ERROR", "error": str(e), "elapsed": 0.0}
             return None, metrics

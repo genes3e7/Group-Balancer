@@ -150,6 +150,24 @@ class AdvancedScoring(ScoringStrategy):
         Returns:
             list[tuple[str, list[int], int]]: List of normalized score vectors.
         """
+        num_p = len(participants)
+        num_g = cfg.num_groups
+
+        # Dynamic Precision Scaling:
+        # Prevents L2 squared math from exceeding CP-SAT's 64-bit integer limit.
+        max_w = max(cfg.score_weights.values()) if cfg.score_weights else 1.0
+        max_w = max(1.0, max_w)
+
+        # M / (G * W * N^4) is a safe lower bound for the resolution ratio.
+        # We aim to keep total Balance Tier sum below 10^15.
+        denom = num_g * max_w * (num_p**4)
+        safe_ratio = 10**15 / denom
+        max_r_per_p = math.sqrt(safe_ratio)
+
+        # Clamp between 1.0 and 1000.0 (user's target precision)
+        res_per_p = max(1.0, min(1000.0, max_r_per_p))
+        norm_multiplier = int(res_per_p * num_p)
+
         vectors = []
         for col in sorted(cfg.score_weights.keys()):
             weight = cfg.score_weights[col]
@@ -163,7 +181,6 @@ class AdvancedScoring(ScoringStrategy):
             if raw_total == 0:
                 raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
 
-            norm_multiplier = config.RESOLUTION_BASE * len(participants)
             scores = [int(round((s * norm_multiplier) / raw_total)) for s in scaled_raw]
 
             vectors.append((col, scores, int(max(1, round(weight)))))
@@ -357,26 +374,41 @@ class ConstraintBuilder:
 
     def add_solution_hints(self) -> None:
         """Applies previous assignments as solver hints for warm starts."""
-        if not self.cfg.hints:
+        if not self.cfg.hints_by_fingerprint and not self.cfg.hints_by_index:
             return
 
         hinted_groups: dict[int, int] = {}
         for p_idx, p in enumerate(self.participants):
             group_id = None
-            if p.fingerprint in self.cfg.hints:
-                group_id = self.cfg.hints[p.fingerprint]
-            elif p.original_index is not None and p.original_index in self.cfg.hints:
-                group_id = self.cfg.hints[p.original_index]
+            if self.cfg.hints_by_fingerprint:
+                group_id = self.cfg.hints_by_fingerprint.get(p.fingerprint)
+            if group_id is None and self.cfg.hints_by_index:
+                if p.original_index is not None:
+                    group_id = self.cfg.hints_by_index.get(p.original_index)
 
             if group_id is not None:
                 try:
                     g_idx = int(group_id) - 1
                     if 0 <= g_idx < self.num_groups:
                         hinted_groups[p_idx] = g_idx
+                    else:
+                        logger.warning(
+                            "Warm-start hint out of range for %s: %s",
+                            p.name,
+                            group_id,
+                        )
                 except (ValueError, TypeError):
+                    logger.warning(
+                        "Invalid warm-start hint type for %s: %s",
+                        p.name,
+                        group_id,
+                    )
                     continue
 
-        symmetry_buckets: dict[tuple, list[int]] = {}
+        # Symmetry-aware hint mapping:
+        # Prevents identical participants from drifting by consuming hints
+        # in canonical order.
+        identity_buckets: dict[tuple, list[int]] = {}
         for p_idx, p in enumerate(self.participants):
             sorted_scores = tuple(sorted(p.scores.items()))
             identity = (
@@ -384,14 +416,14 @@ class ConstraintBuilder:
                 tuple(sorted(TagProcessor.get_tags(p.groupers))),
                 tuple(sorted(TagProcessor.get_tags(p.separators))),
             )
-            symmetry_buckets.setdefault(identity, []).append(p_idx)
+            identity_buckets.setdefault(identity, []).append(p_idx)
 
         sorted_bucket_keys = sorted(
-            symmetry_buckets.keys(), key=lambda k: symmetry_buckets[k][0]
+            identity_buckets.keys(), key=lambda k: identity_buckets[k][0]
         )
 
         for identity in sorted_bucket_keys:
-            indices = symmetry_buckets[identity]
+            indices = identity_buckets[identity]
             valid_hinted_g_idxs = sorted(
                 hinted_groups[idx] for idx in indices if idx in hinted_groups
             )
