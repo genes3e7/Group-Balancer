@@ -7,10 +7,9 @@ decoupling the UI from core internal logic and OR-Tools dependencies.
 import pandas as pd
 
 from src import logger
-from src.core import config, solver_interface
+from src.core import config
 from src.core.models import (
     ConflictPriority,
-    OptimizationMode,
     Participant,
     SolverConfig,
 )
@@ -259,7 +258,6 @@ class OptimizationService:
                 num_groups=len(group_capacities),
                 group_capacities=group_capacities,
                 score_weights=score_weights,
-                opt_mode=OptimizationMode.ADVANCED,
                 conflict_priority=conflict_priority,
                 grouper_weight=grouper_weight,
                 separator_weight=separator_weight,
@@ -269,6 +267,8 @@ class OptimizationService:
                 hints_by_fingerprint=hints_fp,
                 hints_by_index=hints_idx,
             )
+
+            from src.core import solver_interface
 
             return solver_interface.run_optimization(
                 participants, cfg, status_box=status_box

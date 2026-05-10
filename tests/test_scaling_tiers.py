@@ -4,6 +4,8 @@ Ensures that priority tiers (Separators, Groupers, Fairness, Balance) are
 strictly respected and correctly toggled via the Priority settings.
 """
 
+from unittest.mock import patch
+
 from ortools.sat.python import cp_model
 
 from src.core import config, solver
@@ -128,8 +130,6 @@ def test_tier_hi_over_tier3_fairness():
 
     # Case 2: Reduce HI multiplier significantly to force Fairness to win
     # Note: We patch the solver module where the multipliers are consumed
-    from unittest.mock import patch
-
     with patch("src.core.solver.config.TIER_HI_MULTIPLIER", 1):
         results2, status2, _ = solver.solve_with_ortools(participants, cfg)
         assert status2 in (cp_model.OPTIMAL, cp_model.FEASIBLE)

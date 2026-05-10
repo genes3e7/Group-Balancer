@@ -114,16 +114,19 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
 
             # Sync manual edits back to the global interactive DataFrame
             if not edited_df.equals(members_df[display_columns]):
-                # Determine who changed groups
-                for idx, row in edited_df.iterrows():
-                    orig_row = members_df.iloc[idx]
-                    if row[config.COL_GROUP] != orig_row[config.COL_GROUP]:
-                        p_idx = orig_row["_original_index"]
+                # Use _original_index as the stable anchor for syncing changes
+                for _, row in edited_df.iterrows():
+                    orig_idx = row["_original_index"]
+                    # Fetch corresponding row from members_df to detect group change
+                    orig_row = members_df[
+                        members_df["_original_index"] == orig_idx
+                    ].iloc[0]
 
-                        # Find and update in the session-wide dataframe
-                        st.session_state.interactive_df.at[p_idx, config.COL_GROUP] = (
-                            row[config.COL_GROUP]
-                        )
+                    if row[config.COL_GROUP] != orig_row[config.COL_GROUP]:
+                        # Update the session-wide dataframe
+                        st.session_state.interactive_df.at[
+                            orig_idx, config.COL_GROUP
+                        ] = row[config.COL_GROUP]
 
                 st.rerun()
         else:

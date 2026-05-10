@@ -68,7 +68,7 @@ def test_strict_identity_determinism(sample_data):
     assert metrics2["status"] == "OPTIMAL"
 
     # Canonicalize and compare exact assignments
-    def canonicalize(df):
+    def canonicalize(df: pd.DataFrame) -> pd.DataFrame:
         df = df.sort_values(config.COL_NAME).reset_index(drop=True)
         # Flip group IDs so Group 1 is always the one containing 'Person 0'
         g0 = df.loc[df[config.COL_NAME] == "Person 0", config.COL_GROUP].iloc[0]

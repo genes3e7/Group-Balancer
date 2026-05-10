@@ -57,7 +57,7 @@ def test_optimization_service_success_path():
     )
     mock_metrics = {"status": "OPTIMAL", "elapsed": 0.1}
 
-    target = "src.core.services.solver_interface.run_optimization"
+    target = "src.core.solver_interface.run_optimization"
     with patch(target, return_value=(mock_results, mock_metrics)):
         res, metrics = OptimizationService.run(
             df,
@@ -76,7 +76,7 @@ def test_optimization_service_handles_solver_failure():
     """Ensure the service gracefully handles cases where the solver returns None."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     with patch(
-        "src.core.services.solver_interface.run_optimization",
+        "src.core.solver_interface.run_optimization",
         return_value=(None, {"status": "INFEASIBLE"}),
     ):
         res, metrics = OptimizationService.run(
@@ -119,7 +119,7 @@ def test_optimization_service_warm_start_hit():
         data, [1, 1], weights, ConflictPriority.GROUPERS, 10
     )
 
-    target = "src.core.services.solver_interface.run_optimization"
+    target = "src.core.solver_interface.run_optimization"
     with patch(target, return_value=(res1, metrics1)) as mock_opt:
         OptimizationService.run(
             data,
@@ -155,7 +155,7 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
         data, [1, 1], weights, ConflictPriority.GROUPERS, 10
     )
 
-    target = "src.core.services.solver_interface.run_optimization"
+    target = "src.core.solver_interface.run_optimization"
     with patch(target, return_value=(res1, metrics1)) as mock_opt:
         OptimizationService.run(
             data,

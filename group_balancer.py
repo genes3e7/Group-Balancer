@@ -7,7 +7,7 @@ import sys
 
 from src import logger
 from src.core import config, data_loader, solver
-from src.core.models import ConflictPriority, OptimizationMode, SolverConfig
+from src.core.models import ConflictPriority, SolverConfig
 
 
 def main():
@@ -57,7 +57,6 @@ def main():
         num_groups=num_groups,
         group_capacities=capacities,
         score_weights={c: 1.0 for c in score_cols},
-        opt_mode=OptimizationMode.ADVANCED,
         conflict_priority=ConflictPriority.GROUPERS,
         timeout_seconds=config.SOLVER_TIMEOUT,
     )

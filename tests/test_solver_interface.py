@@ -9,6 +9,9 @@ import importlib
 import sys
 from unittest.mock import MagicMock, patch
 
+import pytest
+from ortools.sat.python import cp_model
+
 from src.core import solver_interface
 from src.core.models import (
     ConflictPriority,
@@ -118,7 +121,7 @@ def test_solver_interface_callback_throttling():
         cb.status_placeholder.container.assert_not_called()
 
 
-def test_solver_interface_solve_line_145():
+def test_solver_interface_callback_context_injection():
     """Verify callback context injection during solve."""
     participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
     cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
@@ -127,7 +130,7 @@ def test_solver_interface_solve_line_145():
         patch("src.core.solver_interface.add_script_run_ctx") as mock_add_ctx,
     ):
         mock_inst = mock_solver_cls.return_value
-        mock_inst.Solve.return_value = 4
+        mock_inst.Solve.return_value = cp_model.OPTIMAL
         mock_inst.StatusName.return_value = "OPTIMAL"
         with patch(
             "src.core.solver_interface.get_script_run_ctx", return_value=MagicMock()
@@ -136,8 +139,16 @@ def test_solver_interface_solve_line_145():
             mock_add_ctx.assert_called()
 
 
-def test_solver_interface_status_box_infeasible():
-    """Verify INFEASIBLE status handling in UI."""
+@pytest.mark.parametrize(
+    ("status_code", "status_name"),
+    [
+        (cp_model.INFEASIBLE, "INFEASIBLE"),
+        (cp_model.UNKNOWN, "UNKNOWN"),
+        (cp_model.MODEL_INVALID, "MODEL_INVALID"),
+    ],
+)
+def test_solver_interface_status_box_failure_paths(status_code, status_name):
+    """Verify all non-feasible solver outcomes surface st.error to the UI."""
     participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
     cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
     with (
@@ -145,40 +156,7 @@ def test_solver_interface_status_box_infeasible():
         patch("src.core.solver_interface.st") as mock_st,
     ):
         mock_inst = mock_solver_cls.return_value
-        mock_inst.Solve.return_value = 3
-        mock_inst.StatusName.return_value = "INFEASIBLE"
-        status_box = MagicMock()
-        solver_interface.run_optimization(participants, cfg, status_box=status_box)
-        mock_st.error.assert_called()
-
-
-def test_solver_interface_status_box_unknown():
-    """Verify UNKNOWN status handling in UI."""
-    participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
-    with (
-        patch("ortools.sat.python.cp_model.CpSolver") as mock_solver_cls,
-        patch("src.core.solver_interface.st") as mock_st,
-    ):
-        mock_inst = mock_solver_cls.return_value
-        mock_inst.Solve.return_value = 0
-        mock_inst.StatusName.return_value = "UNKNOWN"
-        status_box = MagicMock()
-        solver_interface.run_optimization(participants, cfg, status_box=status_box)
-        mock_st.error.assert_called()
-
-
-def test_solver_interface_status_box_invalid():
-    """Verify MODEL_INVALID status handling in UI."""
-    participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
-    with (
-        patch("ortools.sat.python.cp_model.CpSolver") as mock_solver_cls,
-        patch("src.core.solver_interface.st") as mock_st,
-    ):
-        mock_inst = mock_solver_cls.return_value
-        mock_inst.Solve.return_value = 1
-        mock_inst.StatusName.return_value = "MODEL_INVALID"
-        status_box = MagicMock()
-        solver_interface.run_optimization(participants, cfg, status_box=status_box)
+        mock_inst.Solve.return_value = status_code
+        mock_inst.StatusName.return_value = status_name
+        solver_interface.run_optimization(participants, cfg, status_box=MagicMock())
         mock_st.error.assert_called()

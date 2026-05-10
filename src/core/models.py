@@ -11,12 +11,6 @@ from types import MappingProxyType
 from src.core import config
 
 
-class OptimizationMode(str, Enum):
-    """Available optimization topologies."""
-
-    ADVANCED = "Advanced"
-
-
 class ConflictPriority(str, Enum):
     """Priority for tag collisions."""
 
@@ -83,13 +77,9 @@ class SolverConfig:
         num_groups (int): Total number of groups to create.
         group_capacities (Sequence[int]): Exactly how many people per group.
         score_weights (Mapping[str, float]): Multipliers for each score dimension.
-        opt_mode (OptimizationMode): Mode for score balancing topology.
         conflict_priority (ConflictPriority): Which constraint wins if tags overlap.
         grouper_weight (int): Internal penalty for splitting groupers.
         separator_weight (int): Internal penalty for clumping separators.
-        random_seed (int): Deterministic seed for CP-SAT search workers.
-        interleave_search (bool): If True, search workers are synchronized to
-            guarantee bit-for-bit identical assignments at the cost of speed.
         random_seed (int): Deterministic seed for CP-SAT search workers.
         interleave_search (bool): If True, search workers are synchronized to
             guarantee bit-for-bit identical assignments at the cost of speed.
@@ -102,7 +92,6 @@ class SolverConfig:
     num_groups: int
     group_capacities: Sequence[int]
     score_weights: Mapping[str, float]
-    opt_mode: OptimizationMode = OptimizationMode.ADVANCED
     conflict_priority: ConflictPriority = ConflictPriority.GROUPERS
     grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT
     separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT

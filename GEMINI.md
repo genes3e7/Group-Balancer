@@ -155,7 +155,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 ### 11. Search & Branching Strategy
 
-- **Worker Portfolio:** Uses 8 search workers with `interleave_search = False` (Race Mode) to utilize multi-core performance for rapid proof of optimality.
+- **Worker Portfolio:** Dynamically utilizes parallel search workers (defaulting to 4 or `os.cpu_count()`) with `interleave_search = False` (Race Mode) to utilize multi-core performance for rapid proof of optimality.
 - **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes. Uses a deterministic tie-breaker (Impact DESC, Original Index ASC) to ensure search stability.
 
 ## Data Handling

@@ -177,6 +177,11 @@ class AdvancedScoring(ScoringStrategy):
         res_per_p = max(1.0, min(1000.0, max_r_per_p))
         norm_multiplier = int(res_per_p * num_p)
 
+        # Weight Normalization: Preserve fractional ratios by scaling the
+        # smallest positive weight to 1.0 before integer conversion.
+        pos_weights = [w for w in cfg.score_weights.values() if w > 0]
+        min_pos_w = min(pos_weights) if pos_weights else 1.0
+
         vectors = []
         for col in sorted(cfg.score_weights.keys()):
             weight = cfg.score_weights[col]
@@ -192,7 +197,9 @@ class AdvancedScoring(ScoringStrategy):
 
             scores = [round((s * norm_multiplier) / raw_total) for s in scaled_raw]
 
-            vectors.append((col, scores, int(max(1, round(weight)))))
+            # Scale relative to min_pos_w and ensure at least 1 for bit-slicing
+            norm_weight = int(max(1, round(weight / min_pos_w)))
+            vectors.append((col, scores, norm_weight))
         return vectors
 
 
@@ -464,6 +471,17 @@ class ConstraintBuilder:
             valid_hinted_g_idxs = sorted(
                 hinted_groups[idx] for idx in indices if idx in hinted_groups
             )
+
+            if len(indices) > len(valid_hinted_g_idxs):
+                logger.warning(
+                    "Symmetry-aware hint truncation for %s: %d participants but only "
+                    "%d hints available. %d hints will be dropped.",
+                    identity,
+                    len(indices),
+                    len(valid_hinted_g_idxs),
+                    len(indices) - len(valid_hinted_g_idxs),
+                )
+
             zipped_hints = zip(indices, valid_hinted_g_idxs, strict=False)
             for p_idx, g_idx in zipped_hints:
                 self.model.AddHint(self.x[(p_idx, g_idx)], 1)
@@ -471,7 +489,10 @@ class ConstraintBuilder:
     def add_branching_strategy(self) -> None:
         """Guides the solver to decide on high-impact participants first."""
         impacts = [
-            (sum(abs(s) for s in p.scores.values()), i)
+            (
+                sum(abs(s) for s in p.scores.values()),
+                p.original_index if p.original_index is not None else i,
+            )
             for i, p in enumerate(self.participants)
         ]
 
@@ -507,12 +528,13 @@ class ConstraintBuilder:
         # Include worst-case tie-breaker in the bound check
         # Tie-breaker sum: g * original_index * x_ig
         # Max g = num_groups - 1
-        # Max index = num_people - 1
-        # Total participants = num_people
-        max_tie_breaker = (
-            (self.num_groups - 1) * (self.num_people - 1) * self.num_people
+        max_g = self.num_groups - 1
+        max_idx = max(
+            (p.original_index if p.original_index is not None else i)
+            for i, p in enumerate(self.participants)
         )
-        total_bound = sum(self.objective_bounds) + max_tie_breaker
+        max_tb = max_g * max_idx * self.num_people
+        total_bound = sum(self.objective_bounds) + max_tb
 
         if total_bound > max_int_limit:
             raise ValueError(

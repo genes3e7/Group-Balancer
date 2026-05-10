@@ -40,8 +40,9 @@ def _generate_cache_key(
     Returns:
         str: A unique hex string for this specific state.
     """
-    # Hash the data (content and structure)
-    data_hash = pd.util.hash_pandas_object(df, index=True).sum()
+    # Hash the data (content and structure) deterministically by row
+    data_hashes = pd.util.hash_pandas_object(df, index=True)
+    data_blob = data_hashes.values.tobytes()
 
     # Serialize config deterministically
     config_payload = {
@@ -52,8 +53,8 @@ def _generate_cache_key(
     config_json = json.dumps(config_payload, sort_keys=True)
 
     # Combine into final key
-    raw = f"{data_hash}_{config_json}"
-    return hashlib.md5(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
+    raw = f"{config_json}".encode() + data_blob
+    return hashlib.md5(raw, usedforsecurity=False).hexdigest()
 
 
 def _process_uploaded_file(uploaded) -> tuple[bool, str]:
@@ -458,7 +459,7 @@ def _render_footer_actions(score_cols: list[str]) -> None:
 
     row_hashes = pd.util.hash_pandas_object(export_df, index=True)
     df_key = (
-        int(row_hashes.sum()),
+        hashlib.md5(row_hashes.values.tobytes(), usedforsecurity=False).hexdigest(),
         len(export_df),
         tuple(map(str, export_df.columns)),
     )

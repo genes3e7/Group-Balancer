@@ -1,5 +1,7 @@
 """Global pytest configuration and project-wide fixtures."""
 
+from collections.abc import Callable, Iterable
+from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
@@ -8,23 +10,23 @@ import pytest
 class DummySessionState(dict):
     """Mock session state that supports both dict and attribute access."""
 
-    def __getattr__(self, key):
+    def __getattr__(self, key: str) -> Any:
         try:
             return self[key]
         except KeyError as err:
             raise AttributeError(key) from err
 
-    def __setattr__(self, key, value):
+    def __setattr__(self, key: str, value: Any) -> None:
         self[key] = value
 
-    def __delattr__(self, key):
+    def __delattr__(self, key: str) -> None:
         try:
             del self[key]
         except KeyError as err:
             raise AttributeError(key) from err
 
 
-def pytest_configure(config):
+def pytest_configure(config: Any) -> None:  # noqa: ARG001
     """Hooks into pytest startup to patch module-level decorators.
 
     Replaces @st.fragment and @st.cache_data with identity decorators before
@@ -33,7 +35,7 @@ def pytest_configure(config):
     import sys
 
     # Identity decorator to ensure Streamlit decorators don't block execution
-    def identity_decorator(*args, **kwargs):
+    def identity_decorator(*args: Any, **kwargs: Any) -> Callable[..., Any]:
         if len(args) == 1 and callable(args[0]):
             return args[0]
         return lambda func: func
@@ -55,24 +57,26 @@ def pytest_configure(config):
 
 
 @pytest.fixture(autouse=True)
-def mock_streamlit_fragment(monkeypatch):
+def mock_streamlit_fragment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Redundant safety fixture for per-test isolation if needed."""
 
-    def identity(func):
+    def identity(func: Callable[..., Any]) -> Callable[..., Any]:
         return func
 
     monkeypatch.setattr("streamlit.fragment", identity)
+    # Ensure cache_data is also protected and reset per test
+    monkeypatch.setattr("streamlit.cache_data", identity)
 
 
 @pytest.fixture
-def mock_streamlit_columns():
+def mock_streamlit_columns() -> Callable[[int | Iterable], list[MagicMock]]:
     """Provides a factory for mocking st.columns with number_input mocks."""
 
-    def _factory(n: int | list, **_):
+    def _factory(n: int | Iterable, **_: Any) -> list[MagicMock]:
         m = MagicMock()
         m.number_input.return_value = 1.0
         m.button.return_value = False
-        count = n if isinstance(n, int) else len(n)
+        count = n if isinstance(n, int) else len(list(n))
         return [m] * count
 
     return _factory

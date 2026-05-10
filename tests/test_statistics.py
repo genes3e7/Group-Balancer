@@ -25,7 +25,6 @@ def test_calculate_balancing_stats_basic():
     assert np.isclose(
         stats[0]["Avg Std Dev (Balance)"], pd.Series([10.0, 20.0]).std(ddof=1)
     )
-    assert stats[0]["Avg Std Dev (Balance)"] > 7.07
 
 
 def test_calculate_balancing_stats_exclude_unassigned():

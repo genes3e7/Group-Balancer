@@ -34,10 +34,19 @@ def test_build_executable_success():
 
         build.build_executable()
 
-        # Verify pyinstaller was called
+        # Verify pyinstaller was invoked with the optimized build contract
         assert mock_run.call_count == 1
-        last_call_args = mock_run.call_args[0][0]
-        assert "pyinstaller" in last_call_args
+        cmd = mock_run.call_args[0][0]
+        assert cmd[0] == "pyinstaller"
+
+        for flag in ("--clean", "--noupx", "--noconfirm", "--onedir", "--windowed"):
+            assert flag in cmd, f"Missing required flag: {flag}"
+
+        # Critical bundled artifacts must be present in --add-data
+        joined_cmd = " ".join(cmd)
+        assert "app.py" in joined_cmd
+        assert "src" in joined_cmd
+        assert "streamlit_launcher.py" in joined_cmd
 
 
 def test_app_importable():

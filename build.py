@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 
 class TreeShaker:
@@ -25,47 +26,56 @@ class TreeShaker:
 
     # Static list of heavy or irrelevant libraries that should always be excluded
     # if not explicitly imported by the project.
-    BANNED_BLOAT = {
-        "tkinter",
-        "tcl",
-        "matplotlib",
-        "scipy",
-        "IPython",
-        "ipykernel",
-        "notebook",
-        "jedi",
-        "parso",
-        "PIL",
-        "pydeck",
-        "bokeh",
-        "plotly",
-        "PyQt5",
-        "PySide2",
-        "sqlite3",
-        "distutils",
-        "setuptools",
-        "wheel",
-    }
+    BANNED_BLOAT: ClassVar[frozenset[str]] = frozenset(
+        {
+            "tkinter",
+            "tcl",
+            "matplotlib",
+            "scipy",
+            "IPython",
+            "ipykernel",
+            "notebook",
+            "jedi",
+            "parso",
+            "PIL",
+            "pydeck",
+            "bokeh",
+            "plotly",
+            "PyQt5",
+            "PySide2",
+            "sqlite3",
+            "distutils",
+            "setuptools",
+            "wheel",
+        }
+    )
 
     # Packages known to be used by dev tools or testing but not the app itself.
-    DEV_PACKAGES = {
-        "pytest",
-        "pytest-cov",
-        "pytest-xdist",
-        "coverage",
-        "vulture",
-        "interrogate",
-        "ruff",
-        "pymarkdownlnt",
-        "pyinstaller",
-        "pefile",
-        "altgraph",
-        "gitpython",
-        "gitdb",
-        "smmap",
-    }
+    DEV_PACKAGES: ClassVar[frozenset[str]] = frozenset(
+        {
+            "pytest",
+            "pytest-cov",
+            "pytest-xdist",
+            "coverage",
+            "vulture",
+            "interrogate",
+            "ruff",
+            "pymarkdownlnt",
+            "pyinstaller",
+            "pefile",
+            "altgraph",
+            "gitpython",
+            "gitdb",
+            "smmap",
+        }
+    )
 
-    def __init__(self, project_root: str):
+    # Critical runtime dependencies that must never be excluded.
+    PROTECTED: ClassVar[frozenset[str]] = frozenset(
+        {"streamlit", "pandas", "numpy", "ortools", "openpyxl"}
+    )
+
+    def __init__(self, project_root: str) -> None:
         self.root = Path(project_root)
         self.import_re = re.compile(r"^(?:import|from)\s+([a-zA-Z0-9_]+)")
 
@@ -104,16 +114,17 @@ class TreeShaker:
         # Dynamic exclusion is disabled to protect indirect dependencies.
         excludes = set()
 
-        # 1. Add all dev packages
+        # 1. Add all dev packages, ensuring they aren't in PROTECTED
         for dev in self.DEV_PACKAGES:
-            excludes.add(dev)
+            if dev not in self.PROTECTED:
+                excludes.add(dev)
 
-        # 2. Add bloat if not used
+        # 2. Add bloat if not used and not in PROTECTED
         for bloat in self.BANNED_BLOAT:
-            if bloat.lower() not in imported:
+            if bloat.lower() not in imported and bloat not in self.PROTECTED:
                 excludes.add(bloat)
 
-        return sorted(list(excludes))
+        return sorted(excludes)
 
 
 def build_executable():

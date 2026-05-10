@@ -46,7 +46,7 @@ def render_header_description() -> None:
 
 
 def render_step_progress(step: int) -> None:
-    """Renders the progress indicators and step labels.
+    """Renders the progress indicators and step labels with ARIA semantics.
 
     Args:
         step (int): The current active step number (1, 2, or 3).
@@ -58,8 +58,13 @@ def render_step_progress(step: int) -> None:
         target = i + 1
         label = labels[i]
         with col:
+            # aria-current indicates the active step to screen readers
+            aria = 'aria-current="step"' if step == target else ""
             if step == target:
-                st.markdown(f"### :red[{label}]")
+                st.markdown(
+                    f"### <span {aria}>:red[{label}]</span>", unsafe_allow_html=True
+                )
+
             elif target < step:
                 st.markdown(f"### {label}")
             else:
@@ -72,4 +77,10 @@ def render_step_progress(step: int) -> None:
     for i, col in enumerate(cols_bar):
         target = i + 1
         css = red_css if target <= step else gray_css
-        col.markdown(f'<div style="{css}"></div>', unsafe_allow_html=True)
+        # role="progressbar" provides semantic context for the decorative bars
+        col.markdown(
+            f'<div role="progressbar" aria-valuemin="1" aria-valuemax="3" '
+            f'aria-valuenow="{step}" aria-label="Step {target} of 3" '
+            f'style="{css}"></div>',
+            unsafe_allow_html=True,
+        )

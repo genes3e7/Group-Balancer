@@ -434,16 +434,8 @@ class PreCIPipeline:
                     ],
                     "Markdown Linting",
                 )
-            elif self.all_passed():
-                # Locally, allow auto-fixing if logic is sound.
-                self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "check", ".", "--fix"],
-                    "Ruff Linting",
-                )
-                self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "format", "."],
-                    "Ruff Formatting",
-                )
+            else:
+                # Locally, always run Markdown linting for visibility.
                 self.run_command(
                     [
                         "uv",
@@ -457,10 +449,20 @@ class PreCIPipeline:
                     ],
                     "Markdown Linting",
                 )
-            else:
-                self.record_result("Ruff Linting", "SKIPPED")
-                self.record_result("Ruff Formatting", "SKIPPED")
-                self.record_result("Markdown Linting", "SKIPPED")
+
+                if self.all_passed():
+                    # Allow auto-fixing for Ruff if logic is sound.
+                    self.run_command(
+                        ["uv", "run", "--no-sync", "ruff", "check", ".", "--fix"],
+                        "Ruff Linting",
+                    )
+                    self.run_command(
+                        ["uv", "run", "--no-sync", "ruff", "format", "."],
+                        "Ruff Formatting",
+                    )
+                else:
+                    self.record_result("Ruff Linting", "SKIPPED")
+                    self.record_result("Ruff Formatting", "SKIPPED")
 
             # 6. Build Verification Gate
             if self.all_passed():
