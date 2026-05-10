@@ -2,7 +2,8 @@
 
 Ensures that the CP-SAT solver provides consistent balancing quality
 across independent runs and correctly handles balancing regardless of
-score magnitude.
+score magnitude. Implements dual-layer validation for both bit-for-bit
+identity (Interleaved) and production quality (Race Mode).
 """
 
 import pandas as pd
@@ -32,11 +33,61 @@ def sample_data():
     return pd.DataFrame(data)
 
 
-def test_cold_start_determinism(sample_data):
-    """Verifies that multiple independent runs yield identical assignments.
+def test_strict_identity_determinism(sample_data):
+    """Verifies bit-for-bit identity when search interleaving is enabled.
 
-    Note: Bit-for-bit assignment identity is guaranteed as long as internal
-    determinism (Race Mode vs interleave_search) remains stable.
+    This Level 1 test proves the mathematical model is stable and the
+    tie-breaker logic defines a unique canonical global optimum.
+
+    Args:
+        sample_data (pd.DataFrame): Fixture providing participant data.
+    """
+    group_capacities = [8, 8]
+    score_weights = {"Score1": 1.0, "Score2": 1.0}
+
+    # Run 1: Interleaved
+    res1, metrics1 = OptimizationService.run(
+        sample_data,
+        group_capacities,
+        score_weights,
+        ConflictPriority.GROUPERS,
+        10,
+        interleave_search=True,
+    )
+    assert metrics1["status"] == "OPTIMAL"
+
+    # Run 2: Interleaved
+    res2, metrics2 = OptimizationService.run(
+        sample_data,
+        group_capacities,
+        score_weights,
+        ConflictPriority.GROUPERS,
+        10,
+        interleave_search=True,
+    )
+    assert metrics2["status"] == "OPTIMAL"
+
+    # Canonicalize and compare exact assignments
+    def canonicalize(df):
+        df = df.sort_values(config.COL_NAME).reset_index(drop=True)
+        # Flip group IDs so Group 1 is always the one containing 'Person 0'
+        g0 = df.loc[df[config.COL_NAME] == "Person 0", config.COL_GROUP].iloc[0]
+        remap = {g0: 1, (2 if g0 == 1 else 1): 2}
+        df[config.COL_GROUP] = df[config.COL_GROUP].map(remap)
+        return df
+
+    pd.testing.assert_series_equal(
+        canonicalize(res1)[config.COL_GROUP],
+        canonicalize(res2)[config.COL_GROUP],
+    )
+
+
+def test_race_mode_quality_stability(sample_data):
+    """Verifies that high-speed Race Mode still yields identical balance quality.
+
+    This Level 2 test represents the production configuration. While workers
+    may 'race' and return symmetric assignments, the resulting Standard
+    Deviations must remain identical.
 
     Args:
         sample_data (pd.DataFrame): Fixture providing participant data.
@@ -50,8 +101,8 @@ def test_cold_start_determinism(sample_data):
         score_weights,
         ConflictPriority.GROUPERS,
         10,
+        interleave_search=False,
     )
-    assert metrics1["status"] == "OPTIMAL"
 
     res2, metrics2 = OptimizationService.run(
         sample_data,
@@ -59,26 +110,12 @@ def test_cold_start_determinism(sample_data):
         score_weights,
         ConflictPriority.GROUPERS,
         10,
+        interleave_search=False,
     )
-    assert metrics2["status"] == "OPTIMAL"
 
-    # Enforce bit-for-bit identity after sorting by name
-    # We canonicalize group IDs such that the group containing 'Person 0' is Group 1
-    def canonicalize_groups(df):
-        df = df.sort_values(config.COL_NAME).reset_index(drop=True)
-        g0 = df.loc[df[config.COL_NAME] == "Person 0", config.COL_GROUP].iloc[0]
+    assert metrics1["status"] == metrics2["status"] == "OPTIMAL"
 
-        def remap(g):
-            return 1 if g == g0 else 2
-
-        df[config.COL_GROUP] = df[config.COL_GROUP].map(remap)
-        return df
-
-    sorted1 = canonicalize_groups(res1)
-    sorted2 = canonicalize_groups(res2)
-
-    pd.testing.assert_series_equal(sorted1[config.COL_GROUP], sorted2[config.COL_GROUP])
-
+    # Quality metrics (Std Dev) must match even if assignments are shuffled
     for col in ["Score1", "Score2"]:
         std1 = res1.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
         std2 = res2.groupby(config.COL_GROUP)[col].mean().std(ddof=1)

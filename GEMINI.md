@@ -109,10 +109,13 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Capacity:** Capped at 50 configurations per active session to maintain strict memory hygiene while providing a massive refinement buffer.
 - **Persistence:** The cache is preserved during 'Start Over' operations, allowing for a continuous workspace experience while resetting the current project's data state.
 
-### 4. Solver Determinism vs. Speed (Race Mode)
+### 4. Solver Determinism: Stability vs. Speed (Race Mode)
 
-- **Lesson:** While absolute determinism can be achieved with `interleave_search = True`, it significantly slows down the optimality proof. For production speed, we use `num_search_workers = 8` and `interleave_search = False` (Race Mode).
-- **Guarantee:** Due to internal iteration sorting and tie-breaking branching strategies, the solver still guarantees bit-for-bit identical personnel assignment identities (not just identical quality) as verified by functional tests.
+- **Observation:** In multi-threaded environments, OR-Tools' high-speed "Race Mode" (`interleave_search = False`) can return different symmetric optima across different operating systems (Linux vs. Windows) or Python versions.
+- **Architecture:** The application implements **Dual-Layer Validation** to balance stability and performance:
+  - **Level 1 (Interleaved):** For tests and audits, `interleave_search = True` is used to force worker synchronization, guaranteeing bit-for-bit identical personnel assignments.
+  - **Level 2 (Race Mode):** For production UI, the flag is disabled to provide the absolute fastest "alive" feel, with stability guaranteed only at the mathematical quality level (identical Standard Deviations).
+- **Control:** The flag is exposed via `SolverConfig` for explicit consumer control.
 
 ### 5. Integer Range & Overflows
 

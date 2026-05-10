@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Solver Hardening - Dynamic Precision Scaling:** Mathematically prevents 64-bit integer overflow for large datasets ($N=1000$) while maintaining 0.001 target precision.
 - **Solver Hardening - Aggregate Objective Guard:** Implemented a Fail-Fast `ValueError` if the theoretical maximum objective sum exceeds CP-SAT's 64-bit limits, ensuring absolute numerical safety.
 - **Solver Hardening - Scaling Enforcement:** Added `tests/test_scaling_tiers.py` to programmatically lock in the bit-slicing priority hierarchy and resolution constants.
+- **Solver Hardening - Dual-Layer Determinism:** Implemented a 'Stability vs. Representation' validation strategy. Integrated an `interleave_search` flag to guarantee bit-for-bit identity for audits (Level 1) while maintaining high-speed 'Race Mode' for production UX (Level 2), with tests covering both scenarios.
 - **UI Hardening - State Clamping:** Added defensive session state clamping for group capacities to prevent out-of-bounds rendering when switching datasets.
 - **UI Hardening - Upload Resilience:** Implemented MD5 cryptographic signatures for file uploads to robustly detect edits even if filename and size remain identical.
 - **UI Hardening - Selective Reset:** Optimized the 'Start Over' logic to preserve the high-value configuration cache while securely purging session-specific participant data.

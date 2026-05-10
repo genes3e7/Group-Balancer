@@ -187,6 +187,7 @@ class OptimizationService:
         grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT,
         separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT,
         random_seed: int = 42,
+        interleave_search: bool = False,
         *,
         status_box=None,
         previous_results: pd.DataFrame | None = None,
@@ -205,6 +206,7 @@ class OptimizationService:
             grouper_weight (int): Penalty for splitting groupers.
             separator_weight (int): Penalty for clumping separators.
             random_seed (int): Deterministic seed for solver search.
+            interleave_search (bool): If True, search workers are synchronized.
             status_box: Optional Streamlit placeholder for live updates.
             previous_results (pd.DataFrame | None): Optional previous assignments.
 
@@ -262,6 +264,7 @@ class OptimizationService:
                 grouper_weight=grouper_weight,
                 separator_weight=separator_weight,
                 random_seed=random_seed,
+                interleave_search=interleave_search,
                 timeout_seconds=timeout_seconds,
                 hints_by_fingerprint=hints_fp,
                 hints_by_index=hints_idx,

@@ -287,6 +287,7 @@ def render_step_2() -> None:
             timeout,
             grouper_weight=config.DEFAULT_GROUPER_WEIGHT,
             separator_weight=config.DEFAULT_SEPARATOR_WEIGHT,
+            interleave_search=False,  # Force Race Mode for UI responsiveness
             status_box=status_box,
             previous_results=prev_results,
         )

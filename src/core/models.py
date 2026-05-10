@@ -88,6 +88,11 @@ class SolverConfig:
         grouper_weight (int): Internal penalty for splitting groupers.
         separator_weight (int): Internal penalty for clumping separators.
         random_seed (int): Deterministic seed for CP-SAT search workers.
+        interleave_search (bool): If True, search workers are synchronized to
+            guarantee bit-for-bit identical assignments at the cost of speed.
+        random_seed (int): Deterministic seed for CP-SAT search workers.
+        interleave_search (bool): If True, search workers are synchronized to
+            guarantee bit-for-bit identical assignments at the cost of speed.
         hints_by_fingerprint (Mapping[str, int] | None): Warm-start hints by identity.
         hints_by_index (Mapping[int, int] | None): Warm-start hints by index.
         timeout_seconds (int): Maximum wall-clock time for search.
@@ -102,6 +107,7 @@ class SolverConfig:
     grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT
     separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT
     random_seed: int = 42
+    interleave_search: bool = False
     hints_by_fingerprint: Mapping[str, int] | None = None
     hints_by_index: Mapping[int, int] | None = None
     timeout_seconds: int = 60

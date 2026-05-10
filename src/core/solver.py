@@ -30,8 +30,9 @@ def apply_solver_tuning(solver_inst: cp_model.CpSolver, cfg: SolverConfig) -> No
     """
     solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
     solver_inst.parameters.num_search_workers = max(1, cfg.num_workers)
-    # Race Mode: Use multiple workers without interleaving for speed
-    solver_inst.parameters.interleave_search = False
+    # Race Mode vs Interleave: Interleaving guarantees bit-for-bit identity
+    # but is slower.
+    solver_inst.parameters.interleave_search = cfg.interleave_search
     solver_inst.parameters.random_seed = cfg.random_seed
 
     # Partitioning specific tuning
