@@ -62,13 +62,22 @@ def render_step_progress(step: int) -> None:
             aria = 'aria-current="step"' if step == target else ""
             if step == target:
                 st.markdown(
-                    f"### <span {aria}>:red[{label}]</span>", unsafe_allow_html=True
+                    f'### <span {aria} style="color:#ff4b4b">{label}</span>',
+                    unsafe_allow_html=True,
                 )
 
             elif target < step:
                 st.markdown(f"### {label}")
             else:
                 st.markdown(f"### :gray[{label}]")
+
+    # Logical progress bar for accessibility
+    st.markdown(
+        f'<div role="progressbar" aria-valuemin="1" aria-valuemax="3" '
+        f'aria-valuenow="{step}" aria-label="Step {step} of 3" '
+        f'style="display:none"></div>',
+        unsafe_allow_html=True,
+    )
 
     cols_bar = st.columns(3, gap="small")
     red_css = "background-color: #ff4b4b; height: 4px; width: 100%; border-radius: 2px;"
@@ -77,10 +86,8 @@ def render_step_progress(step: int) -> None:
     for i, col in enumerate(cols_bar):
         target = i + 1
         css = red_css if target <= step else gray_css
-        # role="progressbar" provides semantic context for the decorative bars
+        # Individual segments are decorative; aria-hidden prevents redundancy
         col.markdown(
-            f'<div role="progressbar" aria-valuemin="1" aria-valuemax="3" '
-            f'aria-valuenow="{step}" aria-label="Step {target} of 3" '
-            f'style="{css}"></div>',
+            f'<div aria-hidden="true" style="{css}"></div>',
             unsafe_allow_html=True,
         )

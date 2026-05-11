@@ -40,9 +40,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Solver Logic Fix:** Resolved `KeyError` in branching strategy by decoupling decision variables from non-contiguous participant indices.
+- **Solver Optimization:** Fixed `OptimizationService.run` to correctly apply weight reduction, ensuring peak solver performance as intended by the architectural design.
+- **UI Resilience:** Added defensive coercion and clamping to group capacity inputs to prevent application crashes from stale session state.
+- **Manual Sync Integrity:** Restored the ability to sync manual reassignments from the data editor by preserving the hidden `_original_index` anchor.
+- **Accessibility:** Standardized progress bar ARIA semantics and step coloring for improved screen reader compatibility.
+- **Build Pipeline:** Hardened artifact path anchoring in the build script to prevent file scattering during execution from outside the project root.
 - **Solver Stability:** Resolved CP-SAT integer overflow risks using global theoretical bounds tracking (`max_abs_diff_bound`) and surfaced `random_seed` for total search control.
-- **Search Determinism:** Re-implemented the deterministic tie-breaker in branching strategy using stable dataset indices (Impact DESC, Original Index ASC).
-- **Build Stability:** Hardened `TreeShaker` to catch and log file system errors and utilized high-signal static exclusion lists to protect indirect sub-dependencies.
-- **Data Ingestion:** Hardened file upload validation with column header normalization and robust numeric coercion.
-- **Warm Start Reliability:** Hardened fingerprint validation to safely fall back to index-based hints if duplicate participant profiles are detected.
-- **CI Integrity:** Fixed version sorting logic, added safety guards for README updates, and enforced secure workflow permissions.

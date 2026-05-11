@@ -255,6 +255,10 @@ class OptimizationService:
             raise ValueError("Group capacities cannot be empty.")
 
         try:
+            # Backend Reduction: Simplify weights to irreducible integer ratios
+            # (e.g., 0.2:0.4 -> 1:2) to maximize solver speed and cache hits.
+            reduced_weights = OptimizationService.reduce_score_weights(score_weights)
+
             participants = []
             for i, row in enumerate(participants_df.to_dict("records")):
                 # Robust index extraction
@@ -280,7 +284,7 @@ class OptimizationService:
                 hints_fp, hints_idx = _resolve_warm_start_hints(
                     participants,
                     previous_results,
-                    score_weights,
+                    reduced_weights,
                     conflict_priority,
                     group_capacities,
                     grouper_weight,
@@ -290,7 +294,7 @@ class OptimizationService:
             cfg = SolverConfig(
                 num_groups=len(group_capacities),
                 group_capacities=group_capacities,
-                score_weights=score_weights,
+                score_weights=reduced_weights,
                 conflict_priority=conflict_priority,
                 grouper_weight=grouper_weight,
                 separator_weight=separator_weight,

@@ -97,11 +97,16 @@ def test_results_renderer_single_card_with_members(mock_streamlit_columns):
                 "Score1": 10,
                 config.COL_GROUPER: "G",
                 config.COL_SEPARATOR: "S",
+                "_original_index": 0,
             },
-            {config.COL_NAME: "B", config.COL_GROUP: 1, "Score1": 20},
+            {
+                config.COL_NAME: "B",
+                config.COL_GROUP: 1,
+                "Score1": 20,
+                "_original_index": 1,
+            },
         ],
     }
-
     mock_state = DummySessionState({"num_groups_target": 2})
 
     with (
@@ -513,7 +518,7 @@ def test_render_table_view_nan_std(mock_streamlit_columns):
         steps._render_table_view(["S1"])
 
 
-def test_render_footer_reset_hit_proper_mock(mock_streamlit_columns):
+def test_render_footer_reset_hit_proper_mock():
     """Verify reset logic via 'Start Over' button."""
     df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
 
@@ -524,34 +529,34 @@ def test_render_footer_reset_hit_proper_mock(mock_streamlit_columns):
         }
     )
 
-    with patch("pandas.DataFrame.copy", return_value=df_orig.copy()):
-        with (
-            patch("src.ui.steps.st") as mock_st_in_steps,
-            patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"),
-            patch(
-                "src.ui.steps.pd.util.hash_pandas_object",
-                return_value=pd.Series([1]),
-            ),
-        ):
-            mock_state = MagicMock()
-            mock_state.__getitem__.side_effect = session_state.__getitem__
-            mock_state.__setitem__.side_effect = session_state.__setitem__
-            mock_state.__delitem__.side_effect = session_state.__delitem__
-            mock_state.keys.side_effect = session_state.keys
-            mock_state.interactive_df = session_state["interactive_df"]
+    with (
+        patch("pandas.DataFrame.copy", return_value=df_orig.copy()),
+        patch("src.ui.steps.st") as mock_st_in_steps,
+        patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"),
+        patch(
+            "src.ui.steps.pd.util.hash_pandas_object",
+            return_value=pd.Series([1]),
+        ),
+    ):
+        mock_state = MagicMock()
+        mock_state.__getitem__.side_effect = session_state.__getitem__
+        mock_state.__setitem__.side_effect = session_state.__setitem__
+        mock_state.__delitem__.side_effect = session_state.__delitem__
+        mock_state.keys.side_effect = session_state.keys
+        mock_state.interactive_df = session_state["interactive_df"]
 
-            mock_st_in_steps.session_state = mock_state
+        mock_st_in_steps.session_state = mock_state
 
-            # Setup columns with button factory
-            m_back, m_reset = MagicMock(), MagicMock()
-            m_back.button.return_value = False
-            m_reset.button.return_value = True
-            mock_st_in_steps.columns.return_value = [m_back, m_reset]
+        # Setup columns with button factory
+        m_back, m_reset = MagicMock(), MagicMock()
+        m_back.button.return_value = False
+        m_reset.button.return_value = True
+        mock_st_in_steps.columns.return_value = [m_back, m_reset]
 
-            steps._render_footer_actions(["S1"])
-            mock_st_in_steps.rerun.assert_called()
-            assert "interactive_df" not in session_state
-            assert "warm_start_cache" in session_state
+        steps._render_footer_actions(["S1"])
+        mock_st_in_steps.rerun.assert_called()
+        assert "interactive_df" not in session_state
+        assert "warm_start_cache" in session_state
 
 
 def test_steps_render_2_solver_failure_surface(mock_streamlit_columns):
@@ -576,7 +581,7 @@ def test_steps_render_2_solver_failure_surface(mock_streamlit_columns):
     with (
         patch("streamlit.header"),
         patch("streamlit.subheader"),
-        patch("streamlit.columns", side_effect=mock_streamlit_columns),
+        patch("streamlit.columns") as mock_cols,
         patch("streamlit.number_input", return_value=1.0),
         patch("streamlit.radio", return_value="groupers"),
         patch("streamlit.slider", return_value=10),
@@ -593,13 +598,12 @@ def test_steps_render_2_solver_failure_surface(mock_streamlit_columns):
         c_go.button.return_value = True
         c_back.button.return_value = False
 
-        with patch("streamlit.columns") as mock_cols:
-            mock_cols.side_effect = [[c1, c2], [g_col], [c_back, c_go]]
-            mock_run.return_value = (
-                None,
-                {"status": "INFEASIBLE", "elapsed": 0.5, "error": "No solution"},
-            )
-            steps.render_step_2()
+        mock_cols.side_effect = [[c1, c2], [g_col], [c_back, c_go]]
+        mock_run.return_value = (
+            None,
+            {"status": "INFEASIBLE", "elapsed": 0.5, "error": "No solution"},
+        )
+        steps.render_step_2()
 
         assert mock_state.get("results_df") is None
         assert mock_state.solver_error == "No solution"

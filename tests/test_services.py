@@ -175,18 +175,23 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
 def test_stale_hints_logging():
     """Verify that informational logs are emitted for stale hints."""
     data = pd.DataFrame(
-        {config.COL_NAME: ["P1"], "Score1": [10], "_original_index": [0]}
+        {
+            config.COL_NAME: ["P1"],
+            "Score1": [10],
+            "Score2": [10],
+            "_original_index": [0],
+        }
     )
     res1, _ = OptimizationService.run(
-        data, [1], {"Score1": 1.0}, ConflictPriority.GROUPERS, 5
+        data, [1], {"Score1": 1.0, "Score2": 1.0}, ConflictPriority.GROUPERS, 5
     )
 
     with patch("src.core.services.logger.info") as mock_log:
-        # 1. Config mismatch
+        # 1. Config mismatch (1:1 reduces to 1:1, 1:2 reduces to 1:2)
         OptimizationService.run(
             data,
             [1],
-            {"Score1": 2.0},
+            {"Score1": 1.0, "Score2": 2.0},
             ConflictPriority.GROUPERS,
             5,
             previous_results=res1,
@@ -199,7 +204,7 @@ def test_stale_hints_logging():
         OptimizationService.run(
             data2,
             [1],
-            {"Score1": 1.0},
+            {"Score1": 1.0, "Score2": 1.0},
             ConflictPriority.GROUPERS,
             5,
             previous_results=res1,
@@ -214,7 +219,7 @@ def test_stale_hints_logging():
         OptimizationService.run(
             data,
             [1],
-            {"Score1": 1.0},
+            {"Score1": 1.0, "Score2": 1.0},
             ConflictPriority.GROUPERS,
             5,
             previous_results=res_no_fp,

@@ -139,12 +139,14 @@ def build_executable():
     project_root = os.path.abspath(os.path.dirname(__file__))
     shaker = TreeShaker(project_root)
 
+    build_dir = os.path.join(project_root, "build")
+    dist_dir = os.path.join(project_root, "dist")
+
     # Clean old artifacts
-    dirs_to_clean = ["build", "dist"]
+    dirs_to_clean = [build_dir, dist_dir]
     for d in dirs_to_clean:
-        full_path = os.path.join(project_root, d)
-        if os.path.exists(full_path):
-            shutil.rmtree(full_path)
+        if os.path.exists(d):
+            shutil.rmtree(d)
 
     spec_path = os.path.join(project_root, "GroupBalancer.spec")
     if os.path.exists(spec_path):
@@ -168,7 +170,7 @@ def build_executable():
         "--name",
         "GroupBalancer",
         "--specpath",
-        "build",
+        build_dir,
         "--clean",  # Ensure fresh analysis
         "--noupx",  # Speed up build and prevent extraction slowdown
     ]
@@ -189,10 +191,10 @@ def build_executable():
     )
 
     try:
-        os.makedirs("build", exist_ok=True)
+        os.makedirs(build_dir, exist_ok=True)
         print(f"Running optimized command (Excludes: {len(excludes)} modules)")
         subprocess.run(cmd, check=True)
-        print(f"\n✅ Build Complete! Check: {os.path.abspath('dist')}")
+        print(f"\n✅ Build Complete! Check: {dist_dir}")
     except subprocess.CalledProcessError as e:
         print(f"\n❌ Build Failed: {e}")
         sys.exit(1)

@@ -146,20 +146,20 @@ def test_footer_reset_direct():
     mock_state.keys.side_effect = session_dict.keys
     mock_state.interactive_df = mock_df
 
-    with patch("src.ui.steps.st") as mock_st:
+    with (
+        patch("src.ui.steps.st") as mock_st,
+        patch("src.ui.steps.pd.util.hash_pandas_object", return_value=pd.Series([1])),
+        patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"),
+    ):
         mock_st.session_state = mock_state
         mock_st.button.side_effect = lambda label, **_: label == "🔄 Start Over"
         mock_st.columns.return_value = [MagicMock(), MagicMock()]
 
-        with patch(
-            "src.ui.steps.pd.util.hash_pandas_object", return_value=pd.Series([1])
-        ):
-            with patch("src.ui.steps._build_excel_bytes", return_value=b"bytes"):
-                steps._render_footer_actions(["S1"])
+        steps._render_footer_actions(["S1"])
 
-        assert "interactive_df" not in session_dict
-        assert "warm_start_cache" in session_dict
-        mock_st.rerun.assert_called_once()
+    assert "interactive_df" not in session_dict
+    assert "warm_start_cache" in session_dict
+    mock_st.rerun.assert_called_once()
 
 
 def test_render_table_view_nan_std_direct():

@@ -203,11 +203,12 @@ def render_step_2() -> None:
         default = base + (1 if i < rem else 0)
         key = f"cap_{num_groups}_{i}"
 
-        # Defensive state clamping to prevent out-of-bounds rendering
-        if key in st.session_state:
-            st.session_state[key] = max(0, min(int(st.session_state[key]), total_p))
-        else:
-            st.session_state[key] = default
+        # Defensive state clamping and coercion to prevent crashes on stale data
+        try:
+            val = int(st.session_state.get(key, default))
+        except (ValueError, TypeError):
+            val = default
+        st.session_state[key] = max(0, min(val, total_p))
 
         cap = int(cols[i % len(cols)].number_input(f"G{i + 1}", 0, total_p, key=key))
         group_capacities.append(cap)

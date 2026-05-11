@@ -220,9 +220,10 @@ def test_circular_conflict_edge():
 
 def test_solver_zero_sum_weighted_error():
     """Verify ValueError is raised if a weighted dimension has zero absolute sum."""
-    cfg = get_solver_config(1, [1], weights={"S1": 1.0})
+    col = f"{config.SCORE_PREFIX}1"
+    cfg = get_solver_config(1, [1], weights={col: 1.0})
     with pytest.raises(ValueError, match="has weight but sum is 0"):
-        solver.solve_with_ortools([{"Name": "P1", "Score1": 0.0}], cfg)
+        solver.solve_with_ortools([{"Name": "P1", col: 0.0}], cfg)
 
 
 def test_solver_tie_breaker_pressure():
@@ -396,7 +397,7 @@ def test_solver_aggregate_objective_error():
     builder = solver.ConstraintBuilder(p, cfg)
     builder.build_variables()
 
-    # Artificially blow the objective bound
-    builder.objective_bounds = [2**63]
+    # Artificially blow the objective bound to exactly exceed (1 << 62) - 1
+    builder.objective_bounds = [(1 << 62) - 1 + 1]
     with pytest.raises(ValueError, match="exceeds CP-SAT safety bound"):
         builder.get_model()

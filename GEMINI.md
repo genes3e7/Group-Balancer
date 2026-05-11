@@ -61,6 +61,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 - **Lesson:** UI widgets (e.g., `st.number_input`) must have explicit, stable keys based on data identity (e.g., `key=f"cap_{num_groups}_{i}"`) or scale (e.g., incorporating `total_p`) rather than relying on positional rendering.
 - **Risk:** Without stable keys, changing participant counts or reordering groups can cause Streamlit to attach stale values to the wrong inputs or trigger `StreamlitAPIException`.
+- **Harden:** Always use `try/except` coercion and `max(min(...))` clamping when initializing widget values from session state to prevent crashes from stale data types or out-of-bounds values.
 
 ### 4. Decoupling Logic from Display Text
 
@@ -89,7 +90,8 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 ### 9. Row-Stable Interactive Sync
 
-- **Lesson:** Manual group reassignments in the results cards must be synchronized back to the global state using the `original_index` as the anchor.
+- **Lesson:** Manual group reassignments in the results cards must be synchronized back to the global state using the `_original_index` as the anchor.
+- **Implementation:** Ensure `_original_index` is included in the `data_editor` column list (even if hidden via `column_config`) to maintain state integrity during user edits.
 - **Risk:** Using positional indexing (`iloc`) causes data corruption if the user reorders the UI table (e.g., by name or score) before making a change.
 
 ## Optimization & Solver (OR-Tools)
@@ -209,6 +211,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Mechanism:** The `build.py` script implements a `TreeShaker` class that performs static analysis of `src/` and `app.py` to identify imported top-level modules.
 - **Exclusion Strategy:** It calculates the delta between installed packages and required imports, feeding it to PyInstaller's `--exclude-module` flag.
 - **Safety:** Explicitly protects core runtime dependencies (`streamlit`, `pandas`, `ortools`, `numpy`) and avoids dynamic dependency analysis of the entire environment to prevent stripping of indirect sub-dependencies.
+- **Reliability:** Anchor all build artifact paths (`build/`, `dist/`) to the project root using `os.path.join(os.path.dirname(__file__), ...)` to ensure consistent behavior across different execution environments.
 
 ## 🗒️ Complex Change Management (Planning & State)
 

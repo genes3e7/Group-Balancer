@@ -494,23 +494,19 @@ class ConstraintBuilder:
 
     def add_branching_strategy(self) -> None:
         """Guides the solver to decide on high-impact participants first."""
-        impacts = [
-            (
-                sum(abs(s) for s in p.scores.values()),
-                p.original_index if p.original_index is not None else i,
-            )
-            for i, p in enumerate(self.participants)
-        ]
+        impacts = []
+        for i, p in enumerate(self.participants):
+            impact = sum(abs(s) for s in p.scores.values())
+            # Impact DESC, Original Index ASC for stability
+            orig_idx = p.original_index if p.original_index is not None else i
+            impacts.append((impact, orig_idx, i))
 
         # Sort by impact descending, then participant index ascending for stability.
-        sorted_indices = [
-            idx for _, idx in sorted(impacts, key=lambda t: (-t[0], t[1]))
-        ]
+        # We extract 'i' (the actual index in self.x) as the decision handle.
+        sorted_indices = [i for _, _, i in sorted(impacts, key=lambda t: (-t[0], t[1]))]
 
         branching_vars = [
-            self.x[(p_idx, g_idx)]
-            for p_idx in sorted_indices
-            for g_idx in range(self.num_groups)
+            self.x[(i, g)] for i in sorted_indices for g in range(self.num_groups)
         ]
 
         self.model.AddDecisionStrategy(

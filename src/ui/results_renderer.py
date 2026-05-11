@@ -87,7 +87,11 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
         # Member list using a data editor for potential manual tweaks
         members_df = pd.DataFrame(group["members"])
         if not members_df.empty:
-            display_columns = [config.COL_NAME, config.COL_GROUP] + score_cols
+            display_columns = [
+                config.COL_NAME,
+                config.COL_GROUP,
+                "_original_index",
+            ] + score_cols
 
             max_groups = st.session_state.get("num_groups_target", 10)
             col_configs = {
@@ -95,6 +99,7 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
                     "Group", min_value=1, max_value=max_groups, format="%d"
                 ),
                 config.COL_NAME: st.column_config.TextColumn(disabled=True),
+                "_original_index": None,  # Hidden but preserved for syncing
             }
             for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
                 if col in members_df.columns:
