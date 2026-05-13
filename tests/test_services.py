@@ -167,9 +167,11 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
         )
 
         captured_cfg = mock_opt.call_args[0][1]
-        # Both should be None due to duplicates to prevent misassignments
+        # Fingerprint hints disabled due to duplicates, but index-based hints
+        # should fall back and be used since the multiset alignment is perfect.
         assert captured_cfg.hints_by_fingerprint is None
-        assert captured_cfg.hints_by_index is None
+        assert captured_cfg.hints_by_index is not None
+        assert dict(captured_cfg.hints_by_index) == {0: 1, 1: 2}
 
 
 def test_stale_hints_logging():

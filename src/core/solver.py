@@ -4,6 +4,7 @@ Refactored to use Builder and Strategy patterns for professional standards,
 SRP, and Open/Closed principles.
 """
 
+import hashlib
 import math
 import time
 from abc import ABC, abstractmethod
@@ -479,10 +480,12 @@ class ConstraintBuilder:
             )
 
             if len(indices) > len(valid_hinted_g_idxs):
+                # Anonymize identity to prevent leaking sensitive scores/tags
+                safe_id = hashlib.md5(str(identity).encode()).hexdigest()[:8]
                 logger.warning(
-                    "Symmetry-aware hint truncation for %s: %d participants but only "
-                    "%d hints available. %d hints will be dropped.",
-                    identity,
+                    "Symmetry-aware hint truncation for bucket [%s]: %d participants "
+                    "but only %d hints available. %d hints will be dropped.",
+                    safe_id,
                     len(indices),
                     len(valid_hinted_g_idxs),
                     len(indices) - len(valid_hinted_g_idxs),

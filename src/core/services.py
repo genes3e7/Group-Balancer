@@ -92,6 +92,30 @@ def _resolve_warm_start_hints(
                         strict=False,
                     )
                 )
+        elif "_original_index" in previous_results.columns:
+            # Fallback for duplicate profiles: enable index-based hints only
+            # if the (original_index, fingerprint) multiset matches exactly.
+            current_pairs = sorted(
+                [(p.original_index, p.fingerprint) for p in participants]
+            )
+            valid_rows = previous_results[previous_results["_original_index"].notna()]
+            prev_pairs = sorted(
+                zip(
+                    valid_rows["_original_index"].astype(int),
+                    valid_rows["participant_fingerprint"].astype(str),
+                    strict=False,
+                )
+            )
+            if current_pairs == prev_pairs:
+                hints_idx = dict(
+                    zip(
+                        valid_rows["_original_index"].astype(int),
+                        valid_rows[config.COL_GROUP],
+                        strict=False,
+                    )
+                )
+            else:
+                logger.info("Ignoring stale hints (alignment error).")
         else:
             logger.info("Ignoring stale hints (duplicate profiles).")
 

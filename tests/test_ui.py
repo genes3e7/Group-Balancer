@@ -559,7 +559,7 @@ def test_render_footer_reset_hit_proper_mock():
         assert "warm_start_cache" in session_state
 
 
-def test_steps_render_2_solver_failure_surface(mock_streamlit_columns):
+def test_steps_render_2_solver_failure_surface():
     """Cover the failure branch in render_step_2 when result_df is None."""
     mock_df = pd.DataFrame(
         {

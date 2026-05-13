@@ -75,7 +75,7 @@ def render_step_progress(step: int) -> None:
     st.markdown(
         f'<div role="progressbar" aria-valuemin="1" aria-valuemax="3" '
         f'aria-valuenow="{step}" aria-label="Step {step} of 3" '
-        f'style="display:none"></div>',
+        f'style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap;border:0;padding:0;margin:-1px;"></div>',
         unsafe_allow_html=True,
     )
 

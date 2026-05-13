@@ -10,13 +10,17 @@ import streamlit as st
 
 from src.ui import components, session_manager
 
-components.setup_page()
-session_manager.init_session()
 
-# Render header components independently to ensure immediate visual feedback
-components.render_header_description()
-st.divider()
-components.render_step_progress(st.session_state.step)
+def main() -> None:
+    """Main orchestration for the Group Balancer application."""
+    components.setup_page()
+    session_manager.init_session()
+
+    # Render header components independently to ensure immediate visual feedback
+    components.render_header_description()
+    st.divider()
+    components.render_step_progress(st.session_state.step)
+    render_app()
 
 
 @st.fragment
@@ -39,4 +43,4 @@ def render_app() -> None:
 
 
 if __name__ == "__main__":
-    render_app()
+    main()
