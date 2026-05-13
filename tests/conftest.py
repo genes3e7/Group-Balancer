@@ -33,7 +33,6 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
     any modules are imported by the test collection process.
     """
     import sys
-    import types
 
     # Identity decorator to ensure Streamlit decorators don't block execution
     def identity_decorator(*args: Any, **kwargs: Any) -> Callable[..., Any]:
@@ -45,7 +44,7 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
     try:
         import streamlit as st
     except ModuleNotFoundError:
-        st = types.SimpleNamespace()
+        st = MagicMock(name="streamlit")
         sys.modules["streamlit"] = st
 
     # Inject identity decorators to prevent collection-time execution blocks
@@ -74,10 +73,13 @@ def mock_streamlit_columns() -> Callable[[int | Iterable], list[MagicMock]]:
     """Provides a factory for mocking st.columns with number_input mocks."""
 
     def _factory(n: int | Iterable, **_: Any) -> list[MagicMock]:
-        m = MagicMock()
-        m.number_input.return_value = 1.0
-        m.button.return_value = False
         count = n if isinstance(n, int) else len(list(n))
-        return [m] * count
+        mocks = []
+        for _ in range(count):
+            m = MagicMock()
+            m.number_input.return_value = 1.0
+            m.button.return_value = False
+            mocks.append(m)
+        return mocks
 
     return _factory

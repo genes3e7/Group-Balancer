@@ -307,7 +307,7 @@ def test_steps_render_1_failure_paths():
         mock_err.assert_called_with("At least one score column is required.")
 
 
-def test_steps_render_2_navigation(mock_streamlit_columns):
+def test_steps_render_2_navigation():
     """Verify navigation buttons in Step 2."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = DummySessionState(
@@ -321,7 +321,7 @@ def test_steps_render_2_navigation(mock_streamlit_columns):
     with (
         patch("streamlit.header"),
         patch("streamlit.subheader"),
-        patch("streamlit.columns", side_effect=mock_streamlit_columns),
+        patch("streamlit.columns") as mock_cols,
         patch("streamlit.button"),
         patch("streamlit.number_input", return_value=1.0),
         patch("streamlit.radio", return_value="groupers"),
@@ -334,16 +334,14 @@ def test_steps_render_2_navigation(mock_streamlit_columns):
         c_back.button.return_value = True
         c_go.button.return_value = False
 
-        mock_cols_v2 = MagicMock()
-        mock_cols_v2.side_effect = [
+        mock_cols.side_effect = [
             [MagicMock()] * 2,  # Groups
             [MagicMock()],  # Capacities
             [c_back, c_go],  # Navigation
         ]
 
-        with patch("streamlit.columns", mock_cols_v2):
-            steps.render_step_2()
-            mock_go.assert_called_with(1)
+        steps.render_step_2()
+        mock_go.assert_called_with(1)
 
 
 def test_steps_render_1_success():
@@ -472,12 +470,14 @@ def test_ui_steps_load_uploaded_file_exception():
     """Cover the exception branches in _process_uploaded_file."""
     mock_file = MagicMock()
     mock_file.name = "test.csv"
-    with patch("streamlit.session_state", DummySessionState()):
-        with patch("pandas.read_csv", side_effect=pd.errors.ParserError("Read error")):
-            with patch("streamlit.error") as mock_err:
-                success, _ = steps._process_uploaded_file(mock_file)
-                assert not success
-                mock_err.assert_called_with("Error reading file: Read error")
+    with (
+        patch("streamlit.session_state", DummySessionState()),
+        patch("pandas.read_csv", side_effect=pd.errors.ParserError("Read error")),
+        patch("streamlit.error") as mock_err,
+    ):
+        success, _ = steps._process_uploaded_file(mock_file)
+        assert not success
+        mock_err.assert_called_with("Error reading file: Read error")
 
 
 def test_render_step_2_initialization_fail():
