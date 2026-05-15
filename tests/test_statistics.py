@@ -8,7 +8,7 @@ from src.core import config
 from src.utils import group_helpers
 
 
-def test_calculate_balancing_stats_basic():
+def test_calculate_balancing_stats_basic() -> None:
     """Test standard deviation of group averages (ddof=1)."""
     # 2 groups, averages 10 and 20
     groups = [
@@ -27,7 +27,7 @@ def test_calculate_balancing_stats_basic():
     )
 
 
-def test_calculate_balancing_stats_exclude_unassigned():
+def test_calculate_balancing_stats_exclude_unassigned() -> None:
     """Test that Group -1 is ignored in statistical calculations."""
     groups = [
         {"id": 1, "count": 2, "averages": {"S1": 10.0}},
@@ -46,7 +46,7 @@ def test_calculate_balancing_stats_exclude_unassigned():
     assert stats[0]["Avg Std Dev (Balance)"] == pytest.approx(expected_std)
 
 
-def test_statistical_parity_between_ui_paths():
+def test_statistical_parity_between_ui_paths() -> None:
     """Ensure helper matches manual pandas aggregation results."""
     df = pd.DataFrame(
         {

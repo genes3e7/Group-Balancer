@@ -15,7 +15,7 @@ from src.core.models import ConflictPriority
 from src.core.services import DataService, OptimizationService
 
 
-def test_data_service_cleaning():
+def test_data_service_cleaning() -> None:
     """Test standard dataframe cleaning and coercion."""
     df = pd.DataFrame(
         {
@@ -32,14 +32,14 @@ def test_data_service_cleaning():
     assert config.COL_SEPARATOR in clean.columns
 
 
-def test_data_service_get_score_cols():
+def test_data_service_get_score_cols() -> None:
     """Test detection of score columns."""
     df = pd.DataFrame({"Name": ["A"], "Score1": [1], "Other": [2]})
     cols = DataService.get_score_columns(df)
     assert cols == ["Score1"]
 
 
-def test_optimization_service_success_path():
+def test_optimization_service_success_path() -> None:
     """Verify that the service correctly orchestrates a successful optimization run."""
     df = pd.DataFrame(
         {
@@ -72,7 +72,7 @@ def test_optimization_service_success_path():
         assert metrics["status"] == "OPTIMAL"
 
 
-def test_optimization_service_handles_solver_failure():
+def test_optimization_service_handles_solver_failure() -> None:
     """Ensure the service gracefully handles cases where the solver returns None."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     with patch(
@@ -90,7 +90,7 @@ def test_optimization_service_handles_solver_failure():
         assert metrics["status"] == "INFEASIBLE"
 
 
-def test_optimization_service_validates_group_capacities():
+def test_optimization_service_validates_group_capacities() -> None:
     """Verify the service raises ValueError if no group capacities are provided."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     with pytest.raises(ValueError, match="Group capacities cannot be empty"):
@@ -103,7 +103,7 @@ def test_optimization_service_validates_group_capacities():
         )
 
 
-def test_optimization_service_warm_start_hit():
+def test_optimization_service_warm_start_hit() -> None:
     """Verify that warm-start hints are actually used when config matches."""
     data = pd.DataFrame(
         {
@@ -135,7 +135,7 @@ def test_optimization_service_warm_start_hit():
         assert captured_cfg.hints_by_index is not None
 
 
-def test_optimization_service_warm_start_duplicate_fingerprints():
+def test_optimization_service_warm_start_duplicate_fingerprints() -> None:
     """Verify warm-start hints rejection when duplicate profiles exist.
 
     Ensures hints_by_fingerprint is None when fingerprints are non-unique,
@@ -174,7 +174,69 @@ def test_optimization_service_warm_start_duplicate_fingerprints():
         assert dict(captured_cfg.hints_by_index) == {0: 1, 1: 2}
 
 
-def test_stale_hints_logging():
+def test_data_service_cleaning_edge_cases() -> None:
+    """Cover name and tag sanitization branches (None/NaN)."""
+    df = pd.DataFrame(
+        {
+            config.COL_NAME: [None, " P1 "],
+            config.COL_GROUPER: [float("nan"), " G1 "],
+            config.COL_SEPARATOR: [None, " S1 "],
+            "Score1": [10.0, 20.0],
+        }
+    )
+    cleaned = DataService.clean_participants_df(df)
+    assert cleaned.iloc[0][config.COL_NAME] == ""
+    assert cleaned.iloc[0][config.COL_GROUPER] == ""
+    assert cleaned.iloc[1][config.COL_NAME] == "P1"
+    assert cleaned.iloc[1][config.COL_GROUPER] == "G1"
+
+
+def test_optimization_service_unexpected_exception() -> None:
+    """Cover the unexpected exception catch block in OptimizationService.run."""
+    with (
+        patch(
+            "src.core.services.OptimizationService.reduce_score_weights",
+            side_effect=RuntimeError("System crash"),
+        ),
+        patch("src.core.services.logger.exception") as mock_log,
+    ):
+        with pytest.raises(RuntimeError, match="System crash"):
+            OptimizationService.run(
+                pd.DataFrame(), [1], {"Score1": 1.0}, ConflictPriority.GROUPERS, 10
+            )
+        assert mock_log.called
+
+
+def test_optimization_service_alignment_error_logging() -> None:
+    """Cover the alignment error log branch in warm-start hint resolution."""
+    # Data with duplicate fingerprints (same name/scores/tags)
+    data = pd.DataFrame(
+        {config.COL_NAME: ["P1", "P1"], "Score1": [10, 10], "_original_index": [0, 1]}
+    )
+    weights = {"Score1": 1.0}
+    priority = ConflictPriority.GROUPERS
+    capacities = [1, 1]
+
+    res1, _ = OptimizationService.run(data, capacities, weights, priority, 5)
+    assert res1 is not None
+
+    # Metadata MUST match EXACTLY for the logic to reach the alignment check.
+    # Multiset check (current_f == prev_f) must PASS.
+    # But pair check (current_pairs == prev_pairs) must FAIL.
+    # We swap indices to cause alignment error while keeping the multiset identical.
+    res_err = res1.copy()
+    res_err.at[0, "_original_index"] = 999
+    res_err.attrs = res1.attrs.copy()
+
+    with patch("src.core.services.logger.info") as mock_log:
+        OptimizationService.run(
+            data, capacities, weights, priority, 5, previous_results=res_err
+        )
+        # Verify it reached the specific 'alignment error' branch
+        mock_log.assert_any_call("Ignoring stale hints (alignment error).")
+
+
+def test_stale_hints_logging() -> None:
     """Verify that informational logs are emitted for stale hints."""
     data = pd.DataFrame(
         {
@@ -231,7 +293,7 @@ def test_stale_hints_logging():
         )
 
 
-def test_data_service_cleaning_handles_missing_names():
+def test_data_service_cleaning_handles_missing_names() -> None:
     """Verify COL_NAME is added and normalized to empty string if missing."""
     df = pd.DataFrame({"Score1": [10]})
     clean = DataService.clean_participants_df(df)
@@ -239,7 +301,7 @@ def test_data_service_cleaning_handles_missing_names():
     assert clean.iloc[0][config.COL_NAME] == ""
 
 
-def test_optimization_service_catches_runtime_exceptions():
+def test_optimization_service_catches_runtime_exceptions() -> None:
     """Verify that the service captures and re-raises unexpected runtime errors."""
     df = pd.DataFrame({"Name": ["P1"], "S1": [10.0]})
     # Cause an error inside the try block
@@ -256,7 +318,7 @@ def test_optimization_service_catches_runtime_exceptions():
         )
 
 
-def test_optimization_service_invalid_input_none():
+def test_optimization_service_invalid_input_none() -> None:
     """Verify OptimizationService.run raises ValueError on None input."""
     with pytest.raises(ValueError, match="Participants DataFrame cannot be None"):
         OptimizationService.run(

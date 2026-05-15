@@ -64,7 +64,7 @@ This gate enforces:
 │   └── workflows/
 │       └── ci.yml
 ├── .gitignore
-├── .pymarkdownrc
+├── .pymarkdown
 ├── CHANGELOG.md
 ├── GEMINI.md
 ├── LICENSE

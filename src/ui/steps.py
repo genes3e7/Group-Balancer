@@ -78,7 +78,6 @@ def _process_uploaded_file(uploaded) -> tuple[bool, str]:
             df_clean = DataService.clean_participants_df(df_new)
             st.session_state.manual_df = df_clean
             st.toast(f"✅ Imported {len(df_clean)} rows!", icon="📂")
-            # Generate content signature
             sig = str(pd.util.hash_pandas_object(df_clean, index=True).sum())
             return True, sig
 
@@ -125,7 +124,7 @@ def render_step_1() -> None:
         if col not in st.session_state.manual_df.columns:
             st.session_state.manual_df[col] = ""
 
-    if st.button("➕ Add Score Column"):
+    if st.button("+ Add Score Column"):
         current_cols = st.session_state.manual_df.columns
         n = 1
         while f"{config.SCORE_PREFIX}{n}" in current_cols:

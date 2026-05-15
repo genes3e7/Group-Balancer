@@ -80,7 +80,11 @@ class TreeShaker:
         self.import_re = re.compile(r"^(?:import|from)\s+([a-zA-Z0-9_]+)")
 
     def find_all_imports(self) -> set[str]:
-        """Scans project source code for top-level module imports."""
+        """Scans project source code for top-level module imports.
+
+        Returns:
+            set[str]: Unique top-level module names imported in the project.
+        """
         found = set()
         # Scan src/ and top-level entry points
         scan_targets = [self.root / "src", self.root / "app.py"]
@@ -94,7 +98,14 @@ class TreeShaker:
         return found
 
     def _scan_file(self, path: Path) -> set[str]:
-        """Extracts top-level module names from a single Python file."""
+        """Extracts top-level module names from a single Python file.
+
+        Args:
+            path (Path): Path to the Python file.
+
+        Returns:
+            set[str]: Module names extracted from import statements.
+        """
         imports = set()
         try:
             with open(path, encoding="utf-8") as f:
@@ -128,13 +139,16 @@ class TreeShaker:
 
 
 def build_executable():
-    """Orchestrates the optimized build process.
+    """Execute the PyInstaller build process with tree-shaken exclusions.
 
     1. Cleans previous build artifacts.
     2. Runs 'Tree Shaker' to identify exclusions.
     3. Executes PyInstaller with minimal dependency set.
     """
-    print("🚀 Starting Optimized Build Process...")
+    pyinstaller_bin = shutil.which("pyinstaller")
+    if not pyinstaller_bin:
+        print("\n❌ Error: PyInstaller not found in PATH.")
+        sys.exit(1)
 
     project_root = os.path.abspath(os.path.dirname(__file__))
     shaker = TreeShaker(project_root)
@@ -163,7 +177,7 @@ def build_executable():
     launcher_path = os.path.join(project_root, "streamlit_launcher.py")
 
     cmd = [
-        "pyinstaller",
+        pyinstaller_bin,
         "--noconfirm",
         "--onedir",
         "--windowed",

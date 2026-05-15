@@ -7,7 +7,7 @@ loaded correctly and maintain their required values.
 from src.core import config
 
 
-def test_config_constants():
+def test_config_constants() -> None:
     """Verify that core configuration constants are correctly defined."""
     assert config.SCORE_PREFIX == "Score"
     assert config.COL_NAME == "Name"

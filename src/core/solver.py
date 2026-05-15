@@ -379,13 +379,24 @@ class ConstraintBuilder:
                 continue
 
             sorted_g_set = sorted(g_set)
-            for g in range(self.num_groups):
-                used = self.model.NewBoolVar(f"used_{tag}_{g}")
-                self.model.AddMaxEquality(used, [self.x[(i, g)] for i in sorted_g_set])
+            if self.cfg.strict_grouping:
+                # HARD CONSTRAINTS: Force all participants in the grouper to be
+                # in the same group by equating their assignment booleans.
+                first_p = sorted_g_set[0]
+                for other_p in sorted_g_set[1:]:
+                    for g in range(self.num_groups):
+                        self.model.Add(self.x[(first_p, g)] == self.x[(other_p, g)])
+            else:
+                # SOFT PENALTIES (Existing behavior)
+                for g in range(self.num_groups):
+                    used = self.model.NewBoolVar(f"used_{tag}_{g}")
+                    self.model.AddMaxEquality(
+                        used, [self.x[(i, g)] for i in sorted_g_set]
+                    )
 
-                penalty = int(penalty_base * self.cfg.grouper_weight)
-                self.objectives.append(used * penalty)
-                self.objective_bounds.append(penalty)
+                    penalty = int(penalty_base * self.cfg.grouper_weight)
+                    self.objectives.append(used * penalty)
+                    self.objective_bounds.append(penalty)
 
     def add_participant_symmetry_breaking(self) -> None:
         """Enforces ordering for identical participants."""
@@ -554,6 +565,7 @@ class ConstraintBuilder:
         main_objective = sum(self.objectives)
 
         # Lexicographic tie-breaker ($10^0$)
+        # Guided by participant index and group index to ensure deterministic optima.
         tie_breaker = sum(
             g
             * (p.original_index if p.original_index is not None else i)

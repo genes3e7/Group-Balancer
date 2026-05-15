@@ -7,7 +7,7 @@ from src.core import solver
 from src.core.models import ConflictPriority, Participant
 
 
-def test_tag_processor_extraction():
+def test_tag_processor_extraction() -> None:
     """Test raw character extraction."""
     assert solver.TagProcessor.get_tags("ABC") == {"A", "B", "C"}
     assert solver.TagProcessor.get_tags("A, B C") == {"A", "B", "C"}
@@ -16,7 +16,7 @@ def test_tag_processor_extraction():
     assert solver.TagProcessor.get_tags(123) == set()
 
 
-def test_solution_printer_logging():
+def test_solution_printer_logging() -> None:
     """Test SolutionPrinter logging intervals."""
     with patch("src.logger.info") as mock_logger:
         printer = solver.SolutionPrinter(start_time=time.time())
@@ -36,7 +36,7 @@ def test_solution_printer_logging():
             assert mock_logger.call_count == 2
 
 
-def test_tag_processor_conflict_groupers():
+def test_tag_processor_conflict_groupers() -> None:
     """Test grouper priority conflict resolution."""
     p = [
         Participant(name="A", scores={}, groupers="X", separators="X"),
@@ -49,7 +49,7 @@ def test_tag_processor_conflict_groupers():
     assert s.get("X", set()) == set()
 
 
-def test_tag_processor_conflict_separators():
+def test_tag_processor_conflict_separators() -> None:
     """Test separator priority conflict resolution."""
     p = [
         Participant(name="A", scores={}, groupers="X", separators="X"),

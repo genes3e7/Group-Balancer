@@ -35,7 +35,9 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
     import sys
 
     # Identity decorator to ensure Streamlit decorators don't block execution
-    def identity_decorator(*args: Any, **kwargs: Any) -> Callable[..., Any]:
+    def identity_decorator(
+        *args: object, **_kwargs: object
+    ) -> Callable[..., Any] | Callable[[Callable[..., Any]], Callable[..., Any]]:
         if len(args) == 1 and callable(args[0]):
             return args[0]
         return lambda func: func
@@ -72,7 +74,7 @@ def mock_streamlit_fragment(monkeypatch: pytest.MonkeyPatch) -> None:
 def mock_streamlit_columns() -> Callable[[int | Iterable], list[MagicMock]]:
     """Provides a factory for mocking st.columns with number_input mocks."""
 
-    def _factory(n: int | Iterable, **_: Any) -> list[MagicMock]:
+    def _factory(n: int | Iterable, **_kwargs: object) -> list[MagicMock]:
         count = n if isinstance(n, int) else len(list(n))
         mocks = []
         for _ in range(count):

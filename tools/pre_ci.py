@@ -403,12 +403,29 @@ class PreCIPipeline:
             self.run_commands_parallel(parallel_tasks)
 
             # 4. Unit Tests (Run sequentially to see clear progress)
-            # Pytest executes in the remote test-matrix job. Prevent redundancy in CI.
             if not self.is_ci:
-                self.run_command(
+                print("\n>>> [Step: Unit Tests & Coverage Enforcement]", flush=True)
+                # Stream output directly to console for real-time visibility.
+                # Coverage failure is detected via pytest's own exit code when
+                # --cov-fail-under is passed correctly in pyproject.toml.
+                res = subprocess.run(
                     ["uv", "run", "--no-sync", "pytest", "-v"],
-                    "Unit Tests & Coverage Enforcement",
+                    encoding="utf-8",
+                    env=os.environ.copy(),
                 )
+                if res.returncode != 0:
+                    print(
+                        "\n❌ FATAL: 'Unit Tests & Coverage Enforcement' failed",
+                        flush=True,
+                    )
+                    self.record_result("Unit Tests & Coverage Enforcement", False)
+                    sys.exit(1)
+
+                print(
+                    "✅ Unit Tests & Coverage Enforcement completed successfully.",
+                    flush=True,
+                )
+                self.record_result("Unit Tests & Coverage Enforcement", True)
 
             # 5. Linting and Formatting (Apply only if checks passed, or if local)
             if self.is_ci:
@@ -427,8 +444,6 @@ class PreCIPipeline:
                         "run",
                         "--no-sync",
                         "pymarkdown",
-                        "--disable-rules",
-                        "MD013",
                         "scan",
                         ".",
                     ],
@@ -442,8 +457,6 @@ class PreCIPipeline:
                         "run",
                         "--no-sync",
                         "pymarkdown",
-                        "--disable-rules",
-                        "MD013",
                         "scan",
                         ".",
                     ],

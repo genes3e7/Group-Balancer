@@ -1,5 +1,6 @@
 """Unit tests for the UI layer (Mocked Streamlit)."""
 
+from collections.abc import Callable
 from unittest.mock import MagicMock, patch
 
 import pandas as pd
@@ -10,7 +11,7 @@ from src.ui import components, results_renderer, session_manager, steps
 from tests.conftest import DummySessionState
 
 
-def test_session_manager_init():
+def test_session_manager_init() -> None:
     """Verify that session state is initialized correctly."""
     mock_state = DummySessionState()
 
@@ -20,7 +21,7 @@ def test_session_manager_init():
         assert mock_state.manual_df is not None
 
 
-def test_session_manager_navigation():
+def test_session_manager_navigation() -> None:
     """Verify that navigation logic clamps step values."""
     mock_state = DummySessionState({"step": 1})
     with (
@@ -35,14 +36,14 @@ def test_session_manager_navigation():
         assert mock_state.step == 3
 
 
-def test_components_setup():
+def test_components_setup() -> None:
     """Verify setup_page calls streamlit correctly."""
     with patch("streamlit.set_page_config") as mock_conf:
         components.setup_page()
         mock_conf.assert_called_once()
 
 
-def test_components_header():
+def test_components_header() -> None:
     """Verify page header components render without error."""
     with (
         patch("streamlit.markdown"),
@@ -56,7 +57,7 @@ def test_components_header():
         components.render_step_progress(1)
 
 
-def test_results_renderer_empty():
+def test_results_renderer_empty() -> None:
     """Verify behavior with empty dataframe."""
     with patch("streamlit.warning") as mock_warn:
         results_renderer.render_group_cards(None, [])
@@ -66,7 +67,7 @@ def test_results_renderer_empty():
         assert mock_warn.call_count == 2
 
 
-def test_results_renderer_grid_branches():
+def test_results_renderer_grid_branches() -> None:
     """Verify grid layout branches with multiple groups."""
     df = pd.DataFrame(
         {
@@ -85,7 +86,9 @@ def test_results_renderer_grid_branches():
         assert mock_cols.called
 
 
-def test_results_renderer_single_card_with_members(mock_streamlit_columns):
+def test_results_renderer_single_card_with_members(
+    mock_streamlit_columns: Callable[[int], list[MagicMock]],
+) -> None:
     """Verify card rendering with members and tags."""
     group = {
         "id": 1,
@@ -133,7 +136,7 @@ def test_results_renderer_single_card_with_members(mock_streamlit_columns):
         assert "Group" in df_arg.columns
 
 
-def test_steps_render_3_cards():
+def test_steps_render_3_cards() -> None:
     """Verify Step 3 results view in Cards mode."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Group": [1], "Score1": [10.0]})
     mock_state = DummySessionState(
@@ -160,7 +163,7 @@ def test_steps_render_3_cards():
         mock_cards.assert_called_once()
 
 
-def test_components_header_branches():
+def test_components_header_branches() -> None:
     """Verify header branches (active/inactive) across all steps."""
     with (
         patch("streamlit.markdown"),
@@ -171,7 +174,9 @@ def test_components_header_branches():
             components.render_step_progress(s)
 
 
-def test_steps_render_footer_actions(mock_streamlit_columns):
+def test_steps_render_footer_actions(
+    mock_streamlit_columns: Callable[[int], list[MagicMock]],
+) -> None:
     """Verify footer actions render correctly."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Group": [1]})
     mock_state = DummySessionState({"interactive_df": mock_df})
@@ -187,7 +192,7 @@ def test_steps_render_footer_actions(mock_streamlit_columns):
         mock_dl.assert_called_once()
 
 
-def test_steps_render_1():
+def test_steps_render_1() -> None:
     """Verify Step 1 renders correctly with data editor."""
     mock_state = DummySessionState({"manual_df": pd.DataFrame()})
     with (
@@ -203,7 +208,9 @@ def test_steps_render_1():
         assert mock_editor.call_count == 1
 
 
-def test_steps_render_2(mock_streamlit_columns):
+def test_steps_render_2(
+    mock_streamlit_columns: Callable[[int], list[MagicMock]],
+) -> None:
     """Verify Step 2 renders configuration elements."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = DummySessionState(
@@ -230,7 +237,7 @@ def test_steps_render_2(mock_streamlit_columns):
         steps.render_step_2()
 
 
-def test_steps_load_uploaded_file_csv():
+def test_steps_load_uploaded_file_csv() -> None:
     """Verify file upload callback for CSV."""
     mock_file = MagicMock()
     mock_file.name = "test.csv"
@@ -254,7 +261,7 @@ def test_steps_load_uploaded_file_csv():
         mock_read.assert_called_once()
 
 
-def test_steps_add_score_column():
+def test_steps_add_score_column() -> None:
     """Verify 'Add Score Column' button logic."""
     mock_df = pd.DataFrame({"Name": ["A"], "Score1": [1.0]})
     mock_state = DummySessionState({"manual_df": mock_df})
@@ -274,7 +281,7 @@ def test_steps_add_score_column():
         mock_rerun.assert_called_once()
 
 
-def test_steps_render_1_failure_paths():
+def test_steps_render_1_failure_paths() -> None:
     """Verify Step 1 error messages for invalid data."""
     mock_state = DummySessionState({"manual_df": pd.DataFrame()})
     with (
@@ -307,7 +314,7 @@ def test_steps_render_1_failure_paths():
         mock_err.assert_called_with("At least one score column is required.")
 
 
-def test_steps_render_2_navigation():
+def test_steps_render_2_navigation() -> None:
     """Verify navigation buttons in Step 2."""
     mock_df = pd.DataFrame({"Name": ["P1"], "Score1": [10.0]})
     mock_state = DummySessionState(
@@ -344,7 +351,7 @@ def test_steps_render_2_navigation():
         mock_go.assert_called_with(1)
 
 
-def test_steps_render_1_success():
+def test_steps_render_1_success() -> None:
     """Verify Step 1 successful 'Next' navigation."""
     df = pd.DataFrame(
         {
@@ -518,7 +525,7 @@ def test_render_table_view_nan_std(mock_streamlit_columns):
         steps._render_table_view(["S1"])
 
 
-def test_render_footer_reset_hit_proper_mock():
+def test_render_footer_reset_hit_proper_mock() -> None:
     """Verify reset logic via 'Start Over' button."""
     df_orig = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
 
@@ -559,7 +566,7 @@ def test_render_footer_reset_hit_proper_mock():
         assert "warm_start_cache" in session_state
 
 
-def test_steps_render_2_solver_failure_surface():
+def test_steps_render_2_solver_failure_surface() -> None:
     """Cover the failure branch in render_step_2 when result_df is None."""
     mock_df = pd.DataFrame(
         {
@@ -610,7 +617,7 @@ def test_steps_render_2_solver_failure_surface():
         mock_go.assert_called_with(3)
 
 
-def test_results_renderer_std_else():
+def test_results_renderer_std_else() -> None:
     """Cover results_renderer.py global stats display branch."""
     df = pd.DataFrame({"Name": ["P1"], config.COL_GROUP: [1], "S1": [10.0]})
     with (
@@ -621,7 +628,7 @@ def test_results_renderer_std_else():
         results_renderer.render_global_stats(df, ["S1"])
 
 
-def test_results_renderer_reassignment():
+def test_results_renderer_reassignment() -> None:
     """Cover the group reassignment logic in results_renderer cards."""
     df = pd.DataFrame(
         {
@@ -659,4 +666,6 @@ def test_results_renderer_reassignment():
     ):
         results_renderer._render_single_card(group, ["Score1"])
         assert mock_state.interactive_df.at[0, config.COL_GROUP] == 2
+        mock_rerun.assert_called_once()
+
         mock_rerun.assert_called_once()

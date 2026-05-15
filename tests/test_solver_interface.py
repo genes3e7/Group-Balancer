@@ -20,7 +20,7 @@ from src.core.models import (
 )
 
 
-def test_streamlit_solver_callback_on_solution():
+def test_streamlit_solver_callback_on_solution() -> None:
     """Test the callback UI update logic."""
     mock_box = MagicMock()
     cb = solver_interface.StreamlitSolverCallback(mock_box, 2)
@@ -37,7 +37,7 @@ def test_streamlit_solver_callback_on_solution():
     mock_box.container.assert_called()
 
 
-def test_run_optimization_success_with_status_box():
+def test_run_optimization_success_with_status_box() -> None:
     """Test successful optimization with status box updates."""
     participants = [
         Participant(name="A", scores={"Score1": 10.0}),
@@ -69,7 +69,7 @@ def test_run_optimization_success_with_status_box():
         mock_status.assert_called()
 
 
-def test_run_optimization_failure_with_status_box():
+def test_run_optimization_failure_with_status_box() -> None:
     """Test failed optimization with status box updates."""
     participants = [
         Participant(name="A", scores={"Score1": 10.0}),
@@ -99,7 +99,7 @@ def test_run_optimization_failure_with_status_box():
         mock_status.assert_called()
 
 
-def test_solver_interface_fallback_internal():
+def test_solver_interface_fallback_internal() -> None:
     """Verify fallback behavior when streamlit scriptrunner is missing."""
     with patch.dict(
         sys.modules,
@@ -111,7 +111,7 @@ def test_solver_interface_fallback_internal():
     importlib.reload(solver_interface)
 
 
-def test_solver_interface_callback_throttling():
+def test_solver_interface_callback_throttling() -> None:
     """Cover throttling logic in solution callback."""
     cb = solver_interface.StreamlitSolverCallback(MagicMock(), 10)
     cb.ctx = MagicMock()
@@ -121,7 +121,7 @@ def test_solver_interface_callback_throttling():
         cb.status_placeholder.container.assert_not_called()
 
 
-def test_solver_interface_callback_context_injection():
+def test_solver_interface_callback_context_injection() -> None:
     """Verify callback context injection during solve."""
     participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
     cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
@@ -147,7 +147,9 @@ def test_solver_interface_callback_context_injection():
         (cp_model.MODEL_INVALID, "MODEL_INVALID"),
     ],
 )
-def test_solver_interface_status_box_failure_paths(status_code, status_name):
+def test_solver_interface_status_box_failure_paths(
+    status_code: int, status_name: str
+) -> None:
     """Verify all non-feasible solver outcomes surface st.error to the UI."""
     participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
     cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})

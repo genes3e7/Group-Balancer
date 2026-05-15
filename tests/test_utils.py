@@ -6,19 +6,19 @@ from src.core import config
 from src.utils import group_helpers
 
 
-def test_aggregate_groups_empty():
+def test_aggregate_groups_empty() -> None:
     """Test that empty or None DataFrames return empty list."""
     assert group_helpers.aggregate_groups(None, "Group", [], "Name") == []
     assert group_helpers.aggregate_groups(pd.DataFrame(), "Group", [], "Name") == []
 
 
-def test_aggregate_groups_missing_column():
+def test_aggregate_groups_missing_column() -> None:
     """Test behavior when the group column is missing."""
     df = pd.DataFrame({"Name": ["Alice"], "Score": [10]})
     assert group_helpers.aggregate_groups(df, "Wrong", ["Score"], "Name") == []
 
 
-def test_aggregate_groups_valid():
+def test_aggregate_groups_valid() -> None:
     """Test standard aggregation."""
     df = pd.DataFrame(
         {
@@ -45,7 +45,7 @@ def test_aggregate_groups_valid():
     assert groups[1]["averages"]["Score1"] == 30.0
 
 
-def test_aggregate_groups_invalid_score_types():
+def test_aggregate_groups_invalid_score_types() -> None:
     """Test that non-numeric scores are handled."""
     df = pd.DataFrame(
         {

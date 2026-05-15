@@ -10,7 +10,7 @@ from src.utils import exporter
 SCORE_COL = f"{config.SCORE_PREFIX}1"
 
 
-def test_generate_excel_bytes():
+def test_generate_excel_bytes() -> None:
     """Test that excel generation returns non-empty bytes."""
     df = pd.DataFrame(
         {
@@ -31,16 +31,14 @@ def test_generate_excel_bytes():
     assert isinstance(excel_bytes, bytes)
     assert len(excel_bytes) > 0
 
-    # Optional: Verify it's a valid Excel file
     with io.BytesIO(excel_bytes) as f:
         xl = pd.ExcelFile(f)
         assert "Balanced_Groups" in xl.sheet_names
         df_out = pd.read_excel(f, sheet_name="Balanced_Groups")
-        # Verify it has some data.
         assert not df_out.empty
 
 
-def test_generate_excel_bytes_empty():
+def test_generate_excel_bytes_empty() -> None:
     """Test behavior with empty dataframe."""
     df = pd.DataFrame()
     excel_bytes = exporter.generate_excel_bytes(
@@ -50,7 +48,6 @@ def test_generate_excel_bytes_empty():
         config.COL_NAME,
     )
 
-    # Should still return valid empty template bytes
     assert isinstance(excel_bytes, bytes)
     with io.BytesIO(excel_bytes) as f:
         xl = pd.ExcelFile(f)
@@ -59,7 +56,7 @@ def test_generate_excel_bytes_empty():
         assert df_out.empty
 
 
-def test_generate_excel_bytes_multiple_members():
+def test_generate_excel_bytes_multiple_members() -> None:
     """Test aggregation with more members per group."""
     df = pd.DataFrame(
         {
@@ -83,7 +80,7 @@ def test_generate_excel_bytes_multiple_members():
     assert {"GROUP 1", "GROUP 2", "A", "B", "C", "D"}.issubset(values)
 
 
-def test_generate_excel_bytes_odd_groups():
+def test_generate_excel_bytes_odd_groups() -> None:
     """Test with odd number of groups to cover g2 is None branches."""
     df = pd.DataFrame(
         {
@@ -108,7 +105,7 @@ def test_generate_excel_bytes_odd_groups():
     assert "GROUP 2" not in values
 
 
-def test_exporter_no_groups_edge():
+def test_exporter_no_groups_edge() -> None:
     """Cover 'if not groups' branch in exporter."""
     df = pd.DataFrame()
     res = exporter.generate_excel_bytes(df, "Group", ["S1"], "Name")

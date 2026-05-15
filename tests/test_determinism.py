@@ -15,7 +15,7 @@ from src.core.services import OptimizationService
 
 
 @pytest.fixture
-def sample_data():
+def sample_data() -> pd.DataFrame:
     """Provides a dataset of 16 participants for symmetry testing.
 
     Score2 is explicitly different from Score1 to verify weight invalidation.
@@ -33,7 +33,7 @@ def sample_data():
     return pd.DataFrame(data)
 
 
-def test_strict_identity_determinism(sample_data):
+def test_strict_identity_determinism(sample_data: pd.DataFrame) -> None:
     """Verifies bit-for-bit identity when search interleaving is enabled.
 
     This Level 1 test proves the mathematical model is stable and the
@@ -82,7 +82,7 @@ def test_strict_identity_determinism(sample_data):
     )
 
 
-def test_race_mode_quality_stability(sample_data):
+def test_race_mode_quality_stability(sample_data: pd.DataFrame) -> None:
     """Verifies that high-speed Race Mode still yields identical balance quality.
 
     This Level 2 test represents the production configuration. While workers
@@ -122,7 +122,7 @@ def test_race_mode_quality_stability(sample_data):
         assert std1 == pytest.approx(std2, abs=1e-9)
 
 
-def test_warm_start_determinism(sample_data):
+def test_warm_start_determinism(sample_data: pd.DataFrame) -> None:
     """Verifies that iterative solving is stable across runs with hints.
 
     Args:
@@ -165,7 +165,7 @@ def test_warm_start_determinism(sample_data):
         assert std_b == pytest.approx(std_c, abs=1e-9)
 
 
-def test_balancing_quality_magnitude_insensitive():
+def test_balancing_quality_magnitude_insensitive() -> None:
     """Verifies balancing quality is driven by weights, not score magnitude."""
     data = {
         config.COL_NAME: [f"P{i}" for i in range(4)],

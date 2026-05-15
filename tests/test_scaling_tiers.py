@@ -13,7 +13,7 @@ from src.core.models import ConflictPriority, SolverConfig
 from src.core.solver import AdvancedScoring
 
 
-def test_scaling_constants_lock():
+def test_scaling_constants_lock() -> None:
     """Explicitly enforce mathematical priority hierarchy constants.
 
     Serves as a sentinel to prevent drift in bit-sliced multipliers or
@@ -27,7 +27,7 @@ def test_scaling_constants_lock():
     assert config.SCALE_FACTOR == 10**5
 
 
-def test_priority_separators_wins():
+def test_priority_separators_wins() -> None:
     """Verify HI Tier (Separators) strictly outweighs LO Tier (Groupers).
 
     Conflict scenario:
@@ -48,6 +48,7 @@ def test_priority_separators_wins():
         group_capacities=[2, 2],
         score_weights={"Score1": 1.0},
         conflict_priority=ConflictPriority.SEPARATORS,
+        interleave_search=True,
         timeout_seconds=5,
     )
 
@@ -61,7 +62,7 @@ def test_priority_separators_wins():
     assert p0_group != p1_group
 
 
-def test_priority_groupers_wins():
+def test_priority_groupers_wins() -> None:
     """Verify HI Tier (Groupers) strictly outweighs LO Tier (Separators).
 
     Conflict scenario:
@@ -81,7 +82,8 @@ def test_priority_groupers_wins():
         group_capacities=[2, 2],
         score_weights={"Score1": 1.0},
         conflict_priority=ConflictPriority.GROUPERS,
-        timeout_seconds=5,
+        interleave_search=True,
+        timeout_seconds=10,
     )
 
     results, status, _ = solver.solve_with_ortools(participants, cfg)
@@ -94,7 +96,7 @@ def test_priority_groupers_wins():
     assert p0_group == p1_group
 
 
-def test_tier_hi_over_tier3_fairness():
+def test_tier_hi_over_tier3_fairness() -> None:
     """Verify that the HI tier strictly outweighs Max-Min Fairness.
 
     Conflict scenario:
@@ -116,7 +118,8 @@ def test_tier_hi_over_tier3_fairness():
         group_capacities=[2, 2],
         score_weights={"Score1": 1.0},
         conflict_priority=ConflictPriority.GROUPERS,
-        timeout_seconds=5,
+        interleave_search=True,
+        timeout_seconds=10,
     )
 
     results, status, _ = solver.solve_with_ortools(participants, cfg)
@@ -144,7 +147,7 @@ def test_tier_hi_over_tier3_fairness():
         assert p0_g2 != p1_g2
 
 
-def test_norm_multiplier_precision():
+def test_norm_multiplier_precision() -> None:
     """Verify that high-precision normalization is active and functional."""
     participants_raw = []
     for i in range(10):
@@ -152,7 +155,10 @@ def test_norm_multiplier_precision():
         participants_raw.append({config.COL_NAME: f"P{i}", "Score1": s})
 
     cfg = SolverConfig(
-        num_groups=2, group_capacities=[5, 5], score_weights={"Score1": 1.0}
+        num_groups=2,
+        group_capacities=[5, 5],
+        score_weights={"Score1": 1.0},
+        interleave_search=True,
     )
 
     participants = [

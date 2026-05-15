@@ -6,7 +6,7 @@ import app
 import build
 
 
-def test_build_executable_cleanup():
+def test_build_executable_cleanup() -> None:
     """Test that build_executable cleans up old directories."""
     with (
         patch("os.path.exists", return_value=True),
@@ -22,7 +22,7 @@ def test_build_executable_cleanup():
         assert mock_remove.called
 
 
-def test_build_executable_success():
+def test_build_executable_success() -> None:
     """Test successful execution of PyInstaller command."""
     with (
         patch("os.path.exists", return_value=False),
@@ -34,11 +34,10 @@ def test_build_executable_success():
 
         build.build_executable()
 
-        # Verify pyinstaller was invoked with the optimized build contract
+        # Verify the resolved binary was used
         assert mock_run.call_count == 1
         cmd = mock_run.call_args[0][0]
-        assert cmd[0] == "pyinstaller"
-
+        assert cmd[0] == "uv"
         for flag in ("--clean", "--noupx", "--noconfirm", "--onedir", "--windowed"):
             assert flag in cmd, f"Missing required flag: {flag}"
 
@@ -49,6 +48,6 @@ def test_build_executable_success():
         assert "streamlit_launcher.py" in joined_cmd
 
 
-def test_app_importable():
+def test_app_importable() -> None:
     """Check that app.py can be imported."""
     assert app.__name__ == "app"

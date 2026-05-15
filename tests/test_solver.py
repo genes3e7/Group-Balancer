@@ -86,7 +86,7 @@ def get_solver_config(
     )
 
 
-def test_solver_basic_split():
+def test_solver_basic_split() -> None:
     """Test standard even partitioning."""
     participants = make_participants(10)
     cfg = get_solver_config(2, [5, 5])
@@ -101,7 +101,7 @@ def test_solver_basic_split():
     assert group_counts == {1: 5, 2: 5}
 
 
-def test_solver_unequal_sizes():
+def test_solver_unequal_sizes() -> None:
     """Test splitting into different sizes."""
     participants = make_participants(10)
     cfg = get_solver_config(3, [4, 3, 3])
@@ -115,7 +115,7 @@ def test_solver_unequal_sizes():
     assert sorted(group_counts.values()) == [3, 3, 4]
 
 
-def test_solver_multi_dimensional_weighted():
+def test_solver_multi_dimensional_weighted() -> None:
     """Test multi-objective weighting."""
     s2 = f"{config.SCORE_PREFIX}2"
     participants = [
@@ -135,7 +135,7 @@ def test_solver_multi_dimensional_weighted():
         assert sum(m[SCORE_COL] for m in members) == 110
 
 
-def test_solver_pigeonhole_separator():
+def test_solver_pigeonhole_separator() -> None:
     """Test separator spread via proportional limits."""
     p = make_participants(4, separators=["A", "A", "A", ""])
     cfg = get_solver_config(2, [2, 2], priority=ConflictPriority.SEPARATORS)
@@ -157,7 +157,7 @@ def test_solver_pigeonhole_separator():
     assert g1_sep >= 1
 
 
-def test_solver_fractional_cohesion():
+def test_solver_fractional_cohesion() -> None:
     """Test grouper cohesion."""
     p = make_participants(6, groupers=["T", "T", "T", "", "", ""])
     cfg = get_solver_config(2, [3, 3])
@@ -167,7 +167,7 @@ def test_solver_fractional_cohesion():
     assert len(t_groups) == 1
 
 
-def test_solver_conflict_resolution():
+def test_solver_conflict_resolution() -> None:
     """Test priority resolution between groupers and separators."""
     p = make_participants(4, groupers=["X", "X", "", ""], separators=["X", "X", "", ""])
 
@@ -182,7 +182,7 @@ def test_solver_conflict_resolution():
     assert len(gids_s) == 2
 
 
-def test_solver_rounding_extreme():
+def test_solver_rounding_extreme() -> None:
     """Cover edge cases in solver.py rounding."""
     participants = [Participant(name="P1", scores={"S1": 10.0})]
     cfg = SolverConfig(
@@ -195,7 +195,7 @@ def test_solver_rounding_extreme():
     assert vectors[0][2] == 1
 
 
-def test_circular_conflict_edge():
+def test_circular_conflict_edge() -> None:
     """Test solver behavior with contradictory constraints."""
     from src.core.solver_interface import run_optimization
 
@@ -218,7 +218,7 @@ def test_circular_conflict_edge():
     assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
 
 
-def test_solver_zero_sum_weighted_error():
+def test_solver_zero_sum_weighted_error() -> None:
     """Verify ValueError is raised if a weighted dimension has zero absolute sum."""
     col = f"{config.SCORE_PREFIX}1"
     cfg = get_solver_config(1, [1], weights={col: 1.0})
@@ -226,7 +226,7 @@ def test_solver_zero_sum_weighted_error():
         solver.solve_with_ortools([{"Name": "P1", col: 0.0}], cfg)
 
 
-def test_solver_tie_breaker_pressure():
+def test_solver_tie_breaker_pressure() -> None:
     """Verify the tie-breaker ensures canonical ordering for symmetric optima.
 
     This test validates that the tie-breaker term in get_model:
@@ -246,7 +246,7 @@ def test_solver_tie_breaker_pressure():
     assert p0[config.COL_GROUP] == 2
 
 
-def test_solver_quantization_preservation():
+def test_solver_quantization_preservation() -> None:
     """Verify variance preservation for tight distributions with large N."""
     participants = []
     for i in range(100):
@@ -264,7 +264,7 @@ def test_solver_quantization_preservation():
         assert abs(group[SCORE_COL].mean() - 3.5) < 0.01
 
 
-def test_solver_soft_groupers():
+def test_solver_soft_groupers() -> None:
     """Verify soft grouper cohesion penalties are added."""
     p = make_participants(4, groupers=["T", "T", " ", " "])
     cfg = get_solver_config(2, [2, 2])
@@ -275,7 +275,7 @@ def test_solver_soft_groupers():
     assert len(t_groups) == 1
 
 
-def test_solver_soft_groupers_clamping():
+def test_solver_soft_groupers_clamping() -> None:
     """Trigger the cohesion penalty clamping logic with a safe but high weight."""
     p = make_participants(4, groupers=["T", "T", "", ""])
     cfg = SolverConfig(
@@ -291,7 +291,7 @@ def test_solver_soft_groupers_clamping():
     assert len(t_groups) == 1
 
 
-def test_solver_clean_helpers():
+def test_solver_clean_helpers() -> None:
     """Cover _clean_tag_cell and _clean_score_cell edge cases."""
     from src.core.solver import _clean_score_cell, _clean_tag_cell
 
@@ -308,7 +308,7 @@ def test_solver_clean_helpers():
     assert _clean_score_cell(float("inf")) == 0.0
 
 
-def test_solver_multi_dimension_symmetry_breaking():
+def test_solver_multi_dimension_symmetry_breaking() -> None:
     """Ensure group symmetry breaking only applies to the first canonical dimension.
 
     Scenario 1: S1=10/10, S2=10/20. S1 is canonical (alphabetical).
@@ -343,7 +343,7 @@ def test_solver_multi_dimension_symmetry_breaking():
     assert p1_m[config.COL_GROUP] == 1
 
 
-def test_solver_hint_range_warning():
+def test_solver_hint_range_warning() -> None:
     """Verify that out-of-range warm-start hints trigger a warning log."""
     p = [Participant(name="P1", scores={"S1": 10}, original_index=0)]
     cfg = SolverConfig(
@@ -358,7 +358,7 @@ def test_solver_hint_range_warning():
         assert mock_log.called
 
 
-def test_solver_identity_buckets_complex():
+def test_solver_identity_buckets_complex() -> None:
     """Exercise the symmetry-aware hint mapping logic with duplicate candidates.
 
     Construction:
@@ -390,14 +390,67 @@ def test_solver_identity_buckets_complex():
         mock_add_hint.assert_any_call(builder.x[(1, 1)], 1)
 
 
-def test_solver_aggregate_objective_error():
-    """Verify ValueError is raised if the bound exceeds 64-bit limits."""
+def test_solver_strict_grouping_enforcement() -> None:
+    """Verify that strict grouping forces participants together."""
+    cfg = SolverConfig(
+        num_groups=2,
+        group_capacities=[1, 1],  # Max capacity 1, but strict group of 2 needed
+        score_weights={"Score1": 1.0},
+        strict_grouping=True,
+    )
+    # This should be INFEASIBLE because they MUST be together (size 2)
+    # but max capacity is 1.
+    results, status, _ = solver.solve_with_ortools(
+        [
+            {"Name": "P1", "Score1": 10, config.COL_GROUPER: "G"},
+            {"Name": "P2", "Score1": 10, config.COL_GROUPER: "G"},
+        ],
+        cfg,
+    )
+    assert status == cp_model.INFEASIBLE
+
+
+def test_solver_hint_out_of_range() -> None:
+    """Verify logger warning when a hint is out of the valid group range."""
     p = [Participant(name="P1", scores={"S1": 10}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
+    # Hint for group 999 in a 2-group config
+    cfg = SolverConfig(
+        num_groups=2,
+        group_capacities=[1, 1],
+        score_weights={"S1": 1.0},
+        hints_by_index={0: 999},
+    )
+    builder = solver.ConstraintBuilder(p, cfg)
+    builder.build_variables()
+    with patch("src.core.solver.logger.warning") as mock_log:
+        builder.add_solution_hints()
+        mock_log.assert_any_call(
+            "Warm-start hint out of range for Participant#%d: %s", 0, 999
+        )
+
+
+def test_solver_status_unknown_coverage() -> None:
+    """Cover the branch where solver returns an unexpected status."""
+    cfg = SolverConfig(
+        num_groups=1, group_capacities=[1], score_weights={"Score1": 1.0}
+    )
+    with patch(
+        "ortools.sat.python.cp_model.CpSolver.Solve", return_value=cp_model.UNKNOWN
+    ):
+        _, status, _ = solver.solve_with_ortools([{"Name": "P1", "Score1": 10}], cfg)
+        assert status == cp_model.UNKNOWN
+
+
+def test_solver_aggregate_objective_error() -> None:
+    """Verify ValueError is raised if the bound exceeds 64-bit limits."""
+    p = [Participant(name="P1", scores={"Score1": 10}, original_index=0)]
+    cfg = SolverConfig(
+        num_groups=1, group_capacities=[1], score_weights={"Score1": 1.0}
+    )
     builder = solver.ConstraintBuilder(p, cfg)
     builder.build_variables()
 
-    # Artificially blow the objective bound to exactly exceed (1 << 62) - 1
-    builder.objective_bounds = [(1 << 62) - 1 + 1]
+    # Artificially blow the objective bound
+    builder.objective_bounds = [2**63]
     with pytest.raises(ValueError, match="exceeds CP-SAT safety bound"):
         builder.get_model()

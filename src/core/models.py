@@ -97,6 +97,7 @@ class SolverConfig:
     separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT
     random_seed: int = 42
     interleave_search: bool = False
+    strict_grouping: bool = False
     hints_by_fingerprint: Mapping[str, int] | None = None
     hints_by_index: Mapping[int, int] | None = None
     timeout_seconds: int = 60
