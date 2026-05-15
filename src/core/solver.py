@@ -574,6 +574,13 @@ class ConstraintBuilder:
             for g in range(self.num_groups)
         )
 
+        # NOTE: We intentionally use plain addition rather than scaling main_objective
+        # by (max_tb + 1) for strict lexicographic subordination, because that
+        # multiplication overflows CP-SAT's 64-bit limit on real-world inputs
+        # (TIER_HI_MULTIPLIER * max_tb >> 2^62). The 100x scale gap between
+        # TIER_FAIRNESS_MULTIPLIER (10^7) and max tie-breaker (~10^5) provides
+        # sufficient practical subordination. Determinism is enforced via
+        # interleave_search=True in SolverConfig.
         self.model.Minimize(main_objective + tie_breaker)
         return self.model
 

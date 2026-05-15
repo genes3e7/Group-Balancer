@@ -178,6 +178,13 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Mechanism:** Theoretical objective bounds are calculated using the actual maximum `original_index` and `num_groups` present in the current dataset.
 - **Safety:** This ensures that the `get_model` Fail-Fast check is precise, preventing unnecessary `ValueError` exceptions for small datasets while strictly blocking unsafe overflows for large-scale solves.
 
+### 14. Objective Scaling & Tie-Breaker Subordination
+
+- **Lesson:** Mathematically "pure" lexicographic priority (scaling the main objective by the tie-breaker maximum) is incompatible with CP-SAT's 64-bit integer limits when using large priority multipliers (e.g., $10^{12}$).
+- **Mandate:** Use **Simple Addition** (`main_objective + tie_breaker`) instead of multiplication.
+- **Context:** The 100x scale gap between the Fairness Tier ($10^7$) and the Max Tie-Breaker (~$10^5$) provides sufficient practical subordination without risking numerical overflow.
+- **Enforcement:** The code comment in `get_model()` explaining this rationale is **critical** and MUST NOT be removed or "refactored" into a multiplier. Determinism is instead guaranteed via `interleave_search = True` in tests.
+
 ## Data Handling
 
 ### 1. Column Coercion
