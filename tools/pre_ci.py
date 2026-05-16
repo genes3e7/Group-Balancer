@@ -357,6 +357,7 @@ class PreCIPipeline:
                 ],
                 capture_output=True,
                 text=True,
+                check=False,
                 encoding="utf-8",
                 env=os.environ.copy(),
             )  # noqa: S603
@@ -410,8 +411,6 @@ class PreCIPipeline:
                 # --cov-fail-under is passed correctly in pyproject.toml.
                 res = subprocess.run(
                     ["uv", "run", "--no-sync", "pytest", "-v"],
-                    encoding="utf-8",
-                    text=True,
                     check=False,
                     env=os.environ.copy(),
                 )
