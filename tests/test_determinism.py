@@ -131,7 +131,7 @@ def test_warm_start_determinism(sample_data: pd.DataFrame) -> None:
     group_capacities = [8, 8]
     weights = {"Score1": 0.0, "Score2": 1.0}
 
-    res_a, _ = OptimizationService.run(
+    res_a, metrics_a = OptimizationService.run(
         sample_data,
         group_capacities,
         {"Score1": 1.0, "Score2": 0.0},
@@ -140,7 +140,7 @@ def test_warm_start_determinism(sample_data: pd.DataFrame) -> None:
     )
 
     # Initial target solve
-    res_b, _ = OptimizationService.run(
+    res_b, metrics_b = OptimizationService.run(
         sample_data,
         group_capacities,
         weights,
@@ -150,7 +150,7 @@ def test_warm_start_determinism(sample_data: pd.DataFrame) -> None:
     )
 
     # Re-solve with same weights to verify hint stability
-    res_c, _ = OptimizationService.run(
+    res_c, metrics_c = OptimizationService.run(
         sample_data,
         group_capacities,
         weights,
@@ -158,6 +158,10 @@ def test_warm_start_determinism(sample_data: pd.DataFrame) -> None:
         10,
         previous_results=res_b,
     )
+
+    # Verify solver success before comparing group metrics
+    for m in [metrics_a, metrics_b, metrics_c]:
+        assert m["status"] in ("OPTIMAL", "FEASIBLE")
 
     for col in ["Score1", "Score2"]:
         std_b = res_b.groupby(config.COL_GROUP)[col].mean().std(ddof=1)

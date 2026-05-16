@@ -121,6 +121,7 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
             if not edited_df.equals(members_df[display_columns]):
                 # Use _original_index as the stable anchor for syncing changes
                 # across potentially reindexed or filtered views.
+                group_changed = False
                 for _, row in edited_df.iterrows():
                     orig_idx = row["_original_index"]
                     # Fetch corresponding row from members_df to detect group change
@@ -137,7 +138,9 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
                             == orig_idx,
                             config.COL_GROUP,
                         ] = row[config.COL_GROUP]
+                        group_changed = True
 
-                st.rerun()
+                if group_changed:
+                    st.rerun()
         else:
             st.caption("No members assigned.")

@@ -23,7 +23,7 @@ def aggregate_groups(
     df: pd.DataFrame,
     col_group: str,
     score_cols: list[str],
-    col_name: str,
+    _col_name: str,
 ) -> list[GroupMetadata]:
     """Aggregates a DataFrame of results into a list of group metadata dictionaries.
 
@@ -31,7 +31,7 @@ def aggregate_groups(
         df (pd.DataFrame): The DataFrame containing group assignments.
         col_group (str): Column name for Group ID.
         score_cols (list[str]): List of score dimensions to aggregate.
-        col_name (str): Column name for Participant Name.
+        _col_name (str): Column name for Participant Name (unused).
 
     Returns:
         list[GroupMetadata]: A list of group metadata objects.

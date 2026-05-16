@@ -55,12 +55,15 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
 
     # Ensure session_state exists as a reachable stub
     try:
+        from unittest.mock import Mock
+
         # Reaching for the attribute on a MagicMock might return another mock,
-        # so we use getattr with a sentinel to be explicitly certain it's absent.
+        # so we use getattr with a sentinel and check for Mock types.
         sentinel = object()
-        if getattr(st, "session_state", sentinel) is sentinel:
+        val = getattr(st, "session_state", sentinel)
+        if val is sentinel or isinstance(val, Mock):
             st.session_state = DummySessionState()
-    except AttributeError:
+    except (AttributeError, ImportError):
         st.session_state = DummySessionState()
 
 

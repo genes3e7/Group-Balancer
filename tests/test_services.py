@@ -171,7 +171,16 @@ def test_optimization_service_warm_start_duplicate_fingerprints() -> None:
         # should fall back and be used since the multiset alignment is perfect.
         assert captured_cfg.hints_by_fingerprint is None
         assert captured_cfg.hints_by_index is not None
-        assert dict(captured_cfg.hints_by_index) == {0: 1, 1: 2}
+
+        # Derive expected mapping from res1 to be invariant to label swaps
+        expected_mapping = dict(
+            zip(
+                res1["_original_index"].astype(int),
+                res1[config.COL_GROUP],
+                strict=False,
+            )
+        )
+        assert dict(captured_cfg.hints_by_index) == expected_mapping
 
 
 def test_data_service_cleaning_edge_cases() -> None:
