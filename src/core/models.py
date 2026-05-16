@@ -3,15 +3,22 @@
 Defines strong typing for participants, configurations, and optimization modes.
 """
 
+import hashlib
+import json
+import math
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from types import MappingProxyType
 
 from src.core import config
+from src.core.tag_utils import canonicalize_tags
+
+# Safety Thresholds
+MAX_WEIGHT_LIMIT = 1_000_000
 
 
-class ConflictPriority(str, Enum):
+class ConflictPriority(StrEnum):
     """Priority for tag collisions."""
 
     GROUPERS = "Groupers"
@@ -53,11 +60,6 @@ class Participant:
         Returns:
             str: Stable MD5 hash of the participant's content.
         """
-        import hashlib
-        import json
-
-        from src.core.tag_utils import canonicalize_tags
-
         payload = {
             "name": self.name,
             "scores": sorted(self.scores.items()),
@@ -131,6 +133,12 @@ class SolverConfig:
         Raises:
             ValueError: If any parameter exceeds defined safety thresholds.
         """
+        self._validate_groups_and_capacity()
+        self._validate_score_weights()
+        self._validate_constraint_weights()
+
+    def _validate_groups_and_capacity(self) -> None:
+        """Internal helper for group and capacity validation."""
         if self.num_groups <= 0:
             raise ValueError("Number of groups must be positive.")
         if self.num_groups > config.MAX_GROUPS:
@@ -150,12 +158,12 @@ class SolverConfig:
         if any(c < 0 for c in self.group_capacities):
             raise ValueError("Group capacities cannot be negative.")
 
+    def _validate_score_weights(self) -> None:
+        """Internal helper for score weight validation."""
         if not self.score_weights:
             raise ValueError("At least one score weight must be provided.")
 
         has_positive_weight = False
-        import math
-
         for col, weight in self.score_weights.items():
             if not math.isfinite(weight):
                 raise ValueError(f"Score weight for {col} must be a finite number.")
@@ -167,6 +175,8 @@ class SolverConfig:
         if not has_positive_weight:
             raise ValueError("At least one score weight must be positive.")
 
+    def _validate_constraint_weights(self) -> None:
+        """Internal helper for cohesion/dispersion weight validation."""
         for name, weight in [
             ("grouper_weight", self.grouper_weight),
             ("separator_weight", self.separator_weight),
@@ -175,5 +185,5 @@ class SolverConfig:
                 raise ValueError(f"{name} must be a finite number.")
             if weight < 0:
                 raise ValueError(f"{name} cannot be negative.")
-            if weight > 1_000_000:
-                raise ValueError(f"{name} exceeds safe limit of 1,000,000.")
+            if weight > MAX_WEIGHT_LIMIT:
+                raise ValueError(f"{name} exceeds safe limit of {MAX_WEIGHT_LIMIT:,}.")

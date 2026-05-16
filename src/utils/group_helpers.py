@@ -4,6 +4,7 @@ This module provides shared logic for processing dataframe results into
 structured group dictionaries used by the UI and Exporter across multiple dimensions.
 """
 
+from dataclasses import dataclass
 from typing import Any, TypedDict
 
 import pandas as pd
@@ -19,34 +20,42 @@ class GroupMetadata(TypedDict):
     sums: dict[str, float]
 
 
+@dataclass(frozen=True)
+class GroupingConfig:
+    """Configuration for group aggregation."""
+
+    col_group: str
+    score_cols: list[str]
+    _col_name: str
+
+
 def aggregate_groups(
     df: pd.DataFrame,
-    col_group: str,
-    score_cols: list[str],
-    _col_name: str,
+    cfg: GroupingConfig,
 ) -> list[GroupMetadata]:
     """Aggregates a DataFrame of results into a list of group metadata dictionaries.
 
     Args:
         df (pd.DataFrame): The DataFrame containing group assignments.
-        col_group (str): Column name for Group ID.
-        score_cols (list[str]): List of score dimensions to aggregate.
-        _col_name (str): Column name for Participant Name (unused).
+        cfg (GroupingConfig): Configuration for aggregation.
 
     Returns:
         list[GroupMetadata]: A list of group metadata objects.
+
+    Raises:
+        KeyError: If required columns are missing from the DataFrame.
     """
     groups: list[GroupMetadata] = []
     if df is None or df.empty:
         return groups
 
-    if col_group not in df.columns:
-        return groups
+    if cfg.col_group not in df.columns:
+        raise KeyError(f"Column '{cfg.col_group}' missing from results.")
 
-    unique_groups = sorted(df[col_group].unique())
+    unique_groups = sorted(df[cfg.col_group].unique())
 
     for g_id in unique_groups:
-        group_df = df[df[col_group] == g_id].copy()
+        group_df = df[df[cfg.col_group] == g_id].copy()
         if "_original_index" not in group_df.columns:
             group_df["_original_index"] = group_df.index
         members = group_df.to_dict("records")
@@ -54,7 +63,10 @@ def aggregate_groups(
         averages = {}
         sums = {}
 
-        for col in score_cols:
+        for col in cfg.score_cols:
+            if col not in group_df.columns:
+                raise KeyError(f"Score column '{col}' missing from results.")
+
             col_scores = []
             for m in members:
                 try:

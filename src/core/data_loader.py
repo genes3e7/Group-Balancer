@@ -6,7 +6,8 @@ ensuring strict path validation, size limits, and data type coercion.
 """
 
 import os
-from pathlib import Path
+import pathlib
+import sys
 
 import pandas as pd
 
@@ -88,7 +89,7 @@ def get_file_path_from_user() -> str:
 
         except KeyboardInterrupt:
             logger.warning("User cancelled file selection.")
-            exit(0)
+            sys.exit(0)
         except (FileNotFoundError, ValueError) as e:
             logger.error(str(e))
             print(f"Error: {e}")
@@ -113,69 +114,17 @@ def load_data(filepath: str) -> list[dict] | None:
     try:
         # Re-validate in case it was called directly
         # For compatibility with tests returning Path objects
-        if isinstance(filepath, Path):
+        if isinstance(filepath, pathlib.Path):
             filepath = str(filepath)
         filepath = validate_file_path(filepath)
 
-        ext = filepath.lower()
-        if ext.endswith(".csv"):
-            df = pd.read_csv(filepath)
-        elif ext.endswith((".xls", ".xlsx")):
-            df = pd.read_excel(filepath)
-        else:
-            logger.error("Unsupported file format: %s", filepath)
+        # Load raw data based on format
+        df = _read_raw_file(filepath)
+        if df is None or df.empty:
             return None
 
-        # Fix: Strip whitespace from column names BEFORE validation
-        df.columns = df.columns.astype(str).str.strip()
-
-        # Enforcement of participant limits
-        if len(df) > config.MAX_PARTICIPANTS:
-            logger.error(
-                "Participant count (%d) exceeds limit of %d.",
-                len(df),
-                config.MAX_PARTICIPANTS,
-            )
-            return None
-
-        score_cols = [
-            col for col in df.columns if str(col).startswith(config.SCORE_PREFIX)
-        ]
-
-        if config.COL_NAME not in df.columns or not score_cols:
-            logger.error(
-                "Missing required columns in %s. Found: %s",
-                filepath,
-                list(df.columns),
-            )
-            return None
-
-        # Data Cleaning
-        df[config.COL_NAME] = df[config.COL_NAME].fillna("").astype(str).str.strip()
-
-        # Handle missing constraint columns gracefully
-        if config.COL_GROUPER not in df.columns:
-            df[config.COL_GROUPER] = ""
-        else:
-            df[config.COL_GROUPER] = df[config.COL_GROUPER].fillna("").astype(str)
-
-        if config.COL_SEPARATOR not in df.columns:
-            df[config.COL_SEPARATOR] = ""
-        else:
-            df[config.COL_SEPARATOR] = df[config.COL_SEPARATOR].fillna("").astype(str)
-
-        for col in score_cols:
-            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
-
-        records = df.to_dict("records")
-        if not records:
-            logger.warning("File %s contains no data records.", filepath)
-            return None
-
-        logger.info(
-            "Successfully loaded %d participants from %s.", len(records), filepath
-        )
-        return records
+        # Sanitize and Validate
+        return _process_data_service(df, filepath)
 
     except (PermissionError, FileNotFoundError, ValueError) as e:
         logger.error("Error accessing '%s': %s", filepath, e)
@@ -183,3 +132,61 @@ def load_data(filepath: str) -> list[dict] | None:
     except Exception:
         logger.exception("Critical error loading data from %s", filepath)
         return None
+
+
+def _read_raw_file(filepath: str) -> pd.DataFrame | None:
+    """Internal helper to read Excel or CSV files."""
+    ext = filepath.lower()
+    if ext.endswith(".csv"):
+        return pd.read_csv(filepath)
+    if ext.endswith((".xls", ".xlsx")):
+        return pd.read_excel(filepath)
+
+    logger.error("Unsupported file format: %s", filepath)
+    return None
+
+
+def _process_data_service(df: pd.DataFrame, filepath: str) -> list[dict] | None:
+    """Internal helper to clean and validate DataFrame contents."""
+    # Fix: Strip whitespace from column names BEFORE validation
+    df.columns = df.columns.astype(str).str.strip()
+
+    # Enforcement of participant limits
+    if len(df) > config.MAX_PARTICIPANTS:
+        logger.error(
+            "Participant count (%d) exceeds limit of %d.",
+            len(df),
+            config.MAX_PARTICIPANTS,
+        )
+        return None
+
+    score_cols = [col for col in df.columns if str(col).startswith(config.SCORE_PREFIX)]
+
+    if config.COL_NAME not in df.columns or not score_cols:
+        logger.error(
+            "Missing required columns in %s. Found: %s",
+            filepath,
+            list(df.columns),
+        )
+        return None
+
+    # Data Cleaning
+    df[config.COL_NAME] = df[config.COL_NAME].fillna("").astype(str).str.strip()
+
+    # Handle missing constraint columns gracefully
+    for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
+        if col not in df.columns:
+            df[col] = ""
+        else:
+            df[col] = df[col].fillna("").astype(str)
+
+    for col in score_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+
+    records = df.to_dict("records")
+    if not records:
+        logger.warning("File %s contains no data records.", filepath)
+        return None
+
+    logger.info("Successfully loaded %d participants from %s.", len(records), filepath)
+    return records

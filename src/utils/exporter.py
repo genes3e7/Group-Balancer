@@ -1,7 +1,7 @@
-"""Excel export utility.
+"""Excel export utilities for optimization results.
 
-This module formats the results into a side-by-side 'Matrix View' structure
-and includes summary statistics in the generated Excel file for multiple dimensions.
+This module provides functions to generate downloadable Excel workbooks
+formatted for high readability and analysis.
 """
 
 import io
@@ -9,23 +9,25 @@ from typing import Any
 
 import pandas as pd
 
+from src.core import config
 from src.utils import group_helpers
+
+# Excel Export Layout Constants
+MIN_HEADER_COUNT = 50
+COLS_PER_GROUP_BASE = 1
+GAP_COLUMN_WIDTH = 1
+STATS_COLUMN_OFFSET = 5
+STATS_PRECISION = 2
 
 
 def _get_excel_column_name(n: int) -> str:
-    """Converts a 0-indexed column number to an Excel column name.
-
-    Args:
-        n (int): The 0-indexed column position.
-
-    Returns:
-        str: The corresponding Excel column label (e.g., A, B, ..., Z, AA, ...).
-    """
-    res = ""
-    while n >= 0:
-        res = chr(n % 26 + 65) + res
-        n = n // 26 - 1
-    return res
+    """Converts a zero-based index to an Excel column label (A, B, ..., AA, AB...)."""
+    name = ""
+    n_idx = n
+    while n_idx >= 0:
+        name = chr(n_idx % 26 + 65) + name
+        n_idx = n_idx // 26 - 1
+    return name
 
 
 def generate_excel_bytes(
@@ -49,11 +51,14 @@ def generate_excel_bytes(
     """
     output = io.BytesIO()
 
-    groups = group_helpers.aggregate_groups(
-        df_results,
+    cfg = group_helpers.GroupingConfig(
         col_group,
         score_cols,
         col_name,
+    )
+    groups = group_helpers.aggregate_groups(
+        df_results,
+        cfg,
     )
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
@@ -62,118 +67,95 @@ def generate_excel_bytes(
         if not groups:
             pd.DataFrame().to_excel(writer, sheet_name=sheet_name)
         else:
-            rows: list[dict[str, Any]] = []
-
-            # Dynamically compute enough header columns for 2 groups + gaps + stats
-            num_cols_per_group = 1 + len(score_cols)
-            required_count = max(
-                50,
-                (num_cols_per_group * 2) + 5 + (len(score_cols) * 3),
-            )
-            headers = [_get_excel_column_name(i) for i in range(required_count)]
-
-            g1_cols = [headers[i] for i in range(num_cols_per_group)]
-            gap_col = headers[len(g1_cols)]
-            g2_cols = [
-                headers[i] for i in range(len(g1_cols) + 1, len(g1_cols) * 2 + 1)
-            ]
-
-            for i in range(0, len(groups), 2):
-                g1 = groups[i]
-                g2 = groups[i + 1] if (i + 1) < len(groups) else None
-
-                row_header: dict[str, Any] = {}
-                row_header[g1_cols[0]] = f"GROUP {g1['id']}"
-                for idx, col in enumerate(score_cols):
-                    row_header[g1_cols[idx + 1]] = (
-                        f"AVG {col}: {g1['averages'][col]:.2f}"
-                    )
-                row_header[gap_col] = ""
-
-                if g2:
-                    row_header[g2_cols[0]] = f"GROUP {g2['id']}"
-                    for idx, col in enumerate(score_cols):
-                        row_header[g2_cols[idx + 1]] = (
-                            f"AVG {col}: {g2['averages'][col]:.2f}"
-                        )
-                else:
-                    for c in g2_cols:
-                        row_header[c] = ""
-                rows.append(row_header)
-
-                row_sub: dict[str, Any] = {}
-                row_sub[g1_cols[0]] = "Name"
-                for idx, col in enumerate(score_cols):
-                    row_sub[g1_cols[idx + 1]] = col
-                row_sub[gap_col] = ""
-
-                if g2:
-                    row_sub[g2_cols[0]] = "Name"
-                    for idx, col in enumerate(score_cols):
-                        row_sub[g2_cols[idx + 1]] = col
-                else:
-                    for c in g2_cols:
-                        row_sub[c] = ""
-                rows.append(row_sub)
-
-                len1 = len(g1["members"])
-                len2 = len(g2["members"]) if g2 else 0
-                max_len = max(len1, len2)
-
-                for k in range(max_len):
-                    m1 = g1["members"][k] if k < len1 else None
-                    m2 = g2["members"][k] if g2 and k < len2 else None
-
-                    row_data: dict[str, Any] = {}
-                    row_data[g1_cols[0]] = m1[col_name] if m1 else ""
-                    for idx, col in enumerate(score_cols):
-                        row_data[g1_cols[idx + 1]] = m1[col] if m1 else ""
-                    row_data[gap_col] = ""
-
-                    if g2:
-                        row_data[g2_cols[0]] = m2[col_name] if m2 else ""
-                        for idx, col in enumerate(score_cols):
-                            row_data[g2_cols[idx + 1]] = m2[col] if m2 else ""
-                    else:
-                        for c in g2_cols:
-                            row_data[c] = ""
-
-                    rows.append(row_data)
-
-                rows.append({})
-
-            pd.DataFrame(rows).to_excel(
-                writer,
-                sheet_name=sheet_name,
-                index=False,
-                header=False,
-                startcol=0,
-            )
-
-            # Accurate dataset-wide global statistics for each dimension
-            stats_start_col = len(g1_cols) * 2 + 2
-
-            for col_idx, col in enumerate(score_cols):
-                if col in df_results.columns:
-                    col_data = pd.to_numeric(df_results[col], errors="coerce").dropna()
-                    if not col_data.empty:
-                        stats = [
-                            {f"{col} Stat": "Lowest", "Val": f"{col_data.min():.3f}"},
-                            {f"{col} Stat": "Highest", "Val": f"{col_data.max():.3f}"},
-                            {
-                                f"{col} Stat": "Global Avg",
-                                "Val": f"{col_data.mean():.3f}",
-                            },
-                            {
-                                f"{col} Stat": "StdDev",
-                                "Val": f"{col_data.std(ddof=0):.4f}",
-                            },
-                        ]
-                        pd.DataFrame(stats).to_excel(
-                            writer,
-                            sheet_name=sheet_name,
-                            index=False,
-                            startcol=stats_start_col + (col_idx * 3),
-                        )
+            rows = _build_matrix_rows(groups, score_cols)
+            pd.DataFrame(rows).to_excel(writer, index=False, sheet_name=sheet_name)
 
     return output.getvalue()
+
+
+def _build_matrix_rows(
+    groups: list[dict],
+    score_cols: list[str],
+) -> list[dict[str, Any]]:
+    """Internal helper to construct the interleaved group matrix rows."""
+    rows: list[dict[str, Any]] = []
+
+    # Dynamically compute enough header columns for 2 groups + gaps + stats
+    num_cols_per_group = COLS_PER_GROUP_BASE + len(score_cols)
+    required_count = max(
+        MIN_HEADER_COUNT,
+        (num_cols_per_group * 2) + STATS_COLUMN_OFFSET + (len(score_cols) * 3),
+    )
+    headers = [_get_excel_column_name(i) for i in range(required_count)]
+
+    g1_cols = [headers[i] for i in range(num_cols_per_group)]
+    gap_col = headers[len(g1_cols)]
+    g2_cols = [headers[i] for i in range(len(g1_cols) + 1, len(g1_cols) * 2 + 1)]
+
+    for i in range(0, len(groups), 2):
+        g1 = groups[i]
+        g2 = groups[i + 1] if (i + 1) < len(groups) else None
+
+        row_header = _build_row_header(g1, g2, g1_cols, g2_cols, gap_col, score_cols)
+        rows.append(row_header)
+
+        # Interleave members
+        max_m = max(len(g1["members"]), len(g2["members"]) if g2 else 0)
+        for m_idx in range(max_m):
+            row_m: dict[str, Any] = {}
+            _fill_member_data(row_m, g1, m_idx, g1_cols, score_cols)
+            row_m[gap_col] = ""
+            _fill_member_data(row_m, g2, m_idx, g2_cols, score_cols)
+            rows.append(row_m)
+
+        # Gap between group pairs
+        rows.append({h: "" for h in headers})
+
+    return rows
+
+
+def _build_row_header(  # noqa: PLR0913
+    g1: dict,
+    g2: dict | None,
+    g1_cols: list[str],
+    g2_cols: list[str],
+    gap_col: str,
+    score_cols: list[str],
+) -> dict[str, Any]:
+    """Constructs the bold header row for a pair of groups."""
+    row_header: dict[str, Any] = {}
+    row_header[g1_cols[0]] = f"GROUP {g1['id']}"
+    for idx, col in enumerate(score_cols):
+        row_header[g1_cols[idx + 1]] = (
+            f"AVG {col}: {g1['averages'][col]:.{STATS_PRECISION}f}"
+        )
+    row_header[gap_col] = ""
+
+    if g2:
+        row_header[g2_cols[0]] = f"GROUP {g2['id']}"
+        for idx, col in enumerate(score_cols):
+            row_header[g2_cols[idx + 1]] = (
+                f"AVG {col}: {g2['averages'][col]:.{STATS_PRECISION}f}"
+            )
+    else:
+        for c in g2_cols:
+            row_header[c] = ""
+    return row_header
+
+
+def _fill_member_data(
+    row: dict,
+    group: dict | None,
+    m_idx: int,
+    cols: list[str],
+    score_cols: list[str],
+) -> None:
+    """Populates a row dictionary with member name and scores."""
+    if group and m_idx < len(group["members"]):
+        m = group["members"][m_idx]
+        row[cols[0]] = m[config.COL_NAME]
+        for s_idx, s_col in enumerate(score_cols):
+            row[cols[s_idx + 1]] = m[s_col]
+    else:
+        for c in cols:
+            row[c] = ""

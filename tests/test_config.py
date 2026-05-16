@@ -8,10 +8,15 @@ from src.core import config
 
 
 def test_config_constants() -> None:
-    """Verify that core configuration constants are correctly defined."""
+    """Verify core configuration values and constants."""
     assert config.SCORE_PREFIX == "Score"
     assert config.COL_NAME == "Name"
-    assert config.SCALE_FACTOR == 100_000
+
+    expected_scale = 100_000
+    assert config.SCALE_FACTOR == expected_scale
+
     assert config.COL_GROUP == "Group"
     assert config.OUTPUT_FILENAME == "balanced_groups.xlsx"
-    assert config.SOLVER_TIMEOUT == 600
+
+    expected_timeout = 600
+    assert config.SOLVER_TIMEOUT == expected_timeout

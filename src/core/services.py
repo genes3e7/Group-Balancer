@@ -4,10 +4,14 @@ This module provides high-level services for data processing and optimization,
 decoupling the UI from core internal logic and OR-Tools dependencies.
 """
 
+import math
+from dataclasses import dataclass
+from typing import Any
+
 import pandas as pd
 
 from src import logger
-from src.core import config
+from src.core import config, solver_interface
 from src.core.models import (
     ConflictPriority,
     Participant,
@@ -15,25 +19,28 @@ from src.core.models import (
 )
 
 
+@dataclass(frozen=True)
+class HintResolutionConfig:
+    """Container for warm-start configuration parameters."""
+
+    score_weights: dict[str, float]
+    conflict_priority: ConflictPriority
+    group_capacities: list[int]
+    grouper_weight: int
+    separator_weight: int
+
+
 def _resolve_warm_start_hints(
     participants: list[Participant],
     previous_results: pd.DataFrame,
-    score_weights: dict[str, float],
-    conflict_priority: ConflictPriority,
-    group_capacities: list[int],
-    grouper_weight: int,
-    separator_weight: int,
+    cfg: HintResolutionConfig,
 ) -> tuple[dict[str, int] | None, dict[int, int] | None]:
     """Validates and constructs hint mappings from a previous result snapshot.
 
     Args:
         participants (list[Participant]): Current participant models.
         previous_results (pd.DataFrame): Result snapshot from a prior run.
-        score_weights (dict[str, float]): Current optimization weights.
-        conflict_priority (ConflictPriority): Current priority setting.
-        group_capacities (list[int]): Current capacity configuration.
-        grouper_weight (int): Current cohesion penalty weight.
-        separator_weight (int): Current dispersion penalty weight.
+        cfg (HintResolutionConfig): Configuration parameters to match.
 
     Returns:
         tuple[dict | None, dict | None]: Hints by fingerprint and by index.
@@ -43,11 +50,11 @@ def _resolve_warm_start_hints(
 
     # Snapshot validation: Hints are only safe if the high-level configuration matches.
     config_match = (
-        previous_results.attrs.get("score_weights") == score_weights
-        and previous_results.attrs.get("conflict_priority") == conflict_priority
-        and previous_results.attrs.get("group_capacities") == group_capacities
-        and previous_results.attrs.get("grouper_weight") == grouper_weight
-        and previous_results.attrs.get("separator_weight") == separator_weight
+        previous_results.attrs.get("score_weights") == cfg.score_weights
+        and previous_results.attrs.get("conflict_priority") == cfg.conflict_priority
+        and previous_results.attrs.get("group_capacities") == cfg.group_capacities
+        and previous_results.attrs.get("grouper_weight") == cfg.grouper_weight
+        and previous_results.attrs.get("separator_weight") == cfg.separator_weight
     )
 
     if not config_match:
@@ -218,8 +225,6 @@ class OptimizationService:
         Returns:
             dict[str, float]: Reduced weight mapping.
         """
-        import math
-
         if not weights:
             return weights
 
@@ -242,19 +247,16 @@ class OptimizationService:
         return {k: float(v // common) if v > 0 else 0.0 for k, v in scaled.items()}
 
     @staticmethod
-    def run(
+    def run(  # noqa: PLR0913
         participants_df: pd.DataFrame,
         group_capacities: list[int],
         score_weights: dict[str, float],
         conflict_priority: ConflictPriority,
         timeout_seconds: int,
-        grouper_weight: int = config.DEFAULT_GROUPER_WEIGHT,
-        separator_weight: int = config.DEFAULT_SEPARATOR_WEIGHT,
-        random_seed: int = 42,
-        interleave_search: bool = False,
         *,
-        status_box=None,
+        status_box: Any = None,
         previous_results: pd.DataFrame | None = None,
+        **kwargs: Any,
     ) -> tuple[pd.DataFrame | None, dict]:
         """Runs the group balancing optimization.
 
@@ -267,12 +269,13 @@ class OptimizationService:
             score_weights (dict[str, float]): Weight mapping for each score.
             conflict_priority (ConflictPriority): Resolution for tag collisions.
             timeout_seconds (int): Max search time in seconds.
-            grouper_weight (int): Penalty for splitting groupers.
-            separator_weight (int): Penalty for clumping separators.
-            random_seed (int): Deterministic seed for solver search.
-            interleave_search (bool): If True, search workers are synchronized.
             status_box: Optional Streamlit placeholder for live updates.
             previous_results (pd.DataFrame | None): Optional previous assignments.
+            **kwargs: Additional optional settings:
+                grouper_weight (int): Penalty for splitting groupers.
+                separator_weight (int): Penalty for clumping separators.
+                random_seed (int): Deterministic seed for solver search.
+                interleave_search (bool): If True, workers are synchronized.
 
         Returns:
             tuple[pd.DataFrame | None, dict]: Results DataFrame and metrics.
@@ -285,6 +288,12 @@ class OptimizationService:
 
         if not group_capacities:
             raise ValueError("Group capacities cannot be empty.")
+
+        # Extract optional params from kwargs
+        grouper_w = kwargs.get("grouper_weight", config.DEFAULT_GROUPER_WEIGHT)
+        separator_w = kwargs.get("separator_weight", config.DEFAULT_SEPARATOR_WEIGHT)
+        seed = kwargs.get("random_seed", 42)
+        interleave = kwargs.get("interleave_search", False)
 
         try:
             # Backend Reduction: Simplify weights to irreducible integer ratios
@@ -313,14 +322,17 @@ class OptimizationService:
 
             hints_fp, hints_idx = None, None
             if previous_results is not None and not previous_results.empty:
-                hints_fp, hints_idx = _resolve_warm_start_hints(
-                    participants,
-                    previous_results,
+                hint_cfg = HintResolutionConfig(
                     reduced_weights,
                     conflict_priority,
                     group_capacities,
-                    grouper_weight,
-                    separator_weight,
+                    grouper_w,
+                    separator_w,
+                )
+                hints_fp, hints_idx = _resolve_warm_start_hints(
+                    participants,
+                    previous_results,
+                    hint_cfg,
                 )
 
             cfg = SolverConfig(
@@ -328,16 +340,14 @@ class OptimizationService:
                 group_capacities=group_capacities,
                 score_weights=reduced_weights,
                 conflict_priority=conflict_priority,
-                grouper_weight=grouper_weight,
-                separator_weight=separator_weight,
-                random_seed=random_seed,
-                interleave_search=interleave_search,
+                grouper_weight=grouper_w,
+                separator_weight=separator_w,
+                random_seed=seed,
+                interleave_search=interleave,
                 timeout_seconds=timeout_seconds,
                 hints_by_fingerprint=hints_fp,
                 hints_by_index=hints_idx,
             )
-
-            from src.core import solver_interface
 
             return solver_interface.run_optimization(
                 participants, cfg, status_box=status_box

@@ -1,10 +1,12 @@
 """Global pytest configuration and project-wide fixtures."""
 
+import sys
 from collections.abc import Callable, Iterable
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, Mock
 
 import pytest
+import streamlit as st
 
 
 class DummySessionState(dict):
@@ -32,7 +34,6 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
     Replaces @st.fragment and @st.cache_data with identity decorators before
     any modules are imported by the test collection process.
     """
-    import sys
 
     # Identity decorator to ensure Streamlit decorators don't block execution
     def identity_decorator(
@@ -44,10 +45,11 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
 
     # Create a strict fail-fast stub for streamlit if it's not installed
     try:
-        import streamlit as st
-    except ModuleNotFoundError:
-        st = MagicMock(name="streamlit")
-        sys.modules["streamlit"] = st
+        # Check if already installed/aliased
+        _ = st.session_state
+    except (ModuleNotFoundError, AttributeError):
+        mock_st = MagicMock(name="streamlit")
+        sys.modules["streamlit"] = mock_st
 
     # Inject identity decorators to prevent collection-time execution blocks
     st.fragment = identity_decorator
@@ -55,8 +57,6 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
 
     # Ensure session_state exists as a reachable stub
     try:
-        from unittest.mock import Mock
-
         # Reaching for the attribute on a MagicMock might return another mock,
         # so we use getattr with a sentinel and check for Mock types.
         sentinel = object()

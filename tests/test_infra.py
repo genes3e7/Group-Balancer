@@ -6,6 +6,10 @@ from unittest.mock import MagicMock, patch
 import app
 import build
 
+# Expected Counts for Verification
+EXPECTED_RM_COUNT = 2
+EXPECTED_DATA_ARGS = 2
+
 
 def test_build_executable_cleanup() -> None:
     """Test that build_executable cleans up old directories."""
@@ -18,7 +22,7 @@ def test_build_executable_cleanup() -> None:
         build.build_executable()
 
         # Verify cleanup of build and dist
-        assert mock_rm.call_count >= 2
+        assert mock_rm.call_count >= EXPECTED_RM_COUNT
         # Verify cleanup of spec
         assert mock_remove.called
 
@@ -45,7 +49,7 @@ def test_build_executable_success() -> None:
         # Critical bundled artifacts must be present in --add-data
         # Format: --add-data src:dest
         add_data_indices = [i for i, item in enumerate(cmd) if item == "--add-data"]
-        assert len(add_data_indices) == 2
+        assert len(add_data_indices) == EXPECTED_DATA_ARGS
 
         # Check source paths (the item immediately following --add-data)
         add_data_sources = [cmd[i + 1].split(os.pathsep)[0] for i in add_data_indices]

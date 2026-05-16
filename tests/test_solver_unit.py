@@ -24,16 +24,19 @@ def test_solution_printer_logging() -> None:
 
         # First call should log (last_log_time is 0)
         printer.on_solution_callback()
-        assert mock_logger.call_count == 1
+        expected_one = 1
+        assert mock_logger.call_count == expected_one
 
         # Second immediate call should not log (interval < 1s)
         printer.on_solution_callback()
-        assert mock_logger.call_count == 1
+        assert mock_logger.call_count == expected_one
 
         # Call after 1.1s should log
-        with patch("time.time", return_value=time.time() + 2.0):
+        time_skip = 2.0
+        expected_two = 2
+        with patch("time.time", return_value=time.time() + time_skip):
             printer.on_solution_callback()
-            assert mock_logger.call_count == 2
+            assert mock_logger.call_count == expected_two
 
 
 def test_tag_processor_conflict_groupers() -> None:

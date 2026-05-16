@@ -8,37 +8,21 @@ import streamlit as st
 
 
 def setup_page() -> None:
-    """Configures the global Streamlit page settings."""
-    st.set_page_config(page_title="Group Balancer", page_icon="⚖️", layout="wide")
+    """Configures Streamlit page metadata and default layout parameters."""
+    st.set_page_config(
+        page_title="Group Balancer",
+        page_icon="⚖️",
+        layout="wide",
+        initial_sidebar_state="collapsed",
+    )
 
 
 def render_header_description() -> None:
-    """Renders the top-level tool description and help text."""
+    """Renders the tool's header and instructional text."""
+    st.title("⚖️ Group Balancer")
     st.markdown("""
-    ### ⚖️ Group Balancer Tool
-    **Optimizes team allocations based on individual scores and constraints.**
-    Upload your participant data, configure the desired number of groups,
-    and let the Constraint Programming solver mathematically minimize the
-    difference in group averages.
-    """)
-
-    with st.expander("ℹ️ How to use this tool", expanded=False):
-        st.markdown("""
-        **Goal:** Create balanced groups from a list of participants.
-
-        1. **Upload Data or Edit Manually:** Use an Excel/CSV file with a `Name`
-           column and at least one `Score` column (e.g., `Score1`, `Score2`).
-           You can also add score columns manually via the UI.
-        2. **Groupers & Separators (Categorical Constraints):**
-           - Every **single character** in the Groupers or Separators cell is
-             treated as an independent tag.
-           - *Example:* A tag of `GSA` creates three separate rules (`G`, `S`,
-             and `A`). Commas and spaces are completely ignored.
-           - **Groupers:** Participants sharing a grouper character
-             will be kept together.
-           - **Separators:** Participants sharing a separator character will
-             be spread apart into different groups (e.g., Leaders).
-        3. **Generate:** The algorithm will balance the dimensions
+           This tool uses the **Google OR-Tools CP-SAT** engine to optimize
+           participant distribution into groups. It balances multiple scores
            simultaneously based on your assigned weights, prioritizing
            constraints based on your solver setup. For highly complex setups,
            increase the Max Runtime.
@@ -51,6 +35,9 @@ def render_step_progress(step: int) -> None:
     Args:
         step (int): The current active step number (1, 2, or 3).
     """
+    # Guard against out-of-bounds steps to maintain ARIA integrity
+    clamped_step = max(1, min(step, 3))
+
     cols_labels = st.columns(3)
     labels = ["1. Upload Data", "2. Configure", "3. Results"]
 
@@ -59,14 +46,15 @@ def render_step_progress(step: int) -> None:
         label = labels[i]
         with col:
             # aria-current indicates the active step to screen readers
-            aria = 'aria-current="step"' if step == target else ""
-            if step == target:
+            aria = ""
+            if clamped_step == target:
+                aria = 'aria-current="step"'
                 st.markdown(
                     f'### <span {aria} style="color:#ff4b4b">{label}</span>',
                     unsafe_allow_html=True,
                 )
 
-            elif target < step:
+            elif target < clamped_step:
                 st.markdown(f"### {label}")
             else:
                 st.markdown(f"### :gray[{label}]")
@@ -74,7 +62,7 @@ def render_step_progress(step: int) -> None:
     # Logical progress bar for accessibility
     st.markdown(
         f'<div role="progressbar" aria-valuemin="1" aria-valuemax="3" '
-        f'aria-valuenow="{step}" aria-label="Step {step} of 3" '
+        f'aria-valuenow="{clamped_step}" aria-label="Step {clamped_step} of 3" '
         f'style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(1px,1px,1px,1px);white-space:nowrap;border:0;padding:0;margin:-1px;"></div>',
         unsafe_allow_html=True,
     )
@@ -89,7 +77,7 @@ def render_step_progress(step: int) -> None:
 
     for i, col in enumerate(cols_bar):
         target = i + 1
-        css = active_step_css if target <= step else inactive_step_css
+        css = active_step_css if target <= clamped_step else inactive_step_css
         # Individual segments are decorative; aria-hidden prevents redundancy
         col.markdown(
             f'<div aria-hidden="true" style="{css}"></div>',

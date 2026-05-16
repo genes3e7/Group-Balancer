@@ -141,23 +141,24 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
 
     # 2. Update Version Badge
     if min_ver and max_ver:
-        # Matches badge URL part: python-3.10%20--%203.14-blue
-        badge_pattern = re.compile(r"python-\d+\.\d+[^\s\[\]\(\)]*-blue")
-        new_badge_url = f"python-{min_ver}%20--%20{max_ver}-blue"
+        # Matches badge URL part: Python-3.10--3.14-blue (case-insensitive)
+        badge_pattern = re.compile(r"Python-\d+\.\d+--\d+\.\d+-blue", re.IGNORECASE)
+        new_badge_url = f"Python-{min_ver}--{max_ver}-blue"
         content = badge_pattern.sub(new_badge_url, content)
 
-        # Also update the Alt Text of the badge: [Python 3.10 - 3.14]
+        # Also update the Alt Text of the badge: [Python: 3.10-3.14]
         alt_pattern = re.compile(
-            r"\[Python \d+\.\d+(?:-[^\]\s]+)?\s*"
-            r"(?:-|through|to)\s*\d+\.\d+(?:-[^\]\s]+)?\]"
+            r"\[Python:?\s*\d+\.\d+\s*(?:-|through|to|--)\s*\d+\.\d+\]",
+            re.IGNORECASE,
         )
-        new_alt = f"[Python {min_ver} - {max_ver}]"
+        new_alt = f"[Python: {min_ver}-{max_ver}]"
         content = alt_pattern.sub(new_alt, content)
 
-        # 3. Update Prerequisite Text (e.g., "Python 3.10 through 3.14")
+        # 3. Update Prerequisite Text (if any exists in a standard format)
         prereq_pattern = re.compile(
-            r"Python \d+\.\d+(?:-[A-Za-z0-9.]+)?(?:\s*(?:through|to|-|or higher)\s*"
-            r"\d+\.\d+(?:-[A-Za-z0-9.]+)?\.?|\s+or\s+higher)"
+            r"Python \d+\.\d+(?:-[A-Za-z0-9.]+)?(?:\s*(?:through|to|-|or higher|--)\s*"
+            r"\d+\.\d+(?:-[A-Za-z0-9.]+)?\.?|\s+or\s+higher)",
+            re.IGNORECASE,
         )
         new_prereq = f"Python {min_ver} through {max_ver}"
         content = prereq_pattern.sub(new_prereq, content)
@@ -170,6 +171,10 @@ def update_readme(min_ver: str | None = None, max_ver: str | None = None) -> Non
 
 
 if __name__ == "__main__":
-    m_ver = sys.argv[1] if len(sys.argv) > 1 else None
-    x_ver = sys.argv[2] if len(sys.argv) > 2 else None
+    # Command line arguments for Python version range in badges
+    MIN_ARG_IDX = 1
+    MAX_ARG_IDX = 2
+
+    m_ver = sys.argv[MIN_ARG_IDX] if len(sys.argv) > MIN_ARG_IDX else None
+    x_ver = sys.argv[MAX_ARG_IDX] if len(sys.argv) > MAX_ARG_IDX else None
     update_readme(m_ver, x_ver)

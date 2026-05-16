@@ -55,9 +55,11 @@ def test_validate_file_path_security_violation() -> None:
 
 def test_validate_file_path_type_error() -> None:
     """Test path validation exception when commonpath fails with non-ValueError."""
-    with patch("os.path.commonpath", side_effect=TypeError("Bad type")):
-        with pytest.raises(ValueError, match="Invalid path configuration"):
-            data_loader.validate_file_path("test.csv")
+    with (
+        patch("os.path.commonpath", side_effect=TypeError("Bad type")),
+        pytest.raises(ValueError, match="Invalid path configuration"),
+    ):
+        data_loader.validate_file_path("test.csv")
 
 
 def test_validate_file_path_exists(mock_file: str) -> None:

@@ -12,6 +12,11 @@ from src.core import config, solver
 from src.core.models import ConflictPriority, SolverConfig
 from src.core.solver import AdvancedScoring
 
+# Expected Constants for Verification
+EXPECTED_RESOLUTION_BASE = 1000
+EXPECTED_SCALE_FACTOR = 10**5
+EXPECTED_PRECISION_LIMIT = 0.001
+
 
 def test_scaling_constants_lock() -> None:
     """Explicitly enforce mathematical priority hierarchy constants.
@@ -23,8 +28,8 @@ def test_scaling_constants_lock() -> None:
     assert config.TIER_LO_MULTIPLIER == 10**9
     assert config.TIER_FAIRNESS_MULTIPLIER == 10**7
     assert config.TIER_BALANCE_MULTIPLIER == 10**0
-    assert config.RESOLUTION_BASE == 1000
-    assert config.SCALE_FACTOR == 10**5
+    assert config.RESOLUTION_BASE == EXPECTED_RESOLUTION_BASE
+    assert config.SCALE_FACTOR == EXPECTED_SCALE_FACTOR
 
 
 def test_priority_separators_wins() -> None:
@@ -173,4 +178,4 @@ def test_norm_multiplier_precision() -> None:
 
     scores = vectors[0][1]
     assert abs(scores[0] - scores[1]) >= 1
-    assert abs(scores[0] - scores[1]) / max(scores) >= 0.001
+    assert abs(scores[0] - scores[1]) / max(scores) >= EXPECTED_PRECISION_LIMIT

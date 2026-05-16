@@ -8,7 +8,12 @@ eliminate render lag.
 
 import streamlit as st
 
-from src.ui import components, session_manager
+from src.ui import components, session_manager, steps
+
+# Application Steps
+STEP_DATA_ENTRY = 1
+STEP_CONFIGURE = 2
+STEP_RESULTS = 3
 
 
 def main() -> None:
@@ -33,20 +38,18 @@ def main() -> None:
 @st.fragment
 def render_app() -> None:
     """Renders the main application steps asynchronously with lazy imports."""
-    from src.ui import steps
-
-    if st.session_state.step == 1:
+    if st.session_state.step == STEP_DATA_ENTRY:
         steps.render_step_1()
 
-    elif st.session_state.step == 2:
+    elif st.session_state.step == STEP_CONFIGURE:
         steps.render_step_2()
 
-    elif st.session_state.step == 3:
+    elif st.session_state.step == STEP_RESULTS:
         steps.render_step_3()
 
     else:
         st.session_state.persistent_error = "Invalid application step detected."
-        session_manager.go_to_step(1)
+        session_manager.go_to_step(STEP_DATA_ENTRY)
 
 
 if __name__ == "__main__":

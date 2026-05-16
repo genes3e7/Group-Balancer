@@ -37,6 +37,9 @@ except ImportError:
 # UI-only normalization factor to scale large objective values for display
 _DISPLAY_OBJECTIVE_DIVISOR_FACTOR = 100
 
+# Performance Tuning
+UPDATE_INTERVAL_SECONDS = 0.25
+
 
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
     """Custom OR-Tools callback to pipe logs to Streamlit."""
@@ -65,7 +68,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         self.solution_count += 1
         current_time = time.time()
 
-        if current_time - self.last_update_time >= 0.25:
+        if current_time - self.last_update_time >= UPDATE_INTERVAL_SECONDS:
             if self.ctx:
                 add_script_run_ctx(threading.current_thread(), self.ctx)
 
@@ -140,21 +143,7 @@ def run_optimization(
     elapsed = time.time() - start_time
 
     status_name = solver_inst.StatusName(status)
-    error_msg = None
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        if status_name == "MODEL_INVALID":
-            error_msg = (
-                "The solver model is invalid. This often happens due to "
-                "numerical overflows from extremely large weights or "
-                "conflicting constraints."
-            )
-        elif status_name == "INFEASIBLE":
-            error_msg = (
-                "No solution exists that satisfies all hard constraints "
-                "(capacities and separator tags)."
-            )
-        else:
-            error_msg = f"Solver stopped with status: {status_name}"
+    error_msg = _get_solver_error_msg(status, status_name)
 
     metrics = {
         "status": status_name,
@@ -165,51 +154,101 @@ def run_optimization(
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
         if status_box:
-            with status_box:
-                with st.status(
-                    f"✅ Optimization Complete ({status_name})", expanded=False
-                ):
-                    st.write(f"Computation time: {elapsed:.2f}s")
-                    display_obj = solver_inst.ObjectiveValue() / (
-                        config.SCALE_FACTOR
-                        * len(participants)
-                        * _DISPLAY_OBJECTIVE_DIVISOR_FACTOR
-                    )
-                    st.write(f"Final weighted objective: {display_obj:.4f}")
+            _render_success_status(
+                status_box, status_name, elapsed, solver_inst, len(participants)
+            )
 
-        results = []
-        for i, p in enumerate(participants):
-            assigned_group = -1
-            for g in range(cfg.num_groups):
-                if solver_inst.Value(builder.x[(i, g)]) == 1:
-                    assigned_group = g + 1
-                    break
-
-            p_dict = {
-                config.COL_NAME: p.name,
-                config.COL_GROUP: assigned_group,
-                config.COL_GROUPER: p.groupers,
-                config.COL_SEPARATOR: p.separators,
-                "_original_index": p.original_index,
-                "participant_fingerprint": p.fingerprint,
-            }
-            p_dict.update(p.scores)
-            results.append(p_dict)
-
+        results = _build_results_list(participants, cfg, builder, solver_inst)
         result_df = pd.DataFrame(results)
-        result_df.attrs["score_weights"] = dict(cfg.score_weights)
-        result_df.attrs["conflict_priority"] = cfg.conflict_priority
-        result_df.attrs["group_capacities"] = list(cfg.group_capacities)
-        result_df.attrs["grouper_weight"] = cfg.grouper_weight
-        result_df.attrs["separator_weight"] = cfg.separator_weight
-
+        _attach_metadata(result_df, cfg)
         return result_df, metrics
 
     if status_box:
-        with status_box:
-            with st.status(f"❌ Optimization Failed ({status_name})", state="error"):
-                if error_msg:
-                    st.error(error_msg)
-                else:
-                    st.write(f"Solver stopped with status: {status_name}")
+        _render_failure_status(status_box, status_name, error_msg)
     return None, metrics
+
+
+def _get_solver_error_msg(status: int, status_name: str) -> str | None:
+    """Derives a user-friendly error message from solver status."""
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None
+    if status_name == "MODEL_INVALID":
+        return (
+            "The solver model is invalid. This often happens due to "
+            "numerical overflows from extremely large weights or "
+            "conflicting constraints."
+        )
+    if status_name == "INFEASIBLE":
+        return (
+            "No solution exists that satisfies all hard constraints "
+            "(capacities and separator tags)."
+        )
+    return f"Solver stopped with status: {status_name}"
+
+
+def _render_success_status(
+    status_box: Any,
+    status_name: str,
+    elapsed: float,
+    solver_inst: Any,
+    num_p: int,
+) -> None:
+    """Renders success metrics to the status box."""
+    with status_box:
+        with st.status(f"✅ Optimization Complete ({status_name})", expanded=False):
+            st.write(f"Computation time: {elapsed:.2f}s")
+            display_obj = solver_inst.ObjectiveValue() / (
+                config.SCALE_FACTOR * num_p * _DISPLAY_OBJECTIVE_DIVISOR_FACTOR
+            )
+            st.write(f"Final weighted objective: {display_obj:.4f}")
+
+
+def _render_failure_status(
+    status_box: Any,
+    status_name: str,
+    error_msg: str | None,
+) -> None:
+    """Renders failure messages to the status box."""
+    with status_box:
+        with st.status(f"❌ Optimization Failed ({status_name})", state="error"):
+            if error_msg:
+                st.error(error_msg)
+            else:
+                st.write(f"Solver stopped with status: {status_name}")
+
+
+def _build_results_list(
+    participants: list[Participant],
+    cfg: SolverConfig,
+    builder: Any,
+    solver_inst: Any,
+) -> list[dict]:
+    """Constructs the raw results list from solver assignments."""
+    results = []
+    for i, p in enumerate(participants):
+        assigned_group = -1
+        for g in range(cfg.num_groups):
+            if solver_inst.Value(builder.x[(i, g)]) == 1:
+                assigned_group = g + 1
+                break
+
+        p_dict = {
+            config.COL_NAME: p.name,
+            config.COL_GROUP: assigned_group,
+            config.COL_GROUPER: p.groupers,
+            config.COL_SEPARATOR: p.separators,
+            "_original_index": p.original_index,
+            "participant_fingerprint": p.fingerprint,
+        }
+        p_dict.update(p.scores)
+        results.append(p_dict)
+    return results
+
+
+def _attach_metadata(df: pd.DataFrame, cfg: SolverConfig) -> None:
+    """Attaches solver configuration metadata to the result DataFrame."""
+    df.attrs["score_weights"] = dict(cfg.score_weights)
+    df.attrs["conflict_priority"] = cfg.conflict_priority
+    df.attrs["group_capacities"] = list(cfg.group_capacities)
+    df.attrs["grouper_weight"] = cfg.grouper_weight
+    df.attrs["separator_weight"] = cfg.separator_weight

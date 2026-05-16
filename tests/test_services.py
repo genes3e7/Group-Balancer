@@ -14,6 +14,12 @@ from src.core import config
 from src.core.models import ConflictPriority
 from src.core.services import DataService, OptimizationService
 
+# Expected Constants for Verification
+EXPECTED_SCORE_VAL = 10.0
+EXPECTED_RECORDS_COUNT = 2
+WANT_TIMEOUT = 10
+WANT_CAPACITIES = [1, 1]
+
 
 def test_data_service_cleaning() -> None:
     """Test standard dataframe cleaning and coercion."""
@@ -27,7 +33,7 @@ def test_data_service_cleaning() -> None:
     clean = DataService.clean_participants_df(df)
 
     assert clean.iloc[0][config.COL_NAME] == "Alice"
-    assert clean.iloc[0]["Score1"] == 10.0
+    assert clean.iloc[0]["Score1"] == EXPECTED_SCORE_VAL
     assert config.COL_GROUPER in clean.columns
     assert config.COL_SEPARATOR in clean.columns
 
@@ -61,14 +67,14 @@ def test_optimization_service_success_path() -> None:
     with patch(target, return_value=(mock_results, mock_metrics)):
         res, metrics = OptimizationService.run(
             df,
-            [1, 1],
+            WANT_CAPACITIES,
             {"Score1": 1.0},
             ConflictPriority.GROUPERS,
-            10,
+            WANT_TIMEOUT,
         )
 
         assert res is not None
-        assert len(res) == 2
+        assert len(res) == EXPECTED_RECORDS_COUNT
         assert metrics["status"] == "OPTIMAL"
 
 
@@ -84,7 +90,7 @@ def test_optimization_service_handles_solver_failure() -> None:
             [1],
             {"S1": 1.0},
             ConflictPriority.GROUPERS,
-            10,
+            WANT_TIMEOUT,
         )
         assert res is None
         assert metrics["status"] == "INFEASIBLE"
@@ -99,7 +105,7 @@ def test_optimization_service_validates_group_capacities() -> None:
             [],
             {"S1": 1.0},
             ConflictPriority.GROUPERS,
-            10,
+            WANT_TIMEOUT,
         )
 
 
@@ -116,17 +122,17 @@ def test_optimization_service_warm_start_hit() -> None:
     weights = {"Score1": 1.0}
 
     res1, metrics1 = OptimizationService.run(
-        data, [1, 1], weights, ConflictPriority.GROUPERS, 10
+        data, WANT_CAPACITIES, weights, ConflictPriority.GROUPERS, WANT_TIMEOUT
     )
 
     target = "src.core.solver_interface.run_optimization"
     with patch(target, return_value=(res1, metrics1)) as mock_opt:
         OptimizationService.run(
             data,
-            [1, 1],
+            WANT_CAPACITIES,
             weights,
             ConflictPriority.GROUPERS,
-            10,
+            WANT_TIMEOUT,
             previous_results=res1,
         )
 
@@ -152,17 +158,17 @@ def test_optimization_service_warm_start_duplicate_fingerprints() -> None:
     weights = {"Score1": 1.0}
 
     res1, metrics1 = OptimizationService.run(
-        data, [1, 1], weights, ConflictPriority.GROUPERS, 10
+        data, WANT_CAPACITIES, weights, ConflictPriority.GROUPERS, WANT_TIMEOUT
     )
 
     target = "src.core.solver_interface.run_optimization"
     with patch(target, return_value=(res1, metrics1)) as mock_opt:
         OptimizationService.run(
             data,
-            [1, 1],
+            WANT_CAPACITIES,
             weights,
             ConflictPriority.GROUPERS,
-            10,
+            WANT_TIMEOUT,
             previous_results=res1,
         )
 
@@ -211,7 +217,11 @@ def test_optimization_service_unexpected_exception() -> None:
     ):
         with pytest.raises(RuntimeError, match="System crash"):
             OptimizationService.run(
-                pd.DataFrame(), [1], {"Score1": 1.0}, ConflictPriority.GROUPERS, 10
+                pd.DataFrame(),
+                [1],
+                {"Score1": 1.0},
+                ConflictPriority.GROUPERS,
+                WANT_TIMEOUT,
             )
         assert mock_log.called
 
@@ -224,7 +234,7 @@ def test_optimization_service_alignment_error_logging() -> None:
     )
     weights = {"Score1": 1.0}
     priority = ConflictPriority.GROUPERS
-    capacities = [1, 1]
+    capacities = WANT_CAPACITIES
 
     res1, _ = OptimizationService.run(data, capacities, weights, priority, 5)
     assert res1 is not None
@@ -324,7 +334,7 @@ def test_optimization_service_catches_runtime_exceptions() -> None:
             [1],
             {"S1": 1.0},
             ConflictPriority.GROUPERS,
-            10,
+            WANT_TIMEOUT,
         )
 
 
@@ -336,5 +346,5 @@ def test_optimization_service_invalid_input_none() -> None:
             [1],
             {"Score1": 1.0},
             ConflictPriority.GROUPERS,
-            10,
+            WANT_TIMEOUT,
         )

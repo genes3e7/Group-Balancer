@@ -16,8 +16,26 @@ from src.core.models import (
     Participant,
     SolverConfig,
 )
+from src.core.solver import (
+    AdvancedScoring,
+    _clean_score_cell,
+    _clean_tag_cell,
+)
+from src.core.solver_interface import run_optimization
 
 SCORE_COL = f"{config.SCORE_PREFIX}1"
+
+# Expected Counts and Values for Verification
+WANT_P_COUNT = 10
+WANT_LEN_4 = 4
+WANT_LEN_3 = 3
+WANT_SUM_110 = 110
+WANT_SEP_SPREAD = 2
+WANT_TOTAL_SEP = 3
+WANT_TARGET_GROUP = 2
+WANT_THRESHOLD = 50
+WANT_PRECISION = 0.01
+WANT_SCORE_VAL = 12.5
 
 
 def make_participants(
@@ -89,11 +107,11 @@ def get_solver_config(
 
 def test_solver_basic_split() -> None:
     """Test standard even partitioning."""
-    participants = make_participants(10)
+    participants = make_participants(WANT_P_COUNT)
     cfg = get_solver_config(2, [5, 5])
     results, _, _ = solver.solve_with_ortools(participants, cfg)
 
-    assert len(results) == 10
+    assert len(results) == WANT_P_COUNT
     group_counts = {}
     for p in results:
         gid = p[config.COL_GROUP]
@@ -104,7 +122,7 @@ def test_solver_basic_split() -> None:
 
 def test_solver_unequal_sizes() -> None:
     """Test splitting into different sizes."""
-    participants = make_participants(10)
+    participants = make_participants(WANT_P_COUNT)
     cfg = get_solver_config(3, [4, 3, 3])
     results, _, _ = solver.solve_with_ortools(participants, cfg)
 
@@ -129,11 +147,11 @@ def test_solver_multi_dimensional_weighted() -> None:
     results, status, _ = solver.solve_with_ortools(participants, cfg)
 
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
-    assert len(results) == 4
+    assert len(results) == WANT_LEN_4
 
     for gid in [1, 2]:
         members = [p for p in results if p[config.COL_GROUP] == gid]
-        assert sum(m[SCORE_COL] for m in members) == 110
+        assert sum(m[SCORE_COL] for m in members) == WANT_SUM_110
 
 
 def test_solver_pigeonhole_separator() -> None:
@@ -144,17 +162,17 @@ def test_solver_pigeonhole_separator() -> None:
 
     g1_sep = sum(
         1
-        for p in results
-        if p[config.COL_GROUP] == 1 and "A" in p[config.COL_SEPARATOR]
+        for r in results
+        if r[config.COL_GROUP] == 1 and "A" in r[config.COL_SEPARATOR]
     )
     g2_sep = sum(
         1
-        for p in results
-        if p[config.COL_GROUP] == 2 and "A" in p[config.COL_SEPARATOR]
+        for r in results
+        if r[config.COL_GROUP] == WANT_TARGET_GROUP and "A" in r[config.COL_SEPARATOR]
     )
-    assert g1_sep <= 2
-    assert g2_sep <= 2
-    assert g1_sep + g2_sep == 3
+    assert g1_sep <= WANT_SEP_SPREAD
+    assert g2_sep <= WANT_SEP_SPREAD
+    assert g1_sep + g2_sep == WANT_TOTAL_SEP
     assert g1_sep >= 1
 
 
@@ -180,7 +198,7 @@ def test_solver_conflict_resolution() -> None:
     cfg_s = get_solver_config(2, [2, 2], priority=ConflictPriority.SEPARATORS)
     res_s, _, _ = solver.solve_with_ortools(p, cfg_s)
     gids_s = {p[config.COL_GROUP] for p in res_s if "X" in p[config.COL_SEPARATOR]}
-    assert len(gids_s) == 2
+    assert len(gids_s) == WANT_SEP_SPREAD
 
 
 def test_solver_rounding_extreme() -> None:
@@ -192,7 +210,6 @@ def test_solver_rounding_extreme() -> None:
         score_weights={"S1": 0.00000000001},
         interleave_search=True,
     )
-    from src.core.solver import AdvancedScoring
 
     strategy = AdvancedScoring()
     vectors = strategy.get_score_vectors(participants, cfg)
@@ -201,8 +218,6 @@ def test_solver_rounding_extreme() -> None:
 
 def test_circular_conflict_edge() -> None:
     """Test solver behavior with contradictory constraints."""
-    from src.core.solver_interface import run_optimization
-
     participants = [
         Participant(name="A", scores={"S": 10}, groupers="X", separators="Z"),
         Participant(name="B", scores={"S": 10}, groupers="X", separators=""),
@@ -219,7 +234,7 @@ def test_circular_conflict_edge() -> None:
 
     df, metrics = run_optimization(participants, solver_config)
     assert df is not None
-    assert len(df) == 3
+    assert len(df) == WANT_LEN_3
     assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
 
 
@@ -248,14 +263,14 @@ def test_solver_tie_breaker_pressure() -> None:
     results, _, _ = solver.solve_with_ortools(p, cfg)
 
     p0 = next(r for r in results if r[config.COL_NAME] == "P0")
-    assert p0[config.COL_GROUP] == 2
+    assert p0[config.COL_GROUP] == WANT_TARGET_GROUP
 
 
 def test_solver_quantization_preservation() -> None:
     """Verify variance preservation for tight distributions with large N."""
     participants = []
     for i in range(100):
-        s = 3.51 if i < 50 else 3.49
+        s = 3.51 if i < WANT_THRESHOLD else 3.49
         participants.append({"Name": f"P{i}", "Score1": s})
 
     cfg = get_solver_config(2, [50, 50])
@@ -266,7 +281,7 @@ def test_solver_quantization_preservation() -> None:
     df = pd.DataFrame(results)
     for gid in [1, 2]:
         group = df[df[config.COL_GROUP] == gid]
-        assert abs(group[SCORE_COL].mean() - 3.5) < 0.01
+        assert abs(group[SCORE_COL].mean() - 3.5) < WANT_PRECISION
 
 
 def test_solver_soft_groupers() -> None:
@@ -299,8 +314,6 @@ def test_solver_soft_groupers_clamping() -> None:
 
 def test_solver_clean_helpers() -> None:
     """Cover _clean_tag_cell and _clean_score_cell edge cases."""
-    from src.core.solver import _clean_score_cell, _clean_tag_cell
-
     assert _clean_tag_cell(None) == ""
     assert _clean_tag_cell(pd.NA) == ""
     assert _clean_tag_cell("ABC") == "ABC"
@@ -308,7 +321,7 @@ def test_solver_clean_helpers() -> None:
     assert _clean_score_cell(None) == 0.0
     assert _clean_score_cell(" ") == 0.0
     assert _clean_score_cell("not a float") == 0.0
-    assert _clean_score_cell(12.5) == 12.5
+    assert _clean_score_cell(WANT_SCORE_VAL) == WANT_SCORE_VAL
     assert _clean_score_cell([]) == 0.0
     assert _clean_score_cell(float("nan")) == 0.0
     assert _clean_score_cell(float("inf")) == 0.0
@@ -335,7 +348,7 @@ def test_solver_multi_dimension_symmetry_breaking() -> None:
     assert status == cp_model.OPTIMAL
     p1 = next(r for r in results if r[config.COL_NAME] == "P1")
     # P1 pushed to G2 by tie-breaker because S1 symmetry is not binding
-    assert p1[config.COL_GROUP] == 2
+    assert p1[config.COL_GROUP] == WANT_TARGET_GROUP
 
     # Case 2: Mirror swap. S1 is now binding.
     p_mirror = [
@@ -390,7 +403,8 @@ def test_solver_identity_buckets_complex() -> None:
     with patch.object(builder.model, "AddHint") as mock_add_hint:
         builder.add_solution_hints()
         # Verify that hints were consumed for both participants in the zip loop
-        assert mock_add_hint.call_count == 2
+        expected_calls = 2
+        assert mock_add_hint.call_count == expected_calls
         # Check first hint: p0 in g0 (int(1)-1)
         mock_add_hint.assert_any_call(builder.x[(0, 0)], 1)
         # Check second hint: p1 in g1 (int(2)-1)
@@ -445,6 +459,7 @@ def test_solver_aggregate_objective_error() -> None:
     builder.build_variables()
 
     # Artificially blow the objective bound
-    builder.objective_bounds = [2**63]
+    overflow_val = 2**63
+    builder.objective_bounds = [overflow_val]
     with pytest.raises(ValueError, match="exceeds CP-SAT safety bound"):
         builder.get_model()

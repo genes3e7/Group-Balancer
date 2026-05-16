@@ -29,11 +29,13 @@ def test_session_manager_navigation() -> None:
         patch("streamlit.rerun") as mock_rerun,
     ):
         session_manager.go_to_step(2)
-        assert mock_state.step == 2
+        expected_s2 = 2
+        assert mock_state.step == expected_s2
         mock_rerun.assert_called_once()
 
         session_manager.go_to_step(5)
-        assert mock_state.step == 3
+        expected_s3 = 3
+        assert mock_state.step == expected_s3
 
 
 def test_components_setup() -> None:
@@ -64,7 +66,8 @@ def test_results_renderer_empty() -> None:
         mock_warn.assert_called_once()
 
         results_renderer.render_group_cards(pd.DataFrame(), [])
-        assert mock_warn.call_count == 2
+        expected_warns = 2
+        assert mock_warn.call_count == expected_warns
 
 
 def test_results_renderer_grid_branches() -> None:
@@ -376,9 +379,10 @@ def test_steps_render_1_success() -> None:
         patch("src.ui.session_manager.go_to_step") as mock_go,
         patch("streamlit.session_state", mock_state),
     ):
-        mock_btn.side_effect = lambda label, **kwargs: label == "Next: Configure"
+        mock_btn.side_effect = lambda label, **_kwargs: label == "Next: Configure"
         steps.render_step_1()
-        mock_go.assert_called_with(2)
+        expected_s2 = 2
+        mock_go.assert_called_with(expected_s2)
 
 
 def test_steps_load_uploaded_file_excel():
@@ -668,7 +672,6 @@ def test_results_renderer_reassignment() -> None:
         patch("src.ui.results_renderer.st.rerun") as mock_rerun,
     ):
         results_renderer._render_single_card(group, ["Score1"])
-        assert mock_state.interactive_df.at[0, config.COL_GROUP] == 2
-        mock_rerun.assert_called_once()
-
+        target_g = 2
+        assert mock_state.interactive_df.at[0, config.COL_GROUP] == target_g
         mock_rerun.assert_called_once()

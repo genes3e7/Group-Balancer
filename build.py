@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import ClassVar
 
@@ -126,33 +127,48 @@ class TreeShaker:
         Returns:
             list[str]: Sorted list of module names for PyInstaller exclusion.
         """
-        import importlib.metadata
-
         imported = {i.lower() for i in self.find_all_imports()}
-        installed = {
-            dist.metadata["Name"].lower() for dist in importlib.metadata.distributions()
-        }
 
-        # Calculate delta: installed but not imported
-        # We limit the dynamic delta to avoid over-aggressive pruning of
-        # indirect C-extension dependencies that static analysis might miss.
-        dynamic_delta = (installed - imported) - {p.lower() for p in self.PROTECTED}
+        # Deterministic Baseline: Parse declared dependencies from pyproject.toml
+        pyproject_path = self.root / "pyproject.toml"
+        try:
+            with open(pyproject_path, "rb") as f:
+                pyproject = tomllib.load(f)
+
+            project = pyproject.get("project", {})
+            # Main dependencies
+            deps = {
+                req.split(">")[0].split("=")[0].split("[")[0].strip().lower()
+                for req in project.get("dependencies", [])
+            }
+            # Optional (dev) dependencies
+            optional = pyproject.get("project", {}).get("optional-dependencies", {})
+            for group in optional.values():
+                deps.update(
+                    {
+                        req.split(">")[0].split("=")[0].split("[")[0].strip().lower()
+                        for req in group
+                    }
+                )
+        except (FileNotFoundError, PermissionError) as e:
+            print(f"⚠️ Warning: Failed to parse pyproject.toml: {e}")
+            deps = set()
+
+        # Calculate delta: declared but not imported (candidates for exclusion)
+        dynamic_delta = (deps - imported) - {p.lower() for p in self.PROTECTED}
 
         excludes = set()
 
-        # Step 1: Explicit Banned Bloat
+        # Step 1: Explicit Banned Bloat (if not used)
         for mod in self.BANNED_BLOAT:
             if mod.lower() not in imported:
                 excludes.add(mod)
 
-        # Step 2: Development Packages
-        excludes.update(self.DEV_PACKAGES)
+        # Step 2: Explicit Development Packages (if not in PROTECTED)
+        excludes.update(self.DEV_PACKAGES - self.PROTECTED)
 
-        # Step 3: Dynamic Delta (Bounded for safety)
-        # We only take the delta if it's within a reasonable size to prevent
-        # stripping critical system-level dependencies.
-        if len(dynamic_delta) < 100:
-            excludes.update(dynamic_delta)
+        # Step 3: Dynamic Delta (packages declared in pyproject but not used)
+        excludes.update(dynamic_delta)
 
         # Step 4: Absolute Protection
         excludes -= self.PROTECTED

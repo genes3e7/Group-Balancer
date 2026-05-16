@@ -8,6 +8,7 @@ import hashlib
 import json
 import pathlib
 import time
+from typing import Any
 
 import pandas as pd
 import streamlit as st
@@ -21,6 +22,16 @@ from src.utils import exporter, group_helpers
 
 # Keys that should not be deleted when the user clicks 'Start Over'
 _RESET_PRESERVE_KEYS = frozenset({"warm_start_cache"})
+
+# Application Steps
+STEP_DATA_ENTRY = 1
+STEP_CONFIGURE = 2
+STEP_RESULTS = 3
+
+# UI Constants
+MAX_WARM_CACHE_SIZE = 50
+MIN_PARTICIPANTS_FOR_BALANCING = 2
+DEFAULT_UI_WEIGHT = 1.0
 
 
 def _generate_cache_key(
@@ -151,7 +162,7 @@ def render_step_1() -> None:
                 st.session_state.participants_df = clean_df
                 st.session_state.manual_df = clean_df.copy()
                 st.session_state.score_cols = score_cols
-                session_manager.go_to_step(2)
+                session_manager.go_to_step(STEP_CONFIGURE)
         else:
             st.warning("Please add participants.")
 
@@ -160,21 +171,55 @@ def render_step_2() -> None:
     """Renders Step 2: Configuration.
 
     Handles group count, capacity allocation, objective weighting, and
-    solver mode selection.
+    solver execution.
     """
     st.header("Step 2: Configuration")
     df = st.session_state.get("participants_df")
     if df is None or df.empty:
-        st.warning("No data found.")
-        if st.button("⬅ Back"):
-            session_manager.go_to_step(1)
-        st.stop()
+        _handle_missing_data_step_2()
+        return
 
     total_p = len(df)
     score_cols = st.session_state.get("score_cols", [])
-    min_allowed = min(2, total_p)
 
-    # Defensive coercion and clamping for groups_input
+    # 1. Group Count Input
+    num_groups = _render_group_count_input(total_p)
+
+    # 2. Capacity Inputs
+    group_capacities = _render_capacity_inputs(total_p, num_groups)
+    cap_valid = sum(group_capacities) == total_p
+    if not cap_valid:
+        st.error(f"Capacity mismatch: {sum(group_capacities)} != {total_p}")
+
+    # 3. Solver Controls (Priority and Weights)
+    priority, score_weights = _render_solver_controls(score_cols)
+
+    # 4. Timeout Slider
+    timeout = _render_timeout_slider()
+
+    st.divider()
+    # 5. Navigation and Execution
+    _render_step_2_footer(
+        df,
+        group_capacities,
+        score_weights,
+        priority,
+        timeout,
+        {"cap_valid": cap_valid, "num_groups": num_groups},
+    )
+
+
+def _handle_missing_data_step_2() -> None:
+    """Renders warning and back button when data is missing in Step 2."""
+    st.warning("No data found.")
+    if st.button("⬅ Back"):
+        session_manager.go_to_step(STEP_DATA_ENTRY)
+    st.stop()
+
+
+def _render_group_count_input(total_p: int) -> int:
+    """Renders the number_input for group count with defensive clamping."""
+    min_allowed = min(MIN_PARTICIPANTS_FOR_BALANCING, total_p)
     try:
         raw_val = st.session_state.get("groups_input", min_allowed)
         curr_val = int(raw_val)
@@ -193,16 +238,21 @@ def render_step_2() -> None:
         )
     )
     c2.info(f"Total Participants: {total_p}")
+    return num_groups
 
+
+def _render_capacity_inputs(total_p: int, num_groups: int) -> list[int]:
+    """Renders numeric inputs for each group capacity."""
     st.subheader("Group Capacities")
     group_capacities = []
     base, rem = divmod(total_p, num_groups)
     cols = st.columns(num_groups)
+
     for i in range(num_groups):
         default = base + (1 if i < rem else 0)
         key = f"cap_{num_groups}_{i}"
 
-        # Defensive state clamping and coercion to prevent crashes on stale data
+        # Defensive state clamping
         try:
             val = int(st.session_state.get(key, default))
         except (ValueError, TypeError):
@@ -211,11 +261,13 @@ def render_step_2() -> None:
 
         cap = int(cols[i % len(cols)].number_input(f"G{i + 1}", 0, total_p, key=key))
         group_capacities.append(cap)
+    return group_capacities
 
-    cap_valid = sum(group_capacities) == total_p
-    if not cap_valid:
-        st.error(f"Capacity mismatch: {sum(group_capacities)} != {total_p}")
 
+def _render_solver_controls(
+    score_cols: list[str],
+) -> tuple[ConflictPriority, dict[str, float]]:
+    """Renders priority radio and weight numeric inputs."""
     st.subheader("Solver Controls")
     priority_options = {
         "groupers": ConflictPriority.GROUPERS,
@@ -233,11 +285,17 @@ def render_step_2() -> None:
 
     st.subheader("Objective Weighting")
     score_weights = {
-        col: st.number_input(f"Weight: {col}", 0.0, 10.0, 1.0, 0.1, key=f"w_{col}")
+        col: st.number_input(
+            f"Weight: {col}", 0.0, 10.0, DEFAULT_UI_WEIGHT, 0.1, key=f"w_{col}"
+        )
         for col in score_cols
     }
+    return priority_options[priority_key], score_weights
 
-    timeout = int(
+
+def _render_timeout_slider() -> int:
+    """Renders the slider for solver timeout."""
+    return int(
         st.slider(
             "Timeout (s)",
             config.UI_TIMEOUT_MIN,
@@ -247,99 +305,112 @@ def render_step_2() -> None:
         )
     )
 
-    st.divider()
+
+def _render_step_2_footer(  # noqa: PLR0913
+    df: pd.DataFrame,
+    group_capacities: list[int],
+    score_weights: dict[str, float],
+    priority: ConflictPriority,
+    timeout: int,
+    meta: dict[str, Any],
+) -> None:
+    """Renders the footer buttons and handles optimization execution logic."""
+    cap_valid = meta["cap_valid"]
+    num_groups = meta["num_groups"]
+
     c_back, c_go = st.columns([1, 5])
     if c_back.button("⬅ Back"):
-        session_manager.go_to_step(1)
+        session_manager.go_to_step(STEP_DATA_ENTRY)
 
     if c_go.button("🚀 Generate", type="primary", disabled=not cap_valid):
         st.session_state.num_groups_target = num_groups
         st.session_state.group_capacities = group_capacities
 
         status_box = st.empty()
-
-        # Backend Reduction: Simplify weights to irreducible integer ratios
-        # (e.g., 0.2:0.4 -> 1:2) to maximize solver speed and cache hits.
         reduced_weights = OptimizationService.reduce_score_weights(score_weights)
 
-        # Cache Logic: Use reduced weights for the composite key
-        cache_key = _generate_cache_key(
-            df, group_capacities, reduced_weights, priority_options[priority_key]
-        )
-
-        # Determine best-effort previous results
-        # 1. Check if interactive_df exists AND matches the requested configuration.
-        # This preserves manual UI edits if the user re-runs the same configuration.
-        prev_results = None
-        interactive_df = st.session_state.get("interactive_df")
-        results_df = st.session_state.get("results_df")
-
-        if interactive_df is not None and results_df is not None:
-            # Reconstruct the cache key for the interactive_df to see if it matches
-            interactive_key = _generate_cache_key(
-                df,
-                results_df.attrs.get("group_capacities", []),
-                results_df.attrs.get("score_weights", {}),
-                results_df.attrs.get(
-                    "conflict_priority", priority_options[priority_key]
-                ),
-            )
-
-            if interactive_key == cache_key:
-                prev_results = interactive_df.copy(deep=True)
-                for col in ["_original_index", "participant_fingerprint"]:
-                    if col in results_df.columns:
-                        prev_results[col] = results_df[col]
-                prev_results.attrs = dict(results_df.attrs)
-
-        # 2. If interactive_df doesn't match the new config (e.g. user changed weights),
-        # check if we've solved this exact configuration before in the cache.
-        if prev_results is None and cache_key in st.session_state.warm_start_cache:
-            prev_results = st.session_state.warm_start_cache[cache_key].copy(deep=True)
-            st.session_state.warm_start_cache.move_to_end(cache_key)
-
-        # 3. Fallback
-        if prev_results is None:
-            prev_results = results_df
+        # Cache and Warm-Start resolution
+        cache_key = _generate_cache_key(df, group_capacities, reduced_weights, priority)
+        prev_results = _resolve_best_hints(df, cache_key, priority)
 
         result_df, metrics = OptimizationService.run(
             df,
             group_capacities,
             reduced_weights,
-            priority_options[priority_key],
+            priority,
             timeout,
             grouper_weight=config.DEFAULT_GROUPER_WEIGHT,
             separator_weight=config.DEFAULT_SEPARATOR_WEIGHT,
-            interleave_search=False,  # Force Race Mode for UI responsiveness
+            interleave_search=False,
             status_box=status_box,
             previous_results=prev_results,
         )
 
-        if result_df is not None:
-            st.session_state.warm_start_cache[cache_key] = result_df.copy()
-            if len(st.session_state.warm_start_cache) > 50:
-                st.session_state.warm_start_cache.popitem(last=False)
+        _handle_optimization_result(result_df, metrics, cache_key)
 
-            st.session_state.results_df = result_df
-            st.session_state.interactive_df = result_df.copy()
-            st.session_state.solver_status = metrics["status"]
-            st.session_state.solver_elapsed = metrics["elapsed"]
-            st.session_state.solver_error = None
-            time.sleep(0.5)
-            session_manager.go_to_step(3)
-        else:
-            st.session_state.results_df = None
-            st.session_state.interactive_df = None
-            st.session_state.solver_status = metrics["status"]
-            st.session_state.solver_elapsed = metrics["elapsed"]
-            st.session_state.solver_error = metrics.get("error")
-            session_manager.go_to_step(3)
+
+def _resolve_best_hints(
+    df: pd.DataFrame, cache_key: str, priority: ConflictPriority
+) -> pd.DataFrame | None:
+    """Determines the best available previous results for warm-starting."""
+    # 1. Check current interactive state
+    interactive_df = st.session_state.get("interactive_df")
+    results_df = st.session_state.get("results_df")
+
+    if interactive_df is not None and results_df is not None:
+        interactive_key = _generate_cache_key(
+            df,
+            results_df.attrs.get("group_capacities", []),
+            results_df.attrs.get("score_weights", {}),
+            results_df.attrs.get("conflict_priority", priority),
+        )
+        if interactive_key == cache_key:
+            prev = interactive_df.copy(deep=True)
+            for col in ["_original_index", "participant_fingerprint"]:
+                if col in results_df.columns:
+                    prev[col] = results_df[col]
+            prev.attrs = dict(results_df.attrs)
+            return prev
+
+    # 2. Check LRU Cache
+    if cache_key in st.session_state.warm_start_cache:
+        prev = st.session_state.warm_start_cache[cache_key].copy(deep=True)
+        st.session_state.warm_start_cache.move_to_end(cache_key)
+        return prev
+
+    # 3. Fallback to raw results
+    return results_df
+
+
+def _handle_optimization_result(
+    result_df: pd.DataFrame | None, metrics: dict, cache_key: str
+) -> None:
+    """Updates session state and navigates based on solver outcome."""
+    if result_df is not None:
+        st.session_state.warm_start_cache[cache_key] = result_df.copy()
+        if len(st.session_state.warm_start_cache) > MAX_WARM_CACHE_SIZE:
+            st.session_state.warm_start_cache.popitem(last=False)
+
+        st.session_state.results_df = result_df
+        st.session_state.interactive_df = result_df.copy()
+        st.session_state.solver_status = metrics["status"]
+        st.session_state.solver_elapsed = metrics["elapsed"]
+        st.session_state.solver_error = None
+        time.sleep(0.5)
+    else:
+        st.session_state.results_df = None
+        st.session_state.interactive_df = None
+        st.session_state.solver_status = metrics["status"]
+        st.session_state.solver_elapsed = metrics["elapsed"]
+        st.session_state.solver_error = metrics.get("error")
+
+    session_manager.go_to_step(STEP_RESULTS)
 
 
 def render_step_3() -> None:
     """Renders Results step."""
     if st.button("⬅ Back"):
-        session_manager.go_to_step(2)
+        session_manager.go_to_step(STEP_CONFIGURE)
     st.header("Step 3: Results")
 
     status_name = st.session_state.get("solver_status")
@@ -420,11 +491,14 @@ def _render_table_view(score_cols: list[str]) -> None:
 
     with stats_col:
         st.subheader("Live Stats")
-        groups = group_helpers.aggregate_groups(
-            st.session_state.interactive_df,
+        cfg = group_helpers.GroupingConfig(
             config.COL_GROUP,
             score_cols,
             config.COL_NAME,
+        )
+        groups = group_helpers.aggregate_groups(
+            st.session_state.interactive_df,
+            cfg,
         )
         stats_data = group_helpers.calculate_balancing_stats(groups, score_cols)
         stats_lookup = {s["Score Dimension"]: s for s in stats_data}
@@ -448,14 +522,14 @@ def _render_table_view(score_cols: list[str]) -> None:
 
 @st.cache_data(show_spinner=False)
 def _build_excel_bytes(
-    df_key: tuple[int, int, tuple[str, ...]],
+    df_key: tuple[str, int, tuple[str, ...]],
     _df: pd.DataFrame,
     score_cols: tuple[str, ...],
 ) -> bytes:
     """Memoized Excel generation to avoid redundant recomputes.
 
     Args:
-        df_key (tuple): Tuple of hash sum, length, and columns for cache keying.
+        df_key (tuple): Tuple of hash hex, length, and columns for cache keying.
         _df (pd.DataFrame): The result dataframe to export.
         score_cols (tuple): Tuple of score columns to include.
 

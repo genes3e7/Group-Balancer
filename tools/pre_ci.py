@@ -10,7 +10,7 @@ import subprocess
 import sys
 from typing import ClassVar
 
-DEFAULT_MIN_PY = "3.10"
+DEFAULT_MIN_PY = "3.11"
 DEFAULT_MAX_PY = "3.14"
 
 
@@ -318,18 +318,20 @@ class PreCIPipeline:
             print(f"⚠️ Warning: Could not remove {path}: {e}", flush=True)
 
     def execute(self) -> None:
-        """Runs the full Pre-CI gate sequence and exits non-zero on failure.
+        """Runs the full Pre-CI gate sequence and exits non-zero on failure."""
+        try:
+            self._phase_prepare()
+            self._phase_static_analysis()
+            self._phase_unit_tests()
+            self._phase_style_and_lint()
+            self._phase_build()
 
-        Execution order: environment sync → README update → parallel checks
-        (Vulture + Interrogate) → sequential Pytest (local only) →
-        Ruff lint/format → optional build verification → cleanup → final report.
+        finally:
+            self.cleanup()
+            self._report_final()
 
-        Args:
-            None
-
-        Returns:
-            None
-        """
+    def _phase_prepare(self) -> None:
+        """Environment preparation phase."""
         print("\n" + "=" * 60, flush=True)
         mode = "CI PIPELINE" if self.is_ci else "LOCAL PRE-CI"
         print(f"🚀 GROUP BALANCER {mode} GATE", flush=True)
@@ -340,156 +342,135 @@ class PreCIPipeline:
             print("\n❌ FATAL: 'uv' executable not found in PATH.", flush=True)
             sys.exit(1)
 
-        try:
-            # 1. Sync Dependencies (Fail-fast as subsequent steps depend on it)
-            self.run_command(
-                [uv_path, "sync", "--all-extras", "--frozen"],
-                "Syncing Project Environment",
-                fail_fast=True,
-            )
+        self.run_command(
+            [uv_path, "sync", "--all-extras", "--frozen"],
+            "Syncing Project Environment",
+            fail_fast=True,
+        )
 
-            # 2. Update README
-            print("\n>>> [Step: Updating README structure]", flush=True)
-            res = subprocess.run(
+        # 2. Update README
+        print("\n>>> [Step: Updating README structure]", flush=True)
+        res = subprocess.run(
+            [
+                uv_path,
+                "run",
+                "--no-sync",
+                "python",
+                "tools/update_readme.py",
+                self.min_ver,
+                self.max_ver,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            env=os.environ.copy(),
+        )  # noqa: S603
+        if res.stdout:
+            print(res.stdout.strip(), flush=True)
+        if res.stderr:
+            print(res.stderr.strip(), flush=True)
+
+        if res.returncode != 0 or re.search(
+            r"^ERROR:|^CRITICAL:", res.stdout + res.stderr, re.MULTILINE
+        ):
+            print("\n❌ FATAL: 'Updating README structure' failed.", flush=True)
+            self.record_result("Updating README structure", False)
+            sys.exit(1)
+
+        print("✅ Updating README structure completed successfully.", flush=True)
+        self.record_result("Updating README structure", True)
+
+    def _phase_static_analysis(self) -> None:
+        """Parallel static analysis phase."""
+        uv_path = shutil.which("uv")
+        parallel_tasks = [
+            (
                 [
                     uv_path,
                     "run",
                     "--no-sync",
-                    "python",
-                    "tools/update_readme.py",
-                    self.min_ver,
-                    self.max_ver,
+                    "vulture",
+                    "src/",
+                    "--min-confidence",
+                    "80",
                 ],
-                capture_output=True,
-                text=True,
-                check=False,
-                encoding="utf-8",
-                env=os.environ.copy(),
-            )  # noqa: S603
-            if res.stdout:
-                print(res.stdout.strip(), flush=True)
-            if res.stderr:
-                print(res.stderr.strip(), flush=True)
+                "Dead Code Analysis (Vulture)",
+            ),
+            (
+                [uv_path, "run", "--no-sync", "interrogate", "."],
+                "Docstring Coverage Enforcement",
+            ),
+        ]
+        success_parallel = self.run_commands_parallel(parallel_tasks)
+        if not success_parallel:
+            print("\n❌ FATAL: Parallel checks failed. Aborting.", flush=True)
+            sys.exit(1)
 
-            # Fail fast if script failed or output contains anchored ERROR/CRITICAL
-            if res.returncode != 0 or re.search(
-                r"^ERROR:|^CRITICAL:", res.stdout + res.stderr, re.MULTILINE
-            ):
-                print(
-                    "\n❌ FATAL: 'Updating README structure' failed.",
-                    flush=True,
-                )
-                self.record_result("Updating README structure", False)
-                sys.exit(1)
+    def _phase_unit_tests(self) -> None:
+        """Functional testing phase."""
+        if not self.is_ci:
+            uv_path = shutil.which("uv")
+            self.run_command(
+                [uv_path, "run", "--no-sync", "pytest", "-v"],
+                "Unit Tests & Coverage Enforcement",
+                fail_fast=True,
+            )
 
-            print("✅ Updating README structure completed successfully.", flush=True)
-            self.record_result("Updating README structure", True)
-
-            # 3. Parallel Checks (Vulture, Interrogate)
-            # These are lightweight enough to run concurrently.
-            parallel_tasks = [
-                (
-                    [
-                        uv_path,
-                        "run",
-                        "--no-sync",
-                        "vulture",
-                        "src/",
-                        "--min-confidence",
-                        "80",
-                    ],
-                    "Dead Code Analysis (Vulture)",
-                ),
-                (
-                    [uv_path, "run", "--no-sync", "interrogate", "."],
-                    "Docstring Coverage Enforcement",
-                ),
-            ]
-
-            success_parallel = self.run_commands_parallel(parallel_tasks)
-            if not success_parallel:
-                print("\n❌ FATAL: Parallel checks failed. Aborting.", flush=True)
-                sys.exit(1)
-
-            # 4. Unit Tests (Run sequentially to see clear progress)
-            if not self.is_ci:
-                # Use the command wrapper for consistent error recording and fail-fast
+    def _phase_style_and_lint(self) -> None:
+        """Linting and formatting phase."""
+        uv_path = shutil.which("uv")
+        if self.is_ci:
+            self.run_command(
+                [uv_path, "run", "--no-sync", "ruff", "check", "."],
+                "Ruff Linting",
+                fail_fast=True,
+            )
+            self.run_command(
+                [uv_path, "run", "--no-sync", "ruff", "format", "--check", "."],
+                "Ruff Formatting",
+                fail_fast=True,
+            )
+            self.run_command(
+                [uv_path, "run", "--no-sync", "pymarkdown", "scan", "."],
+                "Markdown Linting",
+                fail_fast=True,
+            )
+        else:
+            self.run_command(
+                [uv_path, "run", "--no-sync", "pymarkdown", "scan", "."],
+                "Markdown Linting",
+                fail_fast=True,
+            )
+            if self.all_passed():
                 self.run_command(
-                    [uv_path, "run", "--no-sync", "pytest", "-v"],
-                    "Unit Tests & Coverage Enforcement",
+                    [uv_path, "run", "--no-sync", "ruff", "check", ".", "--fix"],
+                    "Ruff Linting",
+                    fail_fast=True,
+                )
+                self.run_command(
+                    [uv_path, "run", "--no-sync", "ruff", "format", "."],
+                    "Ruff Formatting",
                     fail_fast=True,
                 )
 
-            # 5. Linting and Formatting (Apply only if checks passed, or if local)
-            if self.is_ci:
-                # In CI, fail-fast on style drift instead of auto-fixing.
-                self.run_command(
-                    [uv_path, "run", "--no-sync", "ruff", "check", "."],
-                    "Ruff Linting",
-                )
-                self.run_command(
-                    [uv_path, "run", "--no-sync", "ruff", "format", "--check", "."],
-                    "Ruff Formatting",
-                )
-                self.run_command(
-                    [
-                        uv_path,
-                        "run",
-                        "--no-sync",
-                        "pymarkdown",
-                        "scan",
-                        ".",
-                    ],
-                    "Markdown Linting",
-                )
-            else:
-                # Locally, always run Markdown linting for visibility.
-                self.run_command(
-                    [
-                        uv_path,
-                        "run",
-                        "--no-sync",
-                        "pymarkdown",
-                        "scan",
-                        ".",
-                    ],
-                    "Markdown Linting",
-                )
+    def _phase_build(self) -> None:
+        """Build integrity phase."""
+        if self.all_passed():
+            uv_path = shutil.which("uv")
+            self.run_command(
+                [uv_path, "run", "--no-sync", "python", "build.py"],
+                "Verifying Build Integrity",
+                fail_fast=True,
+            )
 
-                if self.all_passed():
-                    # Allow auto-fixing for Ruff if logic is sound.
-                    self.run_command(
-                        [uv_path, "run", "--no-sync", "ruff", "check", ".", "--fix"],
-                        "Ruff Linting",
-                    )
-                    self.run_command(
-                        [uv_path, "run", "--no-sync", "ruff", "format", "."],
-                        "Ruff Formatting",
-                    )
-                else:
-                    self.record_result("Ruff Linting", "SKIPPED")
-                    self.record_result("Ruff Formatting", "SKIPPED")
-
-            # 6. Build Verification Gate
-            if self.all_passed():
-                self.run_command(
-                    [uv_path, "run", "--no-sync", "python", "build.py"],
-                    "Verifying Build Integrity",
-                )
-            else:
-                self.record_result("Verifying Build Integrity", "SKIPPED")
-
-        finally:
-            # 7. Cleanup
-            # Removes build artifacts (including "build" and "dist").
-            self.cleanup()
-
-            # 8. Final Report
-            if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
-                print("\n✨ ALL CHECKS PASSED.\n", flush=True)
-            else:
-                print("\n❌ Pipeline failed. See logs above.\n", flush=True)
-                sys.exit(1)
+    def _report_final(self) -> None:
+        """Final reporting and exit."""
+        if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
+            print("\n✨ ALL CHECKS PASSED.\n", flush=True)
+        else:
+            print("\n❌ Pipeline failed. See logs above.\n", flush=True)
+            sys.exit(1)
 
 
 if __name__ == "__main__":

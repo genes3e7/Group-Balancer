@@ -2,7 +2,7 @@
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://group-balancer.streamlit.app/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![Python: 3.10-3.14](https://img.shields.io/badge/Python-3.10--3.14-blue.svg)](https://www.python.org/downloads/)
+[![Python: 3.11-3.14](https://img.shields.io/badge/Python-3.11--3.14-blue.svg)](https://www.python.org/downloads/)
 
 A high-performance team optimization engine built with Streamlit and Google OR-Tools. Efficiently partitions participants into groups while balancing multiple score dimensions and satisfying categorical constraints (Groupers and Separators).
 
@@ -59,6 +59,7 @@ This gate enforces:
 ```text
 .
 ├── .coderabbit.yaml
+├── .gitattributes
 ├── .github/
 │   ├── dependabot.yml
 │   └── workflows/

@@ -18,14 +18,13 @@ def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
         df (pd.DataFrame): The participant result data.
         score_cols (list[str]): List of score columns to calculate stats for.
     """
-    if df is None or df.empty:
+    if df is None or df.empty or not score_cols:
         st.warning("No participant data found.")
         return
 
     st.subheader("Balancing Summary")
-    groups = group_helpers.aggregate_groups(
-        df, config.COL_GROUP, score_cols, config.COL_NAME
-    )
+    cfg = group_helpers.GroupingConfig(config.COL_GROUP, score_cols, config.COL_NAME)
+    groups = group_helpers.aggregate_groups(df, cfg)
     stats_data = group_helpers.calculate_balancing_stats(groups, score_cols)
 
     cols = st.columns(len(score_cols))
@@ -46,13 +45,12 @@ def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
         df (pd.DataFrame): The participant result data.
         score_cols (list[str]): List of score columns to display.
     """
-    if df is None or df.empty:
+    if df is None or df.empty or not score_cols:
         st.warning("No groups to display.")
         return
 
-    groups = group_helpers.aggregate_groups(
-        df, config.COL_GROUP, score_cols, config.COL_NAME
-    )
+    cfg = group_helpers.GroupingConfig(config.COL_GROUP, score_cols, config.COL_NAME)
+    groups = group_helpers.aggregate_groups(df, cfg)
 
     # Grid parameters
     num_cols = 3
@@ -79,10 +77,11 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
         st.markdown(f"#### Group {group['id']}")
 
         # Mini-metrics for group averages
-        cols = st.columns(len(score_cols))
-        for i, col in enumerate(score_cols):
-            avg = group["averages"][col]
-            cols[i].metric(col, f"{avg:.1f}")
+        if score_cols:
+            cols = st.columns(len(score_cols))
+            for i, col in enumerate(score_cols):
+                avg = group["averages"][col]
+                cols[i].metric(col, f"{avg:.1f}")
 
         # Member list using a data editor for potential manual tweaks
         members_df = pd.DataFrame(group["members"])

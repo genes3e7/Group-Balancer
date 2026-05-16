@@ -3,7 +3,7 @@ name = "group-balancer"
 version = "1.0.0"
 description = "Optimizes team allocations based on individual scores and constraints."
 authors = [{ name = "Group Balancer Contributors" }]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "streamlit>=1.49.0",
     "pandas>=2.0.0",
@@ -43,9 +43,12 @@ line-length = 88
 indent-width = 4
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B"]
+select = ["E", "F", "I", "N", "W", "UP", "B", "ARG", "PL"]
 ignore = []
 fixable = ["ALL"]
+
+[tool.ruff.format]
+line-ending = "lf"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
