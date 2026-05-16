@@ -118,22 +118,44 @@ class TreeShaker:
         return imports
 
     def generate_exclusion_list(self) -> list[str]:
-        """Computes the final list of modules to exclude from the bundle."""
-        imported = {i.lower() for i in self.find_all_imports()}
+        """Identifies modules that are not required for production.
 
-        # Logic: Exclude if BANNED_BLOAT OR is DEV_PACKAGES.
-        # Dynamic exclusion is disabled to protect indirect dependencies.
+        Calculates the delta between installed packages and project imports,
+        filtering through protected and banned lists.
+
+        Returns:
+            list[str]: Sorted list of module names for PyInstaller exclusion.
+        """
+        import importlib.metadata
+
+        imported = {i.lower() for i in self.find_all_imports()}
+        installed = {
+            dist.metadata["Name"].lower() for dist in importlib.metadata.distributions()
+        }
+
+        # Calculate delta: installed but not imported
+        # We limit the dynamic delta to avoid over-aggressive pruning of
+        # indirect C-extension dependencies that static analysis might miss.
+        dynamic_delta = (installed - imported) - {p.lower() for p in self.PROTECTED}
+
         excludes = set()
 
-        # 1. Add all dev packages, ensuring they aren't in PROTECTED
-        for dev in self.DEV_PACKAGES:
-            if dev not in self.PROTECTED:
-                excludes.add(dev)
+        # Step 1: Explicit Banned Bloat
+        for mod in self.BANNED_BLOAT:
+            if mod.lower() not in imported:
+                excludes.add(mod)
 
-        # 2. Add bloat if not used and not in PROTECTED
-        for bloat in self.BANNED_BLOAT:
-            if bloat.lower() not in imported and bloat not in self.PROTECTED:
-                excludes.add(bloat)
+        # Step 2: Development Packages
+        excludes.update(self.DEV_PACKAGES)
+
+        # Step 3: Dynamic Delta (Bounded for safety)
+        # We only take the delta if it's within a reasonable size to prevent
+        # stripping critical system-level dependencies.
+        if len(dynamic_delta) < 100:
+            excludes.update(dynamic_delta)
+
+        # Step 4: Absolute Protection
+        excludes -= self.PROTECTED
 
         return sorted(excludes)
 

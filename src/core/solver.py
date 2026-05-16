@@ -625,7 +625,9 @@ def _clean_score_cell(value: object) -> float:
     try:
         val = float(value)
     except (TypeError, ValueError):
-        logger.warning("Invalid score value: %r of type %s", value, type(value))
+        logger.warning(
+            "Invalid score value: <REDACTED> of type %s", type(value).__name__
+        )
         return 0.0
 
     if math.isnan(val) or math.isinf(val):

@@ -406,32 +406,19 @@ class PreCIPipeline:
                 ),
             ]
 
-            self.run_commands_parallel(parallel_tasks)
+            success_parallel = self.run_commands_parallel(parallel_tasks)
+            if not success_parallel:
+                print("\n❌ FATAL: Parallel checks failed. Aborting.", flush=True)
+                sys.exit(1)
 
             # 4. Unit Tests (Run sequentially to see clear progress)
             if not self.is_ci:
-                print("\n>>> [Step: Unit Tests & Coverage Enforcement]", flush=True)
-                # Stream output directly to console for real-time visibility.
-                # Coverage failure is detected via pytest's own exit code when
-                # --cov-fail-under is passed correctly in pyproject.toml.
-                res = subprocess.run(
+                # Use the command wrapper for consistent error recording and fail-fast
+                self.run_command(
                     [uv_path, "run", "--no-sync", "pytest", "-v"],
-                    check=False,
-                    env=os.environ.copy(),
+                    "Unit Tests & Coverage Enforcement",
+                    fail_fast=True,
                 )
-                if res.returncode != 0:
-                    print(
-                        "\n❌ FATAL: 'Unit Tests & Coverage Enforcement' failed",
-                        flush=True,
-                    )
-                    self.record_result("Unit Tests & Coverage Enforcement", False)
-                    sys.exit(1)
-
-                print(
-                    "✅ Unit Tests & Coverage Enforcement completed successfully.",
-                    flush=True,
-                )
-                self.record_result("Unit Tests & Coverage Enforcement", True)
 
             # 5. Linting and Formatting (Apply only if checks passed, or if local)
             if self.is_ci:

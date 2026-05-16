@@ -230,12 +230,13 @@ def test_optimization_service_alignment_error_logging() -> None:
     assert res1 is not None
 
     # Metadata MUST match EXACTLY for the logic to reach the alignment check.
+    res_err = res1.copy()
+    res_err.attrs = res1.attrs.copy()
+
     # Multiset check (current_f == prev_f) must PASS.
     # But pair check (current_pairs == prev_pairs) must FAIL.
     # We swap indices to cause alignment error while keeping the multiset identical.
-    res_err = res1.copy()
     res_err.at[0, "_original_index"] = 999
-    res_err.attrs = res1.attrs.copy()
 
     with patch("src.core.services.logger.info") as mock_log:
         OptimizationService.run(

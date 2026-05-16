@@ -223,6 +223,14 @@ class OptimizationService:
         if not weights:
             return weights
 
+        # Validation: Weights must be finite and non-negative
+        for k, v in weights.items():
+            if not math.isfinite(v) or v < 0:
+                raise ValueError(
+                    f"Invalid weight for '{k}': {v}. "
+                    "Weights must be finite and non-negative."
+                )
+
         # Scale to handle resolution down to 0.001 (UI resolution is 0.1)
         scaled = {k: round(v * 1000) for k, v in weights.items()}
         non_zero = [v for v in scaled.values() if v > 0]
