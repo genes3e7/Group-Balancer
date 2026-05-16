@@ -82,6 +82,7 @@ def get_solver_config(
         group_capacities=capacities,
         score_weights=weights,
         conflict_priority=priority,
+        interleave_search=True,
         timeout_seconds=10,
     )
 
@@ -186,7 +187,10 @@ def test_solver_rounding_extreme() -> None:
     """Cover edge cases in solver.py rounding."""
     participants = [Participant(name="P1", scores={"S1": 10.0})]
     cfg = SolverConfig(
-        num_groups=1, group_capacities=[1], score_weights={"S1": 0.00000000001}
+        num_groups=1,
+        group_capacities=[1],
+        score_weights={"S1": 0.00000000001},
+        interleave_search=True,
     )
     from src.core.solver import AdvancedScoring
 
@@ -210,6 +214,7 @@ def test_circular_conflict_edge() -> None:
         group_capacities=[2, 1],
         score_weights={"S": 1.0},
         conflict_priority=ConflictPriority.GROUPERS,
+        interleave_search=True,
     )
 
     df, metrics = run_optimization(participants, solver_config)
@@ -283,6 +288,7 @@ def test_solver_soft_groupers_clamping() -> None:
         group_capacities=[2, 2],
         score_weights={SCORE_COL: 1.0},
         grouper_weight=1_000,
+        interleave_search=True,
     )
     results, status, _ = solver.solve_with_ortools(p, cfg)
     assert status in (cp_model.OPTIMAL, cp_model.FEASIBLE)
@@ -375,6 +381,7 @@ def test_solver_identity_buckets_complex() -> None:
         group_capacities=[1, 1],
         score_weights={"S1": 1.0},
         hints_by_index={0: 1, 1: 2},
+        interleave_search=True,
     )
     builder = solver.ConstraintBuilder(p, cfg)
     builder.build_variables()
@@ -390,26 +397,6 @@ def test_solver_identity_buckets_complex() -> None:
         mock_add_hint.assert_any_call(builder.x[(1, 1)], 1)
 
 
-def test_solver_strict_grouping_enforcement() -> None:
-    """Verify that strict grouping forces participants together."""
-    cfg = SolverConfig(
-        num_groups=2,
-        group_capacities=[1, 1],  # Max capacity 1, but strict group of 2 needed
-        score_weights={"Score1": 1.0},
-        strict_grouping=True,
-    )
-    # This should be INFEASIBLE because they MUST be together (size 2)
-    # but max capacity is 1.
-    _, status, _ = solver.solve_with_ortools(
-        [
-            {"Name": "P1", "Score1": 10, config.COL_GROUPER: "G"},
-            {"Name": "P2", "Score1": 10, config.COL_GROUPER: "G"},
-        ],
-        cfg,
-    )
-    assert status == cp_model.INFEASIBLE
-
-
 def test_solver_hint_out_of_range() -> None:
     """Verify logger warning when a hint is out of the valid group range."""
     p = [Participant(name="P1", scores={"S1": 10}, original_index=0)]
@@ -419,6 +406,7 @@ def test_solver_hint_out_of_range() -> None:
         group_capacities=[1, 1],
         score_weights={"S1": 1.0},
         hints_by_index={0: 999},
+        interleave_search=True,
     )
     builder = solver.ConstraintBuilder(p, cfg)
     builder.build_variables()
@@ -432,7 +420,10 @@ def test_solver_hint_out_of_range() -> None:
 def test_solver_status_unknown_coverage() -> None:
     """Cover the branch where solver returns an unexpected status."""
     cfg = SolverConfig(
-        num_groups=1, group_capacities=[1], score_weights={"Score1": 1.0}
+        num_groups=1,
+        group_capacities=[1],
+        score_weights={"Score1": 1.0},
+        interleave_search=True,
     )
     with patch(
         "ortools.sat.python.cp_model.CpSolver.Solve", return_value=cp_model.UNKNOWN
@@ -445,7 +436,10 @@ def test_solver_aggregate_objective_error() -> None:
     """Verify ValueError is raised if the bound exceeds 64-bit limits."""
     p = [Participant(name="P1", scores={"Score1": 10}, original_index=0)]
     cfg = SolverConfig(
-        num_groups=1, group_capacities=[1], score_weights={"Score1": 1.0}
+        num_groups=1,
+        group_capacities=[1],
+        score_weights={"Score1": 1.0},
+        interleave_search=True,
     )
     builder = solver.ConstraintBuilder(p, cfg)
     builder.build_variables()

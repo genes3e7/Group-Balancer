@@ -335,10 +335,15 @@ class PreCIPipeline:
         print(f"🚀 GROUP BALANCER {mode} GATE", flush=True)
         print("=" * 60, flush=True)
 
+        uv_path = shutil.which("uv")
+        if not uv_path:
+            print("\n❌ FATAL: 'uv' executable not found in PATH.", flush=True)
+            sys.exit(1)
+
         try:
             # 1. Sync Dependencies (Fail-fast as subsequent steps depend on it)
             self.run_command(
-                ["uv", "sync", "--all-extras", "--frozen"],
+                [uv_path, "sync", "--all-extras", "--frozen"],
                 "Syncing Project Environment",
                 fail_fast=True,
             )
@@ -347,7 +352,7 @@ class PreCIPipeline:
             print("\n>>> [Step: Updating README structure]", flush=True)
             res = subprocess.run(
                 [
-                    "uv",
+                    uv_path,
                     "run",
                     "--no-sync",
                     "python",
@@ -385,7 +390,7 @@ class PreCIPipeline:
             parallel_tasks = [
                 (
                     [
-                        "uv",
+                        uv_path,
                         "run",
                         "--no-sync",
                         "vulture",
@@ -396,7 +401,7 @@ class PreCIPipeline:
                     "Dead Code Analysis (Vulture)",
                 ),
                 (
-                    ["uv", "run", "--no-sync", "interrogate", "."],
+                    [uv_path, "run", "--no-sync", "interrogate", "."],
                     "Docstring Coverage Enforcement",
                 ),
             ]
@@ -410,7 +415,7 @@ class PreCIPipeline:
                 # Coverage failure is detected via pytest's own exit code when
                 # --cov-fail-under is passed correctly in pyproject.toml.
                 res = subprocess.run(
-                    ["uv", "run", "--no-sync", "pytest", "-v"],
+                    [uv_path, "run", "--no-sync", "pytest", "-v"],
                     check=False,
                     env=os.environ.copy(),
                 )
@@ -432,16 +437,16 @@ class PreCIPipeline:
             if self.is_ci:
                 # In CI, fail-fast on style drift instead of auto-fixing.
                 self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "check", "."],
+                    [uv_path, "run", "--no-sync", "ruff", "check", "."],
                     "Ruff Linting",
                 )
                 self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "format", "--check", "."],
+                    [uv_path, "run", "--no-sync", "ruff", "format", "--check", "."],
                     "Ruff Formatting",
                 )
                 self.run_command(
                     [
-                        "uv",
+                        uv_path,
                         "run",
                         "--no-sync",
                         "pymarkdown",
@@ -454,7 +459,7 @@ class PreCIPipeline:
                 # Locally, always run Markdown linting for visibility.
                 self.run_command(
                     [
-                        "uv",
+                        uv_path,
                         "run",
                         "--no-sync",
                         "pymarkdown",
@@ -467,11 +472,11 @@ class PreCIPipeline:
                 if self.all_passed():
                     # Allow auto-fixing for Ruff if logic is sound.
                     self.run_command(
-                        ["uv", "run", "--no-sync", "ruff", "check", ".", "--fix"],
+                        [uv_path, "run", "--no-sync", "ruff", "check", ".", "--fix"],
                         "Ruff Linting",
                     )
                     self.run_command(
-                        ["uv", "run", "--no-sync", "ruff", "format", "."],
+                        [uv_path, "run", "--no-sync", "ruff", "format", "."],
                         "Ruff Formatting",
                     )
                 else:
@@ -481,7 +486,7 @@ class PreCIPipeline:
             # 6. Build Verification Gate
             if self.all_passed():
                 self.run_command(
-                    ["uv", "run", "--no-sync", "python", "build.py"],
+                    [uv_path, "run", "--no-sync", "python", "build.py"],
                     "Verifying Build Integrity",
                 )
             else:

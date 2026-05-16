@@ -123,7 +123,7 @@ def test_results_renderer_single_card_with_members(
     ):
 
         def mock_data_editor(
-            df: pd.DataFrame, *args: object, **kwargs: object
+            df: pd.DataFrame, *_args: object, **_kwargs: object
         ) -> pd.DataFrame:
             # noqa: ARG001
             return df

@@ -48,6 +48,7 @@ def test_run_optimization_success_with_status_box() -> None:
         group_capacities=[1, 1],
         score_weights={"Score1": 1.0},
         conflict_priority=ConflictPriority.GROUPERS,
+        interleave_search=True,
         timeout_seconds=5,
     )
 
@@ -80,6 +81,7 @@ def test_run_optimization_failure_with_status_box() -> None:
         num_groups=2,
         group_capacities=[1, 1],
         score_weights={"Score1": 1.0},
+        interleave_search=True,
     )
 
     mock_box = MagicMock()
@@ -124,7 +126,12 @@ def test_solver_interface_callback_throttling() -> None:
 def test_solver_interface_callback_context_injection() -> None:
     """Verify callback context injection during solve."""
     participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
+    cfg = SolverConfig(
+        num_groups=1,
+        group_capacities=[1],
+        score_weights={"S1": 1.0},
+        interleave_search=True,
+    )
     with (
         patch("ortools.sat.python.cp_model.CpSolver") as mock_solver_cls,
         patch("src.core.solver_interface.add_script_run_ctx") as mock_add_ctx,
@@ -152,7 +159,12 @@ def test_solver_interface_status_box_failure_paths(
 ) -> None:
     """Verify all non-feasible solver outcomes surface st.error to the UI."""
     participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
+    cfg = SolverConfig(
+        num_groups=1,
+        group_capacities=[1],
+        score_weights={"S1": 1.0},
+        interleave_search=True,
+    )
     with (
         patch("ortools.sat.python.cp_model.CpSolver") as mock_solver_cls,
         patch("src.core.solver_interface.st") as mock_st,

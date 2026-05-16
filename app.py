@@ -19,7 +19,7 @@ def main() -> None:
     # Persistent error handling for invalid routing or state issues
     if err := st.session_state.get("persistent_error"):
         st.error(err)
-        if st.button("Dismiss"):
+        if st.button("Dismiss", key="dismiss_persistent_error"):
             del st.session_state["persistent_error"]
             st.rerun()
 
@@ -30,6 +30,7 @@ def main() -> None:
     render_app()
 
 
+@st.fragment
 def render_app() -> None:
     """Renders the main application steps asynchronously with lazy imports."""
     from src.ui import steps
