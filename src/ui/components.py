@@ -80,12 +80,16 @@ def render_step_progress(step: int) -> None:
     )
 
     cols_bar = st.columns(3, gap="small")
-    red_css = "background-color: #ff4b4b; height: 4px; width: 100%; border-radius: 2px;"
-    gray_css = "background-color: #ddd; height: 4px; width: 100%; border-radius: 2px;"
+    active_step_css = (
+        "background-color: #ff4b4b; height: 4px; width: 100%; border-radius: 2px;"
+    )
+    inactive_step_css = (
+        "background-color: #ddd; height: 4px; width: 100%; border-radius: 2px;"
+    )
 
     for i, col in enumerate(cols_bar):
         target = i + 1
-        css = red_css if target <= step else gray_css
+        css = active_step_css if target <= step else inactive_step_css
         # Individual segments are decorative; aria-hidden prevents redundancy
         col.markdown(
             f'<div aria-hidden="true" style="{css}"></div>',

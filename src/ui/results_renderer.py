@@ -124,9 +124,10 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
                 for _, row in edited_df.iterrows():
                     orig_idx = row["_original_index"]
                     # Fetch corresponding row from members_df to detect group change
-                    orig_row = members_df[
-                        members_df["_original_index"] == orig_idx
-                    ].iloc[0]
+                    matches = members_df[members_df["_original_index"] == orig_idx]
+                    if matches.empty:
+                        continue
+                    orig_row = matches.iloc[0]
 
                     if row[config.COL_GROUP] != orig_row[config.COL_GROUP]:
                         # Ensure we update the correct record in the global state

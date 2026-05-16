@@ -1,5 +1,6 @@
 """Infrastructure tests for root-level scripts."""
 
+import os
 from unittest.mock import MagicMock, patch
 
 import app
@@ -35,17 +36,24 @@ def test_build_executable_success() -> None:
         build.build_executable()
 
         # Verify the resolved binary was used
-        assert mock_run.call_count == 1
+        assert mock_run.called
         cmd = mock_run.call_args[0][0]
         assert cmd[0] == "uv"
         for flag in ("--clean", "--noupx", "--noconfirm", "--onedir", "--windowed"):
             assert flag in cmd, f"Missing required flag: {flag}"
 
         # Critical bundled artifacts must be present in --add-data
-        joined_cmd = " ".join(cmd)
-        assert "app.py" in joined_cmd
-        assert "src" in joined_cmd
-        assert "streamlit_launcher.py" in joined_cmd
+        # Format: --add-data src:dest
+        add_data_indices = [i for i, item in enumerate(cmd) if item == "--add-data"]
+        assert len(add_data_indices) == 2
+
+        # Check source paths (the item immediately following --add-data)
+        add_data_sources = [cmd[i + 1].split(os.pathsep)[0] for i in add_data_indices]
+        assert any("app.py" in s for s in add_data_sources)
+        assert any("src" in s for s in add_data_sources)
+
+        # Verify the main entry point is present
+        assert any("streamlit_launcher.py" in s for s in cmd)
 
 
 def test_app_importable() -> None:

@@ -54,7 +54,13 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
     st.cache_data = identity_decorator
 
     # Ensure session_state exists as a reachable stub
-    if not hasattr(st, "session_state"):
+    try:
+        # Reaching for the attribute on a MagicMock might return another mock,
+        # so we use getattr with a sentinel to be explicitly certain it's absent.
+        sentinel = object()
+        if getattr(st, "session_state", sentinel) is sentinel:
+            st.session_state = DummySessionState()
+    except AttributeError:
         st.session_state = DummySessionState()
 
 
@@ -62,11 +68,13 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
 def mock_streamlit_fragment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Redundant safety fixture for per-test isolation if needed."""
 
-    def identity(func: Callable[..., Any]) -> Callable[..., Any]:
-        return func
+    # Identity decorators using MagicMock to preserve decorator signatures
+    def identity(func_or_val: object = None, **_kwargs: object) -> Any:
+        if callable(func_or_val):
+            return func_or_val
+        return lambda f: f
 
     monkeypatch.setattr("streamlit.fragment", identity)
-    # Ensure cache_data is also protected and reset per test
     monkeypatch.setattr("streamlit.cache_data", identity)
 
 

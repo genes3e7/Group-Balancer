@@ -34,7 +34,7 @@ def test_generate_excel_bytes() -> None:
     with io.BytesIO(excel_bytes) as f:
         xl = pd.ExcelFile(f)
         assert "Balanced_Groups" in xl.sheet_names
-        df_out = pd.read_excel(f, sheet_name="Balanced_Groups")
+        df_out = xl.parse("Balanced_Groups")
         assert not df_out.empty
 
 

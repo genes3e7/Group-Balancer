@@ -490,9 +490,12 @@ class ConstraintBuilder:
                 hinted_groups[idx] for idx in indices if idx in hinted_groups
             )
 
-            if len(indices) > len(valid_hinted_g_idxs):
+            if len(valid_hinted_g_idxs) > 0 and len(indices) > len(valid_hinted_g_idxs):
                 # Anonymize identity to prevent leaking sensitive scores/tags
-                safe_id = hashlib.md5(str(identity).encode()).hexdigest()[:8]
+                # usedforsecurity=False ensures compatibility in FIPS environments
+                safe_id = hashlib.md5(
+                    str(identity).encode(), usedforsecurity=False
+                ).hexdigest()[:8]
                 logger.warning(
                     "Symmetry-aware hint truncation for bucket [%s]: %d participants "
                     "but only %d hints available. %d hints will be dropped.",

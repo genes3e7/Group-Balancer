@@ -400,7 +400,7 @@ def test_solver_strict_grouping_enforcement() -> None:
     )
     # This should be INFEASIBLE because they MUST be together (size 2)
     # but max capacity is 1.
-    results, status, _ = solver.solve_with_ortools(
+    _, status, _ = solver.solve_with_ortools(
         [
             {"Name": "P1", "Score1": 10, config.COL_GROUPER: "G"},
             {"Name": "P2", "Score1": 10, config.COL_GROUPER: "G"},

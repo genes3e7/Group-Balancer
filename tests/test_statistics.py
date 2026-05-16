@@ -1,6 +1,5 @@
 """Unit tests for statistical calculation logic."""
 
-import numpy as np
 import pandas as pd
 import pytest
 
@@ -22,8 +21,8 @@ def test_calculate_balancing_stats_basic() -> None:
     # Expected: avg(10, 20) = 15.0
     # Expected std: sqrt(((10-15)**2 + (20-15)**2) / (2-1)) = sqrt(50) ≈ 7.0711
     assert stats[0]["Global Avg"] == 15.0
-    assert np.isclose(
-        stats[0]["Avg Std Dev (Balance)"], pd.Series([10.0, 20.0]).std(ddof=1)
+    assert stats[0]["Avg Std Dev (Balance)"] == pytest.approx(
+        pd.Series([10.0, 20.0]).std(ddof=1)
     )
 
 
@@ -65,6 +64,6 @@ def test_statistical_parity_between_ui_paths() -> None:
 
     # Path 2: Manual Pandas GroupBy (Live Stats Path)
     gdf = df.groupby(config.COL_GROUP)["S1"].mean()
-    stats_pandas = gdf.std(ddof=1)
+    stats_pandas = float(gdf.std(ddof=1))
 
-    assert np.isclose(stats_helper[0]["Avg Std Dev (Balance)"], stats_pandas)
+    assert stats_helper[0]["Avg Std Dev (Balance)"] == pytest.approx(stats_pandas)

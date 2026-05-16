@@ -16,6 +16,13 @@ def main() -> None:
     components.setup_page()
     session_manager.init_session()
 
+    # Persistent error handling for invalid routing or state issues
+    if err := st.session_state.get("persistent_error"):
+        st.error(err)
+        if st.button("Dismiss"):
+            del st.session_state["persistent_error"]
+            st.rerun()
+
     # Render header components independently to ensure immediate visual feedback
     components.render_header_description()
     st.divider()
@@ -23,7 +30,6 @@ def main() -> None:
     render_app()
 
 
-@st.fragment
 def render_app() -> None:
     """Renders the main application steps asynchronously with lazy imports."""
     from src.ui import steps
@@ -38,7 +44,7 @@ def render_app() -> None:
         steps.render_step_3()
 
     else:
-        st.error("Invalid step. Resetting...")
+        st.session_state.persistent_error = "Invalid application step detected."
         session_manager.go_to_step(1)
 
 

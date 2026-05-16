@@ -42,8 +42,8 @@ class Participant:
         if not isinstance(self.name, str):
             object.__setattr__(self, "name", str(self.name))
 
-        # Ensure scores are floats and immutable
-        sanitized_scores = {k: float(v) for k, v in self.scores.items()}
+        # Coerce scores to mapping of str -> float for deterministic sorting/hashing
+        sanitized_scores = {str(k): float(v) for k, v in self.scores.items()}
         object.__setattr__(self, "scores", MappingProxyType(sanitized_scores))
 
     @property

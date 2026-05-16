@@ -122,7 +122,10 @@ def test_results_renderer_single_card_with_members(
         patch("streamlit.session_state", mock_state),
     ):
 
-        def mock_data_editor(df, *args, **kwargs):
+        def mock_data_editor(
+            df: pd.DataFrame, *args: object, **kwargs: object
+        ) -> pd.DataFrame:
+            # noqa: ARG001
             return df
 
         mock_editor.side_effect = mock_data_editor

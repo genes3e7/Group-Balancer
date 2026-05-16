@@ -4,9 +4,19 @@ This module provides shared logic for processing dataframe results into
 structured group dictionaries used by the UI and Exporter across multiple dimensions.
 """
 
-from typing import Any
+from typing import Any, TypedDict
 
 import pandas as pd
+
+
+class GroupMetadata(TypedDict):
+    """Strongly-typed metadata for an optimized group."""
+
+    id: int
+    members: list[dict[str, Any]]
+    count: int
+    averages: dict[str, float]
+    sums: dict[str, float]
 
 
 def aggregate_groups(
@@ -14,7 +24,7 @@ def aggregate_groups(
     col_group: str,
     score_cols: list[str],
     col_name: str,
-) -> list[dict[str, Any]]:
+) -> list[GroupMetadata]:
     """Aggregates a DataFrame of results into a list of group metadata dictionaries.
 
     Args:
@@ -24,10 +34,9 @@ def aggregate_groups(
         col_name (str): Column name for Participant Name.
 
     Returns:
-        list[dict[str, Any]]: A list of dictionaries, where each dict represents a group
-            and contains keys: 'id', 'members', 'count', 'averages', 'sums'.
+        list[GroupMetadata]: A list of group metadata objects.
     """
-    groups: list[dict[str, Any]] = []
+    groups: list[GroupMetadata] = []
     if df is None or df.empty:
         return groups
 
@@ -71,19 +80,18 @@ def aggregate_groups(
 
 
 def calculate_balancing_stats(
-    groups: list[dict[str, Any]], score_cols: list[str]
+    groups: list[GroupMetadata], score_cols: list[str]
 ) -> list[dict[str, Any]]:
     """Calculates global averages and standard deviations of group averages.
 
     Args:
-        groups: List of group metadata from aggregate_groups.
-        score_cols: List of score dimensions to process.
+        groups (list[GroupMetadata]): List of group metadata from aggregate_groups.
+        score_cols (list[str]): List of score dimensions to process.
 
     Returns:
-        List of dictionaries containing 'Score Dimension', 'Global Avg',
-        and 'Avg Std Dev (Balance)'.
-    """
-    # Exclude unassigned participants (Group -1) from balancing metrics
+        list[dict[str, Any]]: List of dictionaries containing 'Score Dimension',
+            'Global Avg', and 'Avg Std Dev (Balance)'.
+    """  # Exclude unassigned participants (Group -1) from balancing metrics
     valid_groups = [g for g in groups if g["id"] != -1]
 
     stats_data = []

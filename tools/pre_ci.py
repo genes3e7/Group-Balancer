@@ -411,6 +411,8 @@ class PreCIPipeline:
                 res = subprocess.run(
                     ["uv", "run", "--no-sync", "pytest", "-v"],
                     encoding="utf-8",
+                    text=True,
+                    check=False,
                     env=os.environ.copy(),
                 )
                 if res.returncode != 0:
