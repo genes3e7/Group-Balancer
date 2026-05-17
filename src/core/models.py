@@ -44,7 +44,7 @@ class Participant:
     separators: str = ""
     original_index: int | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Sanitize inputs after initialization."""
         if not isinstance(self.name, str):
             object.__setattr__(self, "name", str(self.name))
@@ -79,7 +79,7 @@ class SolverConfig:
         num_groups (int): Total number of groups to create.
         group_capacities (Sequence[int]): Exactly how many people per group.
         score_weights (Mapping[str, float]): Multipliers for each score dimension.
-        conflict_priority (ConflictPriority): Which constraint wins if tags overlap.
+        conflict_priority (ConflictPriority): Which constraint type takes precedence.
         grouper_weight (int): Internal penalty for splitting groupers.
         separator_weight (int): Internal penalty for clumping separators.
         random_seed (int): Deterministic seed for CP-SAT search workers.
@@ -104,7 +104,7 @@ class SolverConfig:
     timeout_seconds: int = 60
     num_workers: int = 4
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         """Validate configuration parameters.
 
         Raises:
@@ -140,40 +140,50 @@ class SolverConfig:
     def _validate_groups_and_capacity(self) -> None:
         """Internal helper for group and capacity validation."""
         if self.num_groups <= 0:
-            raise ValueError("Number of groups must be positive.")
+            msg = "Number of groups must be positive."
+            raise ValueError(msg)
         if self.num_groups > config.MAX_GROUPS:
-            raise ValueError(f"Number of groups exceeds limit of {config.MAX_GROUPS}.")
+            msg = f"Number of groups exceeds limit of {config.MAX_GROUPS}."
+            raise ValueError(msg)
 
         total_participants = sum(self.group_capacities)
         if total_participants <= 0:
-            raise ValueError("Total capacity must be positive.")
+            msg = "Total capacity must be positive."
+            raise ValueError(msg)
         if total_participants > config.MAX_PARTICIPANTS:
-            raise ValueError(
+            msg = (
                 f"Total participants ({total_participants}) exceeds "
                 f"limit of {config.MAX_PARTICIPANTS}."
             )
+            raise ValueError(msg)
 
         if len(self.group_capacities) != self.num_groups:
-            raise ValueError("Group capacities list length must match num_groups.")
+            msg = "Group capacities list length must match num_groups."
+            raise ValueError(msg)
         if any(c < 0 for c in self.group_capacities):
-            raise ValueError("Group capacities cannot be negative.")
+            msg = "Group capacities cannot be negative."
+            raise ValueError(msg)
 
     def _validate_score_weights(self) -> None:
         """Internal helper for score weight validation."""
         if not self.score_weights:
-            raise ValueError("At least one score weight must be provided.")
+            msg = "At least one score weight must be provided."
+            raise ValueError(msg)
 
         has_positive_weight = False
         for col, weight in self.score_weights.items():
             if not math.isfinite(weight):
-                raise ValueError(f"Score weight for {col} must be a finite number.")
+                msg = f"Score weight for {col} must be a finite number."
+                raise ValueError(msg)
             if weight < 0:
-                raise ValueError(f"Score weight for {col} cannot be negative.")
+                msg = f"Score weight for {col} cannot be negative."
+                raise ValueError(msg)
             if weight > 0:
                 has_positive_weight = True
 
         if not has_positive_weight:
-            raise ValueError("At least one score weight must be positive.")
+            msg = "At least one score weight must be positive."
+            raise ValueError(msg)
 
     def _validate_constraint_weights(self) -> None:
         """Internal helper for cohesion/dispersion weight validation."""
@@ -182,8 +192,11 @@ class SolverConfig:
             ("separator_weight", self.separator_weight),
         ]:
             if not math.isfinite(weight):
-                raise ValueError(f"{name} must be a finite number.")
+                msg = f"{name} must be a finite number."
+                raise ValueError(msg)
             if weight < 0:
-                raise ValueError(f"{name} cannot be negative.")
+                msg = f"{name} cannot be negative."
+                raise ValueError(msg)
             if weight > MAX_WEIGHT_LIMIT:
-                raise ValueError(f"{name} exceeds safe limit of {MAX_WEIGHT_LIMIT:,}.")
+                msg = f"{name} exceeds safe limit of {MAX_WEIGHT_LIMIT:,}."
+                raise ValueError(msg)

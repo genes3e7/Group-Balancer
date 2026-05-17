@@ -246,7 +246,7 @@ def test_optimization_service_alignment_error_logging() -> None:
     # Multiset check (current_f == prev_f) must PASS.
     # But pair check (current_pairs == prev_pairs) must FAIL.
     # We swap indices to cause alignment error while keeping the multiset identical.
-    res_err.at[0, "_original_index"] = 999
+    res_err.loc[0, "_original_index"] = 999
 
     with patch("src.core.services.logger.info") as mock_log:
         OptimizationService.run(
@@ -284,7 +284,7 @@ def test_stale_hints_logging() -> None:
 
         # 2. Data mismatch (fingerprint change)
         data2 = data.copy()
-        data2.at[0, "Score1"] = 20
+        data2.loc[0, "Score1"] = 20
         OptimizationService.run(
             data2,
             [1],
@@ -299,7 +299,7 @@ def test_stale_hints_logging() -> None:
         # Corrupt indices while keeping fingerprints valid-ish (by dropping them)
         res_no_fp = res1.copy().drop(columns=["participant_fingerprint"])
         res_no_fp.attrs = res1.attrs.copy()
-        res_no_fp.at[0, "_original_index"] = 999
+        res_no_fp.loc[0, "_original_index"] = 999
         OptimizationService.run(
             data,
             [1],

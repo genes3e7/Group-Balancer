@@ -23,8 +23,10 @@ def render_global_stats(df: pd.DataFrame, score_cols: list[str]) -> None:
         return
 
     st.subheader("Balancing Summary")
-    cfg = group_helpers.GroupingConfig(config.COL_GROUP, score_cols, config.COL_NAME)
-    groups = group_helpers.aggregate_groups(df, cfg)
+    groups_cfg = group_helpers.GroupingConfig(
+        config.COL_GROUP, score_cols, config.COL_NAME
+    )
+    groups = group_helpers.aggregate_groups(df, groups_cfg)
     stats_data = group_helpers.calculate_balancing_stats(groups, score_cols)
 
     cols = st.columns(len(score_cols))
@@ -49,8 +51,10 @@ def render_group_cards(df: pd.DataFrame, score_cols: list[str]) -> None:
         st.warning("No groups to display.")
         return
 
-    cfg = group_helpers.GroupingConfig(config.COL_GROUP, score_cols, config.COL_NAME)
-    groups = group_helpers.aggregate_groups(df, cfg)
+    groups_cfg = group_helpers.GroupingConfig(
+        config.COL_GROUP, score_cols, config.COL_NAME
+    )
+    groups = group_helpers.aggregate_groups(df, groups_cfg)
 
     # Grid parameters
     num_cols = 3
@@ -86,60 +90,72 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
         # Member list using a data editor for potential manual tweaks
         members_df = pd.DataFrame(group["members"])
         if not members_df.empty:
-            display_columns = [
-                config.COL_NAME,
-                config.COL_GROUP,
-                "_original_index",
-            ] + score_cols
-
-            max_groups = st.session_state.get("num_groups_target", 10)
-            col_configs = {
-                config.COL_GROUP: st.column_config.NumberColumn(
-                    "Group", min_value=1, max_value=max_groups, format="%d"
-                ),
-                config.COL_NAME: st.column_config.TextColumn(disabled=True),
-                "_original_index": None,  # Hidden but preserved for syncing
-            }
-            for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
-                if col in members_df.columns:
-                    display_columns.append(col)
-                    col_configs[col] = st.column_config.TextColumn(disabled=True)
-
-            for col in score_cols:
-                col_configs[col] = st.column_config.NumberColumn(disabled=True)
-
-            edited_df = st.data_editor(
-                members_df[display_columns],
-                column_config=col_configs,
-                hide_index=True,
-                width="stretch",
-                key=f"editor_g{group['id']}",
-            )
-
-            # Sync manual edits back to the global interactive DataFrame
-            if not edited_df.equals(members_df[display_columns]):
-                # Use _original_index as the stable anchor for syncing changes
-                # across potentially reindexed or filtered views.
-                group_changed = False
-                for _, row in edited_df.iterrows():
-                    orig_idx = row["_original_index"]
-                    # Fetch corresponding row from members_df to detect group change
-                    matches = members_df[members_df["_original_index"] == orig_idx]
-                    if matches.empty:
-                        continue
-                    orig_row = matches.iloc[0]
-
-                    if row[config.COL_GROUP] != orig_row[config.COL_GROUP]:
-                        # Ensure we update the correct record in the global state
-                        # by using the stable _original_index as the key.
-                        st.session_state.interactive_df.loc[
-                            st.session_state.interactive_df["_original_index"]
-                            == orig_idx,
-                            config.COL_GROUP,
-                        ] = row[config.COL_GROUP]
-                        group_changed = True
-
-                if group_changed:
-                    st.rerun()
+            _render_member_editor(members_df, group["id"], score_cols)
         else:
             st.caption("No members assigned.")
+
+
+def _render_member_editor(
+    df: pd.DataFrame, group_id: int, score_cols: list[str]
+) -> None:
+    """Internal helper to render the data editor for group members."""
+    display_columns = [
+        config.COL_NAME,
+        config.COL_GROUP,
+        "_original_index",
+        *score_cols,
+    ]
+
+    max_groups = st.session_state.get("num_groups_target", 10)
+    col_configs = {
+        config.COL_GROUP: st.column_config.NumberColumn(
+            "Group", min_value=1, max_value=max_groups, format="%d"
+        ),
+        config.COL_NAME: st.column_config.TextColumn(disabled=True),
+        "_original_index": None,  # Hidden but preserved for syncing
+    }
+    for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
+        if col in df.columns:
+            display_columns.append(col)
+            col_configs[col] = st.column_config.TextColumn(disabled=True)
+
+    for col in score_cols:
+        col_configs[col] = st.column_config.NumberColumn(disabled=True)
+
+    edited_df = st.data_editor(
+        df[display_columns],
+        column_config=col_configs,
+        hide_index=True,
+        width="stretch",
+        key=f"editor_g{group_id}",
+    )
+
+    # Sync manual edits back to the global interactive DataFrame
+    if not edited_df.equals(df[display_columns]):
+        _sync_manual_edits(edited_df, df)
+
+
+def _sync_manual_edits(edited_df: pd.DataFrame, orig_df: pd.DataFrame) -> None:
+    """Internal helper to synchronize manual edits back to global state."""
+    # Use _original_index as the stable anchor for syncing changes
+    # across potentially reindexed or filtered views.
+    group_changed = False
+    for _, row in edited_df.iterrows():
+        orig_idx = row["_original_index"]
+        # Fetch corresponding row from members_df to detect group change
+        matches = orig_df[orig_df["_original_index"] == orig_idx]
+        if matches.empty:
+            continue
+        orig_row = matches.iloc[0]
+
+        if row[config.COL_GROUP] != orig_row[config.COL_GROUP]:
+            # Ensure we update the correct record in the global state
+            # by using the stable _original_index as the key.
+            st.session_state.interactive_df.loc[
+                st.session_state.interactive_df["_original_index"] == orig_idx,
+                config.COL_GROUP,
+            ] = row[config.COL_GROUP]
+            group_changed = True
+
+    if group_changed:
+        st.rerun()

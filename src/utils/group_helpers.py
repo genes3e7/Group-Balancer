@@ -50,7 +50,8 @@ def aggregate_groups(
         return groups
 
     if cfg.col_group not in df.columns:
-        raise KeyError(f"Column '{cfg.col_group}' missing from results.")
+        msg = f"Column '{cfg.col_group}' missing from results."
+        raise KeyError(msg)
 
     unique_groups = sorted(df[cfg.col_group].unique())
 
@@ -65,7 +66,8 @@ def aggregate_groups(
 
         for col in cfg.score_cols:
             if col not in group_df.columns:
-                raise KeyError(f"Score column '{col}' missing from results.")
+                msg = f"Score column '{col}' missing from results."
+                raise KeyError(msg)
 
             col_scores = []
             for m in members:
@@ -121,7 +123,7 @@ def calculate_balancing_stats(
 
         # Standard deviation of the group averages (Sample Std Dev, ddof=1)
         # This measures how balanced the groups are relative to each other.
-        std_dev = series.std(ddof=1) if len(group_avgs) > 1 else 0.0
+        std_dev = float(series.std(ddof=1)) if len(group_avgs) > 1 else 0.0
 
         stats_data.append(
             {

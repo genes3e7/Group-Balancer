@@ -398,14 +398,14 @@ dependencies = [
     { name = "numpy" },
     { name = "openpyxl" },
     { name = "ortools" },
+    { name = "packaging" },
     { name = "pandas" },
     { name = "streamlit" },
 ]
 
 [package.optional-dependencies]
 dev = [
-    { name = "interrogate" },
-    { name = "pathspec" },
+    { name = "coverage" },
     { name = "pyinstaller" },
     { name = "pymarkdownlnt" },
     { name = "pytest" },
@@ -417,18 +417,18 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "interrogate", marker = "extra == 'dev'", specifier = ">=1.5.0" },
+    { name = "coverage", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "numpy", specifier = ">=1.24.0" },
     { name = "openpyxl", specifier = ">=3.1.0" },
-    { name = "ortools", specifier = ">=9.8.0" },
+    { name = "ortools", specifier = ">=9.11.0" },
+    { name = "packaging", specifier = ">=24.0" },
     { name = "pandas", specifier = ">=2.0.0" },
-    { name = "pathspec", marker = "extra == 'dev'", specifier = ">=0.12.0" },
-    { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.0.0" },
-    { name = "pymarkdownlnt", marker = "extra == 'dev'", specifier = ">=0.9.11" },
+    { name = "pyinstaller", marker = "extra == 'dev'", specifier = ">=6.5.0" },
+    { name = "pymarkdownlnt", marker = "extra == 'dev'", specifier = ">=0.9.15" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0.0" },
-    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.5.0" },
-    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.1.0" },
+    { name = "pytest-xdist", marker = "extra == 'dev'", specifier = ">=3.0.0" },
+    { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.4.0" },
     { name = "streamlit", specifier = ">=1.49.0" },
     { name = "vulture", marker = "extra == 'dev'", specifier = ">=2.10" },
 ]
@@ -504,22 +504,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/72/34/14ca021ce8e5dfedc35312d08ba8bf51fdd999c576889fc2c24cb97f4f10/iniconfig-2.3.0.tar.gz", hash = "sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730", size = 20503, upload-time = "2025-10-18T21:55:43.219Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cb/b1/3846dd7f199d53cb17f49cba7e651e9ce294d8497c8c150530ed11865bb8/iniconfig-2.3.0-py3-none-any.whl", hash = "sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12", size = 7484, upload-time = "2025-10-18T21:55:41.639Z" },
-]
-
-[[package]]
-name = "interrogate"
-version = "1.7.0"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "attrs" },
-    { name = "click" },
-    { name = "colorama" },
-    { name = "py" },
-    { name = "tabulate" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/8b/22/74f7fcc96280eea46cf2bcbfa1354ac31de0e60a4be6f7966f12cef20893/interrogate-1.7.0.tar.gz", hash = "sha256:a320d6ec644dfd887cc58247a345054fc4d9f981100c45184470068f4b3719b0", size = 159636, upload-time = "2024-04-07T22:30:46.217Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/c9/6869a1dcf4aaf309b9543ec070be3ec3adebee7c9bec9af8c230494134b9/interrogate-1.7.0-py3-none-any.whl", hash = "sha256:b13ff4dd8403369670e2efe684066de9fcb868ad9d7f2b4095d8112142dc9d12", size = 46982, upload-time = "2024-04-07T22:30:44.277Z" },
 ]
 
 [[package]]
@@ -865,15 +849,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pathspec"
-version = "1.1.1"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/5a/82/42f767fc1c1143d6fd36efb827202a2d997a375e160a71eb2888a925aac1/pathspec-1.1.1.tar.gz", hash = "sha256:17db5ecd524104a120e173814c90367a96a98d07c45b2e10c2f3919fff91bf5a", size = 135180, upload-time = "2026-04-27T01:46:08.907Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f1/d9/7fb5aa316bc299258e68c73ba3bddbc499654a07f151cba08f6153988714/pathspec-1.1.1-py3-none-any.whl", hash = "sha256:a00ce642f577bf7f473932318056212bc4f8bfdf53128c78bbd5af0b9b20b189", size = 57328, upload-time = "2026-04-27T01:46:07.06Z" },
-]
-
-[[package]]
 name = "pefile"
 version = "2024.8.26"
 source = { registry = "https://pypi.org/simple" }
@@ -991,15 +966,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/9b/ca/25afc144934014700c52e05103c2421997482d561f3101ff352e1292fb81/protobuf-6.33.6-cp39-abi3-manylinux2014_s390x.whl", hash = "sha256:c96c37eec15086b79762ed265d59ab204dabc53056e3443e702d2681f4b39ce3", size = 339381, upload-time = "2026-03-18T19:04:54.616Z" },
     { url = "https://files.pythonhosted.org/packages/16/92/d1e32e3e0d894fe00b15ce28ad4944ab692713f2e7f0a99787405e43533a/protobuf-6.33.6-cp39-abi3-manylinux2014_x86_64.whl", hash = "sha256:e9db7e292e0ab79dd108d7f1a94fe31601ce1ee3f7b79e0692043423020b0593", size = 323436, upload-time = "2026-03-18T19:04:55.768Z" },
     { url = "https://files.pythonhosted.org/packages/c4/72/02445137af02769918a93807b2b7890047c32bfb9f90371cbc12688819eb/protobuf-6.33.6-py3-none-any.whl", hash = "sha256:77179e006c476e69bf8e8ce866640091ec42e1beb80b213c3900006ecfba6901", size = 170656, upload-time = "2026-03-18T19:04:59.826Z" },
-]
-
-[[package]]
-name = "py"
-version = "1.11.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/98/ff/fec109ceb715d2a6b4c4a85a61af3b40c723a961e8828319fbcb15b868dc/py-1.11.0.tar.gz", hash = "sha256:51c75c4126074b472f746a24399ad32f6053d1b34b68d2fa41e558e6f4a98719", size = 207796, upload-time = "2021-11-04T17:17:01.377Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/f6/f0/10642828a8dfb741e5f3fbaac830550a518a775c7fff6f04a007259b0548/py-1.11.0-py2.py3-none-any.whl", hash = "sha256:607c53218732647dff4acdfcd50cb62615cedf612e72d1724fb1a0cc6405b378", size = 98708, upload-time = "2021-11-04T17:17:00.152Z" },
 ]
 
 [[package]]
@@ -1643,15 +1609,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5d/f8/b2daf7a5f8ae15527daf94406e771bb6075e958a01c3dde9eba79dc3c9a3/streamlit-1.57.0.tar.gz", hash = "sha256:0b028d305c1a1a757071b2c9504966787602842fc8af6e873795ca58d2b4d12f", size = 8678859, upload-time = "2026-04-28T22:13:32.238Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/d8/1a/3ca2293d8552bacea3e67e9600d2d1df7df4a325059769ad83d91c279595/streamlit-1.57.0-py3-none-any.whl", hash = "sha256:0d1d41972aeade5637dbb0e7f0eefa5312272f85304923d240a1b1f0475249c8", size = 9194216, upload-time = "2026-04-28T22:13:29.624Z" },
-]
-
-[[package]]
-name = "tabulate"
-version = "0.10.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/46/58/8c37dea7bbf769b20d58e7ace7e5edfe65b849442b00ffcdd56be88697c6/tabulate-0.10.0.tar.gz", hash = "sha256:e2cfde8f79420f6deeffdeda9aaec3b6bc5abce947655d17ac662b126e48a60d", size = 91754, upload-time = "2026-03-04T18:55:34.402Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/99/55/db07de81b5c630da5cbf5c7df646580ca26dfaefa593667fc6f2fe016d2e/tabulate-0.10.0-py3-none-any.whl", hash = "sha256:f0b0622e567335c8fabaaa659f1b33bcb6ddfe2e496071b743aa113f8774f2d3", size = 39814, upload-time = "2026-03-04T18:55:31.284Z" },
 ]
 
 [[package]]

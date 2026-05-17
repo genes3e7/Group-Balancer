@@ -53,7 +53,7 @@ def _generate_cache_key(
     """
     # Hash the data (content and structure) deterministically by row
     data_hashes = pd.util.hash_pandas_object(df, index=True)
-    data_blob = data_hashes.values.tobytes()
+    data_blob = data_hashes.to_numpy().tobytes()
 
     # Serialize config deterministically
     config_payload = {
@@ -68,7 +68,7 @@ def _generate_cache_key(
     return hashlib.md5(raw, usedforsecurity=False).hexdigest()
 
 
-def _process_uploaded_file(uploaded) -> tuple[bool, str]:
+def _process_uploaded_file(uploaded: Any) -> tuple[bool, str]:  # noqa: ANN401
     """Processes the uploaded file and updates session state manual data.
 
     Args:
@@ -89,25 +89,50 @@ def _process_uploaded_file(uploaded) -> tuple[bool, str]:
             df_clean = DataService.clean_participants_df(df_new)
             st.session_state.manual_df = df_clean
             st.toast(f"✅ Imported {len(df_clean)} rows!", icon="📂")
-            sig = str(pd.util.hash_pandas_object(df_clean, index=True).sum())
-            return True, sig
+            return (
+                True,
+                str(pd.util.hash_pandas_object(df_clean, index=True).sum()),
+            )
 
         st.error("File missing required columns: Name and Score*")
-        return False, ""
     except (pd.errors.ParserError, UnicodeDecodeError) as e:
         logger.exception("Data processing failed")
         st.error(f"Error reading file: {e}")
-        return False, ""
-    except Exception:
+    except Exception:  # noqa: BLE001 # pragma: no cover
         logger.exception("Unexpected error during file upload")
         st.error("Unexpected error reading file. Check logs for details.")
-        return False, ""
+
+    return False, ""
 
 
 def render_step_1() -> None:
     """Renders Data Entry step."""
     st.header("Step 1: Data Entry")
 
+    _render_file_importer()
+
+    st.subheader("Edit Participants")
+
+    for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
+        if col not in st.session_state.manual_df.columns:
+            st.session_state.manual_df[col] = ""
+
+    if st.button("+ Add Score Column"):
+        _add_new_score_column()
+
+    edited_df = st.data_editor(
+        st.session_state.manual_df,
+        num_rows="dynamic",
+        width="stretch",
+        key="editor_input",
+    )
+
+    if st.button("Next: Configure", type="primary"):
+        _handle_step_1_navigation(edited_df)
+
+
+def _render_file_importer() -> None:
+    """Renders the file uploader and handles file processing logic."""
     with st.expander("📂 Import from Excel/CSV (Optional)", expanded=True):
         uploaded = st.file_uploader(
             "Select file",
@@ -129,42 +154,33 @@ def render_step_1() -> None:
                     st.session_state.last_file_processed_meta = bytes_sig
                     st.session_state.last_file_content_sig = content_sig
 
-    st.subheader("Edit Participants")
 
-    for col in [config.COL_GROUPER, config.COL_SEPARATOR]:
-        if col not in st.session_state.manual_df.columns:
-            st.session_state.manual_df[col] = ""
+def _add_new_score_column() -> None:
+    """Logic to find and add the next incremental ScoreN column."""
+    current_cols = st.session_state.manual_df.columns
+    n = 1
+    while f"{config.SCORE_PREFIX}{n}" in current_cols:
+        n += 1
+    new_name = f"{config.SCORE_PREFIX}{n}"
+    st.session_state.manual_df[new_name] = 0.0
+    st.rerun()
 
-    if st.button("+ Add Score Column"):
-        current_cols = st.session_state.manual_df.columns
-        n = 1
-        while f"{config.SCORE_PREFIX}{n}" in current_cols:
-            n += 1
-        new_name = f"{config.SCORE_PREFIX}{n}"
-        st.session_state.manual_df[new_name] = 0.0
-        st.rerun()
 
-    edited_df = st.data_editor(
-        st.session_state.manual_df,
-        num_rows="dynamic",
-        width="stretch",
-        key="editor_input",
-    )
+def _handle_step_1_navigation(edited_df: pd.DataFrame | None) -> None:
+    """Validates data and transitions to Step 2."""
+    if edited_df is not None and not edited_df.empty:
+        clean_df = DataService.clean_participants_df(edited_df)
+        score_cols = DataService.get_score_columns(clean_df)
 
-    if st.button("Next: Configure", type="primary"):
-        if edited_df is not None and not edited_df.empty:
-            clean_df = DataService.clean_participants_df(edited_df)
-            score_cols = DataService.get_score_columns(clean_df)
-
-            if not score_cols:
-                st.error("At least one score column is required.")
-            else:
-                st.session_state.participants_df = clean_df
-                st.session_state.manual_df = clean_df.copy()
-                st.session_state.score_cols = score_cols
-                session_manager.go_to_step(STEP_CONFIGURE)
+        if not score_cols:
+            st.error("At least one score column is required.")
         else:
-            st.warning("Please add participants.")
+            st.session_state.participants_df = clean_df
+            st.session_state.manual_df = clean_df.copy()
+            st.session_state.score_cols = score_cols
+            session_manager.go_to_step(STEP_CONFIGURE)
+    else:
+        st.warning("Please add participants.")
 
 
 def render_step_2() -> None:
@@ -228,7 +244,7 @@ def _render_group_count_input(total_p: int) -> int:
 
     st.session_state["groups_input"] = max(1, min(curr_val, total_p))
 
-    c1, c2 = st.columns(2)
+    c1, _c2 = st.columns(2)
     num_groups = int(
         c1.number_input(
             "Groups",
@@ -237,7 +253,7 @@ def _render_group_count_input(total_p: int) -> int:
             key="groups_input",
         )
     )
-    c2.info(f"Total Participants: {total_p}")
+    st.info(f"Total Participants: {total_p}")
     return num_groups
 
 
@@ -491,14 +507,14 @@ def _render_table_view(score_cols: list[str]) -> None:
 
     with stats_col:
         st.subheader("Live Stats")
-        cfg = group_helpers.GroupingConfig(
+        groups_cfg = group_helpers.GroupingConfig(
             config.COL_GROUP,
             score_cols,
             config.COL_NAME,
         )
         groups = group_helpers.aggregate_groups(
             st.session_state.interactive_df,
-            cfg,
+            groups_cfg,
         )
         stats_data = group_helpers.calculate_balancing_stats(groups, score_cols)
         stats_lookup = {s["Score Dimension"]: s for s in stats_data}
@@ -555,7 +571,7 @@ def _render_footer_actions(score_cols: list[str]) -> None:
 
     row_hashes = pd.util.hash_pandas_object(export_df, index=True)
     df_key = (
-        hashlib.md5(row_hashes.values.tobytes(), usedforsecurity=False).hexdigest(),
+        hashlib.md5(row_hashes.to_numpy().tobytes(), usedforsecurity=False).hexdigest(),
         len(export_df),
         tuple(map(str, export_df.columns)),
     )

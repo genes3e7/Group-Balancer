@@ -109,7 +109,7 @@ def _build_matrix_rows(
             rows.append(row_m)
 
         # Gap between group pairs
-        rows.append({h: "" for h in headers})
+        rows.append(dict.fromkeys(headers, ""))
 
     return rows
 

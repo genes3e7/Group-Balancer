@@ -12,15 +12,18 @@ class DummySessionState(dict):
     """Mock session state that supports both dict and attribute access."""
 
     def __getattr__(self, key: str) -> object:
+        """Allow attribute access to dict keys."""
         try:
             return self[key]
         except KeyError as err:
             raise AttributeError(key) from err
 
     def __setattr__(self, key: str, value: object) -> None:
+        """Allow attribute setting to dict keys."""
         self[key] = value
 
     def __delattr__(self, key: str) -> None:
+        """Allow attribute deletion from dict keys."""
         try:
             del self[key]
         except KeyError as err:
@@ -33,8 +36,54 @@ def pytest_configure(config: "pytest.Config") -> None:  # noqa: ARG001
     Replaces @st.fragment and @st.cache_data with identity decorators before
     any modules are imported by the test collection process.
     """
+    # 1. Ensure Streamlit is mocked/stubbed before any imports
+    try:
+        import streamlit as st
+    except (ImportError, AttributeError):
+        st = MagicMock(name="streamlit")
+        sys.modules["streamlit"] = st
 
-    # Identity decorator to ensure Streamlit decorators don't block execution
+    # 2. Aggressively patch all rendering methods to prevent internal Streamlit errors
+    # This prevents the "TypeError: bad argument type" in protobuf serialization.
+    rendering_methods = [
+        "info",
+        "warning",
+        "error",
+        "success",
+        "header",
+        "subheader",
+        "title",
+        "markdown",
+        "columns",
+        "container",
+        "empty",
+        "metric",
+        "expander",
+        "data_editor",
+        "download_button",
+        "file_uploader",
+        "write",
+        "caption",
+        "number_input",
+        "radio",
+        "slider",
+        "status",
+        "toast",
+        "table",
+        "dataframe",
+        "divider",
+        "rerun",
+        "stop",
+        "set_page_config",
+    ]
+    for method in rendering_methods:
+        if not isinstance(getattr(st, method, None), MagicMock):
+            m = MagicMock(name=f"st.{method}")
+            # Ensure context managers work
+            m.return_value.__enter__.return_value = m
+            setattr(st, method, m)
+
+    # 3. Identity decorator for fragments/cache
     def identity_decorator(
         *args: object, **_kwargs: object
     ) -> Callable[..., Any] | Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -42,24 +91,11 @@ def pytest_configure(config: "pytest.Config") -> None:  # noqa: ARG001
             return args[0]
         return lambda func: func
 
-    # Create a strict fail-fast stub for streamlit if it's not installed
-    try:
-        import streamlit as st  # noqa: PLC0415
-
-        # Check if already installed/aliased
-        _ = st.session_state
-    except (ModuleNotFoundError, AttributeError):
-        st = MagicMock(name="streamlit")
-        sys.modules["streamlit"] = st
-
-    # Inject identity decorators to prevent collection-time execution blocks
     st.fragment = identity_decorator
     st.cache_data = identity_decorator
 
-    # Ensure session_state exists as a reachable stub
+    # 4. Ensure session_state exists as a reachable stub
     try:
-        # Reaching for the attribute on a MagicMock might return another mock,
-        # so we use getattr with a sentinel and check for Mock types.
         sentinel = object()
         val = getattr(st, "session_state", sentinel)
         if val is sentinel or isinstance(val, Mock):
@@ -72,7 +108,6 @@ def pytest_configure(config: "pytest.Config") -> None:  # noqa: ARG001
 def mock_streamlit_fragment(monkeypatch: pytest.MonkeyPatch) -> None:
     """Redundant safety fixture for per-test isolation if needed."""
 
-    # Identity decorators using MagicMock to preserve decorator signatures
     def identity(func_or_val: object = None, **_kwargs: object) -> Any:
         if callable(func_or_val):
             return func_or_val
@@ -93,6 +128,8 @@ def mock_streamlit_columns() -> Callable[[int | Iterable], list[MagicMock]]:
             m = MagicMock()
             m.number_input.return_value = 1.0
             m.button.return_value = False
+            m.__enter__ = MagicMock(return_value=m)
+            m.__exit__ = MagicMock(return_value=None)
             mocks.append(m)
         return mocks
 

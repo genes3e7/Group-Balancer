@@ -52,8 +52,9 @@ MAX_FILE_SIZE_MB = 10
 
 # Safety Invariant: (TIER_HI_MULTIPLIER * MAX_PARTICIPANTS) must be < (1 << 62)
 # to prevent numerical overflow in CP-SAT's 64-bit domain.
-if (TIER_HI_MULTIPLIER * MAX_PARTICIPANTS) >= (1 << 62):
-    raise ValueError(
+if (TIER_HI_MULTIPLIER * MAX_PARTICIPANTS) >= (1 << 62):  # pragma: no cover
+    msg = (
         f"Scaling constants risk 64-bit overflow: "
         f"{TIER_HI_MULTIPLIER} * {MAX_PARTICIPANTS} must be < {1 << 62}"
     )
+    raise ValueError(msg)

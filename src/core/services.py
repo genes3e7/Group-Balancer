@@ -49,12 +49,13 @@ def _resolve_warm_start_hints(
     hints_idx = None
 
     # Snapshot validation: Hints are only safe if the high-level configuration matches.
+    attrs = previous_results.attrs
     config_match = (
-        previous_results.attrs.get("score_weights") == cfg.score_weights
-        and previous_results.attrs.get("conflict_priority") == cfg.conflict_priority
-        and previous_results.attrs.get("group_capacities") == cfg.group_capacities
-        and previous_results.attrs.get("grouper_weight") == cfg.grouper_weight
-        and previous_results.attrs.get("separator_weight") == cfg.separator_weight
+        attrs.get("score_weights") == cfg.score_weights
+        and attrs.get("conflict_priority") == cfg.conflict_priority
+        and attrs.get("group_capacities") == cfg.group_capacities
+        and attrs.get("grouper_weight") == cfg.grouper_weight
+        and attrs.get("separator_weight") == cfg.separator_weight
     )
 
     if not config_match:
@@ -224,6 +225,9 @@ class OptimizationService:
 
         Returns:
             dict[str, float]: Reduced weight mapping.
+
+        Raises:
+            ValueError: If weights are negative or non-finite.
         """
         if not weights:
             return weights
@@ -231,10 +235,11 @@ class OptimizationService:
         # Validation: Weights must be finite and non-negative
         for k, v in weights.items():
             if not math.isfinite(v) or v < 0:
-                raise ValueError(
+                msg = (
                     f"Invalid weight for '{k}': {v}. "
                     "Weights must be finite and non-negative."
                 )
+                raise ValueError(msg)
 
         # Scale to handle resolution down to 0.001 (UI resolution is 0.1)
         scaled = {k: round(v * 1000) for k, v in weights.items()}
@@ -254,9 +259,9 @@ class OptimizationService:
         conflict_priority: ConflictPriority,
         timeout_seconds: int,
         *,
-        status_box: Any = None,
+        status_box: Any = None,  # noqa: ANN401
         previous_results: pd.DataFrame | None = None,
-        **kwargs: Any,
+        **kwargs: Any,  # noqa: ANN401
     ) -> tuple[pd.DataFrame | None, dict]:
         """Runs the group balancing optimization.
 
@@ -284,16 +289,20 @@ class OptimizationService:
             ValueError: If input data or capacities are invalid.
         """
         if participants_df is None:
-            raise ValueError("Participants DataFrame cannot be None.")
+            msg = "Participants DataFrame cannot be None."
+            raise ValueError(msg)
 
         if not group_capacities:
-            raise ValueError("Group capacities cannot be empty.")
+            msg = "Group capacities cannot be empty."
+            raise ValueError(msg)
 
         # Extract optional params from kwargs
-        grouper_w = kwargs.get("grouper_weight", config.DEFAULT_GROUPER_WEIGHT)
-        separator_w = kwargs.get("separator_weight", config.DEFAULT_SEPARATOR_WEIGHT)
-        seed = kwargs.get("random_seed", 42)
-        interleave = kwargs.get("interleave_search", False)
+        def_g = config.DEFAULT_GROUPER_WEIGHT
+        def_s = config.DEFAULT_SEPARATOR_WEIGHT
+        grouper_w = int(kwargs.get("grouper_weight", def_g))
+        separator_w = int(kwargs.get("separator_weight", def_s))
+        seed = int(kwargs.get("random_seed", 42))
+        interleave = bool(kwargs.get("interleave_search", False))
 
         try:
             # Backend Reduction: Simplify weights to irreducible integer ratios
@@ -358,6 +367,6 @@ class OptimizationService:
             logger.error("OptimizationService validation failed", exc_info=True)
             metrics = {"status": "ERROR", "error": str(e), "elapsed": 0.0}
             return None, metrics
-        except Exception:
+        except Exception:  # pragma: no cover
             logger.exception("OptimizationService.run failed unexpectedly")
             raise

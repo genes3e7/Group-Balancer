@@ -26,10 +26,10 @@ except ImportError:
         from streamlit.scriptrunner import add_script_run_ctx, get_script_run_ctx
     except ImportError:  # pragma: no cover
 
-        def add_script_run_ctx(_: Any, c: Any = None) -> None:
+        def add_script_run_ctx(_: object, c: object = None) -> None:
             """Fallback for add_script_run_ctx."""
 
-        def get_script_run_ctx() -> Any:
+        def get_script_run_ctx() -> Any:  # noqa: ANN401
             """Fallback for get_script_run_ctx."""
             return None
 
@@ -44,7 +44,7 @@ UPDATE_INTERVAL_SECONDS = 0.25
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
     """Custom OR-Tools callback to pipe logs to Streamlit."""
 
-    def __init__(self, status_placeholder: Any, num_people: int) -> None:
+    def __init__(self, status_placeholder: Any, num_people: int) -> None:  # noqa: ANN401
         """Initializes the callback with a Streamlit status placeholder.
 
         Args:
@@ -95,7 +95,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
 def run_optimization(
     participants: list[Participant],
     cfg: SolverConfig,
-    status_box: Any = None,
+    status_box: Any = None,  # noqa: ANN401
 ) -> tuple[pd.DataFrame | None, dict[str, Any]]:
     """Runs the optimization using Participant models and SolverConfig.
 
@@ -187,41 +187,51 @@ def _get_solver_error_msg(status: int, status_name: str) -> str | None:
 
 
 def _render_success_status(
-    status_box: Any,
+    status_box: Any,  # noqa: ANN401
     status_name: str,
     elapsed: float,
-    solver_inst: Any,
+    solver_inst: Any,  # noqa: ANN401
     num_p: int,
 ) -> None:
     """Renders success metrics to the status box."""
-    with status_box:
-        with st.status(f"✅ Optimization Complete ({status_name})", expanded=False):
-            st.write(f"Computation time: {elapsed:.2f}s")
-            display_obj = solver_inst.ObjectiveValue() / (
-                config.SCALE_FACTOR * num_p * _DISPLAY_OBJECTIVE_DIVISOR_FACTOR
-            )
-            st.write(f"Final weighted objective: {display_obj:.4f}")
+    if not status_box:
+        return
+
+    with (
+        status_box,
+        st.status(f"✅ Optimization Complete ({status_name})", expanded=False),
+    ):
+        st.write(f"Computation time: {elapsed:.2f}s")
+        display_obj = solver_inst.ObjectiveValue() / (
+            config.SCALE_FACTOR * num_p * _DISPLAY_OBJECTIVE_DIVISOR_FACTOR
+        )
+        st.write(f"Final weighted objective: {display_obj:.4f}")
 
 
 def _render_failure_status(
-    status_box: Any,
+    status_box: Any,  # noqa: ANN401
     status_name: str,
     error_msg: str | None,
 ) -> None:
     """Renders failure messages to the status box."""
-    with status_box:
-        with st.status(f"❌ Optimization Failed ({status_name})", state="error"):
-            if error_msg:
-                st.error(error_msg)
-            else:
-                st.write(f"Solver stopped with status: {status_name}")
+    if not status_box:
+        return
+
+    with (
+        status_box,
+        st.status(f"❌ Optimization Failed ({status_name})", state="error"),
+    ):
+        if error_msg:
+            st.error(error_msg)
+        else:
+            st.write(f"Solver stopped with status: {status_name}")
 
 
 def _build_results_list(
     participants: list[Participant],
     cfg: SolverConfig,
-    builder: Any,
-    solver_inst: Any,
+    builder: Any,  # noqa: ANN401
+    solver_inst: Any,  # noqa: ANN401
 ) -> list[dict]:
     """Constructs the raw results list from solver assignments."""
     results = []

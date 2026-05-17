@@ -13,10 +13,10 @@ def test_config_constants() -> None:
     assert config.COL_NAME == "Name"
 
     expected_scale = 100_000
-    assert config.SCALE_FACTOR == expected_scale
+    assert expected_scale == config.SCALE_FACTOR
 
     assert config.COL_GROUP == "Group"
     assert config.OUTPUT_FILENAME == "balanced_groups.xlsx"
 
     expected_timeout = 600
-    assert config.SOLVER_TIMEOUT == expected_timeout
+    assert expected_timeout == config.SOLVER_TIMEOUT

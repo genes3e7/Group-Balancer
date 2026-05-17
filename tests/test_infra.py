@@ -1,6 +1,7 @@
 """Infrastructure tests for root-level scripts."""
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import app
@@ -14,9 +15,9 @@ EXPECTED_DATA_ARGS = 2
 def test_build_executable_cleanup() -> None:
     """Test that build_executable cleans up old directories."""
     with (
-        patch("os.path.exists", return_value=True),
+        patch("pathlib.Path.exists", return_value=True),
         patch("shutil.rmtree") as mock_rm,
-        patch("os.remove") as mock_remove,
+        patch("pathlib.Path.unlink") as mock_remove,
         patch("subprocess.run"),
     ):
         build.build_executable()
@@ -30,7 +31,7 @@ def test_build_executable_cleanup() -> None:
 def test_build_executable_success() -> None:
     """Test successful execution of PyInstaller command."""
     with (
-        patch("os.path.exists", return_value=False),
+        patch("pathlib.Path.exists", return_value=False),
         patch.object(build.shutil, "which", return_value="uv"),
         patch.object(build.subprocess, "run") as mock_run,
     ):
@@ -52,13 +53,19 @@ def test_build_executable_success() -> None:
         assert len(add_data_indices) == EXPECTED_DATA_ARGS
 
         # Check source paths (the item immediately following --add-data)
-        add_data_sources = [cmd[i + 1].split(os.pathsep)[0] for i in add_data_indices]
+        # Handle both ';' (Windows) and ':' (Linux) separators
+        add_data_sources = []
+        for i in add_data_indices:
+            arg = cmd[i + 1]
+            source = arg.split(os.pathsep)[0]
+            add_data_sources.append(source)
+
         assert any("app.py" in s for s in add_data_sources)
         assert any("src" in s for s in add_data_sources)
 
         # Verify the main entry point is present via exact basename check
         entrypoint = [token for token in cmd if not token.startswith("-")][-1]
-        assert os.path.basename(entrypoint) == "streamlit_launcher.py"
+        assert Path(entrypoint).name == "streamlit_launcher.py"
 
 
 def test_app_importable() -> None:

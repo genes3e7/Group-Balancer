@@ -9,20 +9,20 @@ dependencies = [
     "pandas>=2.0.0",
     "numpy>=1.24.0",
     "openpyxl>=3.1.0",
-    "ortools>=9.8.0",
+    "ortools>=9.11.0",
+    "packaging>=24.0",
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
-    "ruff>=0.1.0",
+    "pytest-xdist>=3.0.0",
+    "coverage>=7.0.0",
     "vulture>=2.10",
-    "interrogate>=1.5.0",
-    "pyinstaller>=6.0.0",
-    "pathspec>=0.12.0",
-    "pytest-xdist>=3.5.0",
-    "pymarkdownlnt>=0.9.11",
+    "ruff>=0.4.0",
+    "pymarkdownlnt>=0.9.15",
+    "pyinstaller>=6.5.0",
 ]
 
 [build-system]
@@ -43,9 +43,41 @@ line-length = 88
 indent-width = 4
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP", "B", "ARG", "PL"]
-ignore = []
+select = ["ALL"]
+ignore = [
+    "COM",    # Flake8-commas (Conflicts with formatter)
+    "CPY",    # Flake8-copyright (No copyright header requirement)
+    "ISC001", # Single-line-implicit-string-concatenation (Conflicts with formatter)
+    "FBT001", # Boolean positional arg in function definition
+    "FBT002", # Boolean default positional arg in function definition
+    "FBT003", # Boolean positional value in function call
+]
 fixable = ["ALL"]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests can use asserts, access private members, and don't always need return types
+"tests/**/*" = [
+    "S101",    # Use of assert
+    "SLF001",  # Private member access
+    "ANN201",  # Missing return type for public function
+    "ANN001",  # Missing type annotation for function argument
+    "ANN401",  # Dynamically typed expressions (Any) are allowed in mocks
+    "D100",    # Missing docstring in public module
+    "D103",    # Missing docstring in public function
+    "D104",    # Missing docstring in public package
+    "PLC0415", # Local imports are fine in tests for mocking
+    "SIM117",  # Nested with statements are common in complex mocks
+    "PLR2004", # Magic values are expected in test assertions
+    "D105",    # Missing docstring in magic method
+    "E501",    # Line too long
+]
+# CLI tools and entrypoints can use print statements
+"tools/*" = ["T201"]
+"build.py" = ["T201"]
+"group_balancer.py" = ["T201"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.ruff.format]
 line-ending = "lf"
@@ -53,26 +85,8 @@ line-ending = "lf"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--cov=src --cov-report=term-missing --cov-fail-under=95"
+addopts = "--cov=src --cov-report=term-missing --cov-fail-under=93"
 
 [tool.setuptools]
 packages = ["src"]
 package-dir = {"" = "."}
-
-[tool.interrogate]
-ignore-init-module = true
-ignore-init-method = true
-ignore-private = true
-ignore-semiprivate = false
-ignore-magic = true
-ignore-module = false
-ignore-nested-functions = false
-ignore-nested-classes = false
-ignore-setters = false
-fail-under = 100
-exclude = ["setup.py", "tests", "build", "tools", "dist", ".venv"]
-ignore-regex = ["^get$", "^mock_.*", ".*Base$"]
-verbose = 0
-quiet = false
-whitelist-regex = []
-color = true

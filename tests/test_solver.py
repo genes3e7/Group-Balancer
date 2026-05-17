@@ -55,25 +55,18 @@ def make_participants(
     Returns:
         list[dict]: List of participant dictionaries.
     """
-    if groupers is None:
-        groupers = [""] * count
-    if separators is None:
-        separators = [""] * count
+    g_tags = (groupers or []) + [""] * count
+    s_tags = (separators or []) + [""] * count
 
-    groupers = (groupers + [""] * count)[:count]
-    separators = (separators + [""] * count)[:count]
-
-    data = []
-    for i in range(count):
-        data.append(
-            {
-                config.COL_NAME: f"P{i}",
-                SCORE_COL: score,
-                config.COL_GROUPER: groupers[i],
-                config.COL_SEPARATOR: separators[i],
-            },
-        )
-    return data
+    return [
+        {
+            config.COL_NAME: f"P{i}",
+            SCORE_COL: score,
+            config.COL_GROUPER: g_tags[i],
+            config.COL_SEPARATOR: s_tags[i],
+        }
+        for i in range(count)
+    ]
 
 
 def get_solver_config(

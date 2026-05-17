@@ -159,13 +159,19 @@ class AdvancedScoring(ScoringStrategy):
 
         Returns:
             list[tuple[str, list[int], int]]: List of normalized score vectors.
+
+        Raises:
+            ValueError: If score_weights is empty or a weighted dimension has zero sum.
         """
         num_p = len(participants)
         num_g = cfg.num_groups
 
         # Dynamic Precision Scaling:
         # Prevents L2 squared math from exceeding CP-SAT's 64-bit integer limit.
-        assert cfg.score_weights, "score_weights must be non-empty"
+        if not cfg.score_weights:
+            msg = "score_weights must be non-empty"
+            raise ValueError(msg)
+
         max_w = max(cfg.score_weights.values())
         max_w = max(1.0, max_w)
 
@@ -190,7 +196,8 @@ class AdvancedScoring(ScoringStrategy):
             raw_total = sum(abs(s) for s in scaled_raw)
 
             if raw_total == 0:
-                raise ValueError(f"Score dimension '{col}' has weight but sum is 0.")
+                msg = f"Score dimension '{col}' has weight but sum is 0."
+                raise ValueError(msg)
 
             scores = [round((s * norm_multiplier) / raw_total) for s in scaled_raw]
 
@@ -209,6 +216,9 @@ class ConstraintBuilder:
         Args:
             participants (list[Participant]): List of participants.
             cfg (SolverConfig): Solver configuration.
+
+        Raises:
+            ValueError: If an unknown conflict priority is provided.
         """
         self.participants = participants
         self.cfg = cfg
@@ -227,7 +237,8 @@ class ConstraintBuilder:
                 self.sep_multiplier = config.TIER_LO_MULTIPLIER
                 self.group_multiplier = config.TIER_HI_MULTIPLIER
             case _:
-                raise ValueError(f"Unknown conflict priority: {cfg.conflict_priority}")
+                msg = f"Unknown conflict priority: {cfg.conflict_priority}"
+                raise ValueError(msg)
 
     def build_variables(self) -> None:
         """Initializes assignment variables and basic partitioning constraints."""
@@ -417,10 +428,39 @@ class ConstraintBuilder:
                 self.model.Add(g_idx1 <= g_idx2)
 
     def add_solution_hints(self) -> None:
-        """Applies previous assignments as solver hints for warm starts."""
+        """Applies previous assignments as solver hints for warm starts.
+
+        This method identifies candidates for warm-starting from both
+        fingerprint and original_index mappings provided in SolverConfig.
+        """
         if not self.cfg.hints_by_fingerprint and not self.cfg.hints_by_index:
             return
 
+        hinted_groups = self._resolve_raw_hints()
+
+        # Symmetry-aware hint mapping:
+        # Prevents identical participants from drifting by consuming hints
+        # in canonical order.
+        identity_buckets: dict[tuple, list[int]] = {}
+        for p_idx, p in enumerate(self.participants):
+            sorted_scores = tuple(sorted(p.scores.items()))
+            identity = (
+                sorted_scores,
+                tuple(sorted(TagProcessor.get_tags(p.groupers))),
+                tuple(sorted(TagProcessor.get_tags(p.separators))),
+            )
+            identity_buckets.setdefault(identity, []).append(p_idx)
+
+        sorted_bucket_keys = sorted(
+            identity_buckets.keys(), key=lambda k: identity_buckets[k][0]
+        )
+
+        for identity in sorted_bucket_keys:
+            indices = identity_buckets[identity]
+            self._apply_bucket_hints(identity, indices, hinted_groups)
+
+    def _resolve_raw_hints(self) -> dict[int, int]:
+        """Maps participant indices to group indices based on provided hints."""
         hinted_groups: dict[int, int] = {}
         for p_idx, p in enumerate(self.participants):
             # Flattened identity lookup: Identity-based fingerprint takes priority
@@ -456,48 +496,34 @@ class ConstraintBuilder:
                         p_idx,
                         group_id,
                     )
+        return hinted_groups
 
-        # Symmetry-aware hint mapping:
-        # Prevents identical participants from drifting by consuming hints
-        # in canonical order.
-        identity_buckets: dict[tuple, list[int]] = {}
-        for p_idx, p in enumerate(self.participants):
-            sorted_scores = tuple(sorted(p.scores.items()))
-            identity = (
-                sorted_scores,
-                tuple(sorted(TagProcessor.get_tags(p.groupers))),
-                tuple(sorted(TagProcessor.get_tags(p.separators))),
-            )
-            identity_buckets.setdefault(identity, []).append(p_idx)
-
-        sorted_bucket_keys = sorted(
-            identity_buckets.keys(), key=lambda k: identity_buckets[k][0]
+    def _apply_bucket_hints(
+        self, identity: tuple, indices: list[int], hinted_groups: dict[int, int]
+    ) -> None:
+        """Applies hints to a specific identity bucket."""
+        valid_hinted_g_idxs = sorted(
+            hinted_groups[idx] for idx in indices if idx in hinted_groups
         )
 
-        for identity in sorted_bucket_keys:
-            indices = identity_buckets[identity]
-            valid_hinted_g_idxs = sorted(
-                hinted_groups[idx] for idx in indices if idx in hinted_groups
+        if len(valid_hinted_g_idxs) > 0 and len(indices) > len(valid_hinted_g_idxs):
+            # Anonymize identity to prevent leaking sensitive scores/tags
+            # usedforsecurity=False ensures compatibility in FIPS environments
+            safe_id = hashlib.md5(
+                str(identity).encode(), usedforsecurity=False
+            ).hexdigest()[:8]
+            logger.warning(
+                "Symmetry-aware hint truncation for bucket [%s]: %d participants "
+                "but only %d hints available. %d hints will be dropped.",
+                safe_id,
+                len(indices),
+                len(valid_hinted_g_idxs),
+                len(indices) - len(valid_hinted_g_idxs),
             )
 
-            if len(valid_hinted_g_idxs) > 0 and len(indices) > len(valid_hinted_g_idxs):
-                # Anonymize identity to prevent leaking sensitive scores/tags
-                # usedforsecurity=False ensures compatibility in FIPS environments
-                safe_id = hashlib.md5(
-                    str(identity).encode(), usedforsecurity=False
-                ).hexdigest()[:8]
-                logger.warning(
-                    "Symmetry-aware hint truncation for bucket [%s]: %d participants "
-                    "but only %d hints available. %d hints will be dropped.",
-                    safe_id,
-                    len(indices),
-                    len(valid_hinted_g_idxs),
-                    len(indices) - len(valid_hinted_g_idxs),
-                )
-
-            zipped_hints = zip(indices, valid_hinted_g_idxs, strict=False)
-            for p_idx, g_idx in zipped_hints:
-                self.model.AddHint(self.x[(p_idx, g_idx)], 1)
+        zipped_hints = zip(indices, valid_hinted_g_idxs, strict=False)
+        for p_idx, g_idx in zipped_hints:
+            self.model.AddHint(self.x[(p_idx, g_idx)], 1)
 
     def add_branching_strategy(self) -> None:
         """Guides the solver to decide on high-impact participants first."""
@@ -549,11 +575,12 @@ class ConstraintBuilder:
         total_bound = sum(self.objective_bounds) + max_tb
 
         if total_bound > max_int_limit:
-            raise ValueError(
+            msg = (
                 f"Aggregate objective theoretical maximum ({total_bound}) "
                 f"exceeds CP-SAT safety bound ({max_int_limit}). "
                 "Consider reducing score weights or group count."
             )
+            raise ValueError(msg)
 
         main_objective = sum(self.objectives)
 

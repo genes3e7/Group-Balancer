@@ -22,8 +22,8 @@ def test_calculate_balancing_stats_basic() -> None:
 
     assert len(stats) == 1
     assert stats[0]["Score Dimension"] == "Score1"
-    # Expected: avg(10, 20) = 15.0
-    # Expected std: sqrt(((10-15)**2 + (20-15)**2) / (2-1)) = sqrt(50) ≈ 7.0711
+    # Result should be avg(10, 20) = 15.0
+    # Standard deviation: sqrt(((10-15)**2 + (20-15)**2) / (2-1)) = sqrt(50)
     assert stats[0]["Global Avg"] == WANT_GLOBAL_AVG
     assert stats[0]["Avg Std Dev (Balance)"] == pytest.approx(
         pd.Series([10.0, 20.0]).std(ddof=1)
@@ -42,7 +42,7 @@ def test_calculate_balancing_stats_exclude_unassigned() -> None:
     stats = group_helpers.calculate_balancing_stats(groups, score_cols)
 
     # Weighted Global Avg = (10*2 + 20*2) / (2+2) = 60/4 = 15.0
-    # Std Dev of [10, 20] ≈ 7.0711
+    # Std Dev of [10, 20] should match
     assert stats[0]["Global Avg"] == WANT_GLOBAL_AVG
     expected_std = pd.Series([10.0, 20.0]).std(ddof=1)
     assert stats[0]["Avg Std Dev (Balance)"] == pytest.approx(expected_std)

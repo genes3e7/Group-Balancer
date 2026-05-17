@@ -1,6 +1,7 @@
-"""CLI Entry Point for the Group Balancer.
+"""CLI entry point for the Group Balancer.
 
-Provides a terminal-based interface for running the optimization.
+Provides a terminal interface for loading data and running the optimization
+engine directly without the Streamlit UI.
 """
 
 import sys
@@ -10,71 +11,61 @@ from src.core import config, data_loader, solver
 from src.core.models import ConflictPriority, SolverConfig
 
 
-def main():
+def main() -> None:
     """Main CLI execution loop."""
     logger.info("Starting Group Balancer CLI...")
-    print("\n=== Group Balancer CLI ===")
 
     filepath = data_loader.get_file_path_from_user()
     participants = data_loader.load_data(filepath)
 
     if not participants:
-        logger.error("Failed to load data. Exiting.")
+        logger.error("Failed to load participants.")
         sys.exit(1)
 
     num_people = len(participants)
-    score_cols = [
-        c for c in participants[0].keys() if c.startswith(config.SCORE_PREFIX)
-    ]
+    score_cols = [c for c in participants[0] if str(c).startswith(config.SCORE_PREFIX)]
 
-    if not score_cols:
-        logger.error("No score columns detected in input data.")
-        sys.exit(1)
-
-    print(f"\nFound {num_people} participants and {len(score_cols)} score dimensions.")
+    logger.info(
+        "Found %d participants and %d score dimensions.",
+        num_people,
+        len(score_cols),
+    )
 
     try:
-        num_groups_str = input(f"Enter number of groups (1-{num_people}) [2]: ").strip()
-        num_groups = int(num_groups_str or "2")
-
-        if not (1 <= num_groups <= num_people):
-            logger.error(
-                "Invalid number of groups: %d. Must be between 1 and %d.",
-                num_groups,
-                num_people,
-            )
-            sys.exit(1)
-
+        num_groups = int(input("Enter number of groups: "))
+        timeout = int(input("Enter max search time (seconds, default 60): ") or "60")
     except ValueError:
-        logger.error("Invalid input: Number of groups must be an integer.")
+        logger.error("Invalid input. Numeric values required.")
         sys.exit(1)
 
-    # Simple even capacity split for CLI
+    # Basic equal capacity distribution
     base, rem = divmod(num_people, num_groups)
     capacities = [base + (1 if i < rem else 0) for i in range(num_groups)]
 
     cfg = SolverConfig(
         num_groups=num_groups,
         group_capacities=capacities,
-        score_weights={c: 1.0 for c in score_cols},
+        score_weights=dict.fromkeys(score_cols, 1.0),
         conflict_priority=ConflictPriority.GROUPERS,
-        timeout_seconds=config.SOLVER_TIMEOUT,
+        timeout_seconds=timeout,
+        interleave_search=True,  # CLI uses interleaved search for determinism
     )
 
-    print("\nSolving optimization model...")
-    results, status, elapsed = solver.solve_with_ortools(participants, cfg)
+    logger.info("Solving optimization model...")
+    results, _status, elapsed = solver.solve_with_ortools(participants, cfg)
 
     if results:
-        print(f"\n✅ Success! Found grouping in {elapsed:.2f}s.")
-        print("=== Results Summary ===")
-        for g_id in range(1, num_groups + 1):
-            members = [p for p in results if p[config.COL_GROUP] == g_id]
-            print(f"\nGroup {g_id} ({len(members)} members):")
-            for m in members:
-                scores_str = ", ".join([f"{k}:{m[k]}" for k in score_cols])
-                print(f" - {m[config.COL_NAME]} ({scores_str})")
+        logger.info(
+            "Optimization successful! (Time: %.2fs)",
+            elapsed,
+        )
+        # Display summary
+        for gid in range(1, num_groups + 1):
+            members = [r for r in results if r[config.COL_GROUP] == gid]
+            names = ", ".join(m[config.COL_NAME] for m in members)
+            logger.info("Group %d (%d members): %s", gid, len(members), names)
     else:
-        print("\n❌ Failed to find a valid solution.")
+        logger.error("Solver failed to find a solution.")
 
 
 if __name__ == "__main__":

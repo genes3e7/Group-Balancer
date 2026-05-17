@@ -66,14 +66,14 @@ This gate enforces:
 │       └── ci.yml
 ├── .gitignore
 ├── .pymarkdown
-├── CHANGELOG.md
-├── GEMINI.md
-├── LICENSE
-├── README.md
 ├── app.py
 ├── build.py
+├── CHANGELOG.md
+├── GEMINI.md
 ├── group_balancer.py
+├── LICENSE
 ├── pyproject.toml
+├── README.md
 ├── src/
 │   ├── __init__.py
 │   ├── core/
@@ -100,6 +100,7 @@ This gate enforces:
 │   ├── __init__.py
 │   ├── conftest.py
 │   ├── test_config.py
+│   ├── test_coverage_bump.py
 │   ├── test_data_loader.py
 │   ├── test_determinism.py
 │   ├── test_exporter.py

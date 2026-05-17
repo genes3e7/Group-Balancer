@@ -1,5 +1,4 @@
-"""
-Build script to package the Group Balancer application into a standalone executable.
+"""Build script to package the Group Balancer application into a standalone executable.
 
 Uses PyInstaller to bundle the Streamlit app and core logic into a single file
 or directory structure depending on the target distribution.
@@ -79,6 +78,11 @@ class TreeShaker:
     )
 
     def __init__(self, project_root: str) -> None:
+        """Initializes the TreeShaker with the project root path.
+
+        Args:
+            project_root (str): The absolute path to the project root.
+        """
         self.root = Path(project_root)
         self.import_re = re.compile(r"^(?:import|from)\s+([a-zA-Z0-9_]+)")
 
@@ -111,7 +115,7 @@ class TreeShaker:
         """
         imports = set()
         try:
-            with open(path, encoding="utf-8") as f:
+            with path.open(encoding="utf-8") as f:
                 for line in f:
                     match = self.import_re.match(line.strip())
                     if match:
@@ -134,7 +138,7 @@ class TreeShaker:
         # Deterministic Baseline: Parse declared dependencies from pyproject.toml
         pyproject_path = self.root / "pyproject.toml"
         try:
-            with open(pyproject_path, "rb") as f:
+            with pyproject_path.open("rb") as f:
                 pyproject = tomllib.load(f)
 
             project = pyproject.get("project", {})
@@ -143,7 +147,7 @@ class TreeShaker:
             for req in project.get("dependencies", []):
                 try:
                     deps.add(Requirement(req).name.lower())
-                except Exception as e:
+                except (ValueError, subprocess.SubprocessError) as e:
                     print(f"⚠️ Warning: Skipping invalid dependency '{req}': {e}")
 
             # Optional (dev) dependencies
@@ -152,7 +156,7 @@ class TreeShaker:
                 for req in group:
                     try:
                         deps.add(Requirement(req).name.lower())
-                    except Exception as e:
+                    except (ValueError, subprocess.SubprocessError) as e:
                         print(
                             f"⚠️ Warning: Skipping invalid dev dependency '{req}': {e}"
                         )
@@ -182,7 +186,7 @@ class TreeShaker:
         return sorted(excludes)
 
 
-def build_executable():
+def build_executable() -> None:
     """Execute the PyInstaller build process with tree-shaken exclusions.
 
     1. Cleans previous build artifacts.
@@ -194,21 +198,21 @@ def build_executable():
         print("\n❌ Error: PyInstaller not found in PATH.")
         sys.exit(1)
 
-    project_root = os.path.abspath(os.path.dirname(__file__))
-    shaker = TreeShaker(project_root)
+    project_root = Path(__file__).parent.resolve()
+    shaker = TreeShaker(str(project_root))
 
-    build_dir = os.path.join(project_root, "build")
-    dist_dir = os.path.join(project_root, "dist")
+    build_dir = project_root / "build"
+    dist_dir = project_root / "dist"
 
     # Clean old artifacts
     dirs_to_clean = [build_dir, dist_dir]
     for d in dirs_to_clean:
-        if os.path.exists(d):
+        if d.exists():
             shutil.rmtree(d)
 
-    spec_path = os.path.join(project_root, "GroupBalancer.spec")
-    if os.path.exists(spec_path):
-        os.remove(spec_path)
+    spec_path = project_root / "GroupBalancer.spec"
+    if spec_path.exists():
+        spec_path.unlink()
 
     # Tree Shaking
     print("🌳 Detecting unused dependencies (Tree Shaking)...")
@@ -216,9 +220,9 @@ def build_executable():
     print(f"📉 Excluding {len(excludes)} modules to shrink bundle...")
 
     # PyInstaller Command
-    app_path = os.path.join(project_root, "app.py")
-    src_path = os.path.join(project_root, "src")
-    launcher_path = os.path.join(project_root, "streamlit_launcher.py")
+    app_path = project_root / "app.py"
+    src_path = project_root / "src"
+    launcher_path = project_root / "streamlit_launcher.py"
 
     cmd = [
         pyinstaller_bin,
@@ -228,7 +232,7 @@ def build_executable():
         "--name",
         "GroupBalancer",
         "--specpath",
-        build_dir,
+        str(build_dir),
         "--clean",  # Ensure fresh analysis
         "--noupx",  # Speed up build and prevent extraction slowdown
     ]
@@ -244,14 +248,14 @@ def build_executable():
             f"{app_path}{os.pathsep}.",
             "--add-data",
             f"{src_path}{os.pathsep}src",
-            launcher_path,
+            str(launcher_path),
         ]
     )
 
     try:
-        os.makedirs(build_dir, exist_ok=True)
+        build_dir.mkdir(parents=True, exist_ok=True)
         print(f"Running optimized command (Excludes: {len(excludes)} modules)")
-        subprocess.run(cmd, check=True)
+        subprocess.run(cmd, check=True)  # noqa: S603
         print(f"\n✅ Build Complete! Check: {dist_dir}")
     except subprocess.CalledProcessError as e:
         print(f"\n❌ Build Failed: {e}")
