@@ -66,14 +66,20 @@ This gate enforces:
 │       └── ci.yml
 ├── .gitignore
 ├── .pymarkdown
-├── app.py
-├── build.py
 ├── CHANGELOG.md
 ├── GEMINI.md
-├── group_balancer.py
 ├── LICENSE
-├── pyproject.toml
 ├── README.md
+├── app.py
+├── build.py
+├── group_balancer.egg-info/
+│   ├── PKG-INFO
+│   ├── SOURCES.txt
+│   ├── dependency_links.txt
+│   ├── requires.txt
+│   └── top_level.txt
+├── group_balancer.py
+├── pyproject.toml
 ├── src/
 │   ├── __init__.py
 │   ├── core/
