@@ -12,13 +12,6 @@ import pandas as pd
 from src.core import config
 from src.utils import group_helpers
 
-# Excel Export Layout Constants
-MIN_HEADER_COUNT = 50
-COLS_PER_GROUP_BASE = 1
-GAP_COLUMN_WIDTH = 1
-STATS_COLUMN_OFFSET = 5
-STATS_PRECISION = 2
-
 
 def _get_excel_column_name(n: int) -> str:
     """Converts a zero-based index to an Excel column label (A, B, ..., AA, AB...)."""
@@ -81,10 +74,10 @@ def _build_matrix_rows(
     rows: list[dict[str, Any]] = []
 
     # Dynamically compute enough header columns for 2 groups + gaps + stats
-    num_cols_per_group = COLS_PER_GROUP_BASE + len(score_cols)
+    num_cols_per_group = config.COLS_PER_GROUP_BASE + len(score_cols)
     required_count = max(
-        MIN_HEADER_COUNT,
-        (num_cols_per_group * 2) + STATS_COLUMN_OFFSET + (len(score_cols) * 3),
+        config.MIN_HEADER_COUNT,
+        (num_cols_per_group * 2) + config.STATS_COLUMN_OFFSET + (len(score_cols) * 3),
     )
     headers = [_get_excel_column_name(i) for i in range(required_count)]
 
@@ -127,7 +120,7 @@ def _build_row_header(  # noqa: PLR0913
     row_header[g1_cols[0]] = f"GROUP {g1['id']}"
     for idx, col in enumerate(score_cols):
         row_header[g1_cols[idx + 1]] = (
-            f"AVG {col}: {g1['averages'][col]:.{STATS_PRECISION}f}"
+            f"AVG {col}: {g1['averages'][col]:.{config.STATS_PRECISION}f}"
         )
     row_header[gap_col] = ""
 
@@ -135,7 +128,7 @@ def _build_row_header(  # noqa: PLR0913
         row_header[g2_cols[0]] = f"GROUP {g2['id']}"
         for idx, col in enumerate(score_cols):
             row_header[g2_cols[idx + 1]] = (
-                f"AVG {col}: {g2['averages'][col]:.{STATS_PRECISION}f}"
+                f"AVG {col}: {g2['averages'][col]:.{config.STATS_PRECISION}f}"
             )
     else:
         for c in g2_cols:

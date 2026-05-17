@@ -6,14 +6,20 @@ session manager. Uses asynchronous fragmentation and lazy loading to
 eliminate render lag.
 """
 
+import logging
+import sys
+
 import streamlit as st
 
+from src.core import config
 from src.ui import components, session_manager
 
-# Application Steps
-STEP_DATA_ENTRY = 1
-STEP_CONFIGURE = 2
-STEP_RESULTS = 3
+# Configure global logger for the application
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
 
 
 def main() -> None:
@@ -40,18 +46,18 @@ def render_app() -> None:
     """Renders the main application steps asynchronously with lazy imports."""
     from src.ui import steps  # noqa: PLC0415
 
-    if st.session_state.step == STEP_DATA_ENTRY:
+    if st.session_state.step == config.STEP_DATA_ENTRY:
         steps.render_step_1()
 
-    elif st.session_state.step == STEP_CONFIGURE:
+    elif st.session_state.step == config.STEP_CONFIGURE:
         steps.render_step_2()
 
-    elif st.session_state.step == STEP_RESULTS:
+    elif st.session_state.step == config.STEP_RESULTS:
         steps.render_step_3()
 
     else:
         st.session_state.persistent_error = "Invalid application step detected."
-        session_manager.go_to_step(STEP_DATA_ENTRY)
+        session_manager.go_to_step(config.STEP_DATA_ENTRY)
 
 
 if __name__ == "__main__":

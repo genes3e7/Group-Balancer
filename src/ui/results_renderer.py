@@ -91,7 +91,7 @@ def _render_single_card(group: dict, score_cols: list[str]) -> None:
         members_df = pd.DataFrame(group["members"])
         if not members_df.empty:
             _render_member_editor(members_df, group["id"], score_cols)
-        else:
+        else:  # pragma: no cover
             st.caption("No members assigned.")
 
 

@@ -20,19 +20,6 @@ from src.core.services import DataService, OptimizationService
 from src.ui import results_renderer, session_manager
 from src.utils import exporter, group_helpers
 
-# Keys that should not be deleted when the user clicks 'Start Over'
-_RESET_PRESERVE_KEYS = frozenset({"warm_start_cache"})
-
-# Application Steps
-STEP_DATA_ENTRY = 1
-STEP_CONFIGURE = 2
-STEP_RESULTS = 3
-
-# UI Constants
-MAX_WARM_CACHE_SIZE = 50
-MIN_PARTICIPANTS_FOR_BALANCING = 2
-DEFAULT_UI_WEIGHT = 1.0
-
 
 def _generate_cache_key(
     df: pd.DataFrame,
@@ -178,7 +165,7 @@ def _handle_step_1_navigation(edited_df: pd.DataFrame | None) -> None:
             st.session_state.participants_df = clean_df
             st.session_state.manual_df = clean_df.copy()
             st.session_state.score_cols = score_cols
-            session_manager.go_to_step(STEP_CONFIGURE)
+            session_manager.go_to_step(config.STEP_CONFIGURE)
     else:
         st.warning("Please add participants.")
 
@@ -229,13 +216,13 @@ def _handle_missing_data_step_2() -> None:
     """Renders warning and back button when data is missing in Step 2."""
     st.warning("No data found.")
     if st.button("⬅ Back"):
-        session_manager.go_to_step(STEP_DATA_ENTRY)
+        session_manager.go_to_step(config.STEP_DATA_ENTRY)
     st.stop()
 
 
 def _render_group_count_input(total_p: int) -> int:
     """Renders the number_input for group count with defensive clamping."""
-    min_allowed = min(MIN_PARTICIPANTS_FOR_BALANCING, total_p)
+    min_allowed = min(config.MIN_PARTICIPANTS_FOR_BALANCING, total_p)
     try:
         raw_val = st.session_state.get("groups_input", min_allowed)
         curr_val = int(raw_val)
@@ -302,7 +289,7 @@ def _render_solver_controls(
     st.subheader("Objective Weighting")
     score_weights = {
         col: st.number_input(
-            f"Weight: {col}", 0.0, 10.0, DEFAULT_UI_WEIGHT, 0.1, key=f"w_{col}"
+            f"Weight: {col}", 0.0, 10.0, config.DEFAULT_UI_WEIGHT, 0.1, key=f"w_{col}"
         )
         for col in score_cols
     }
@@ -336,23 +323,22 @@ def _render_step_2_footer(  # noqa: PLR0913
 
     c_back, c_go = st.columns([1, 5])
     if c_back.button("⬅ Back"):
-        session_manager.go_to_step(STEP_DATA_ENTRY)
+        session_manager.go_to_step(config.STEP_DATA_ENTRY)
 
     if c_go.button("🚀 Generate", type="primary", disabled=not cap_valid):
         st.session_state.num_groups_target = num_groups
         st.session_state.group_capacities = group_capacities
 
         status_box = st.empty()
-        reduced_weights = OptimizationService.reduce_score_weights(score_weights)
 
         # Cache and Warm-Start resolution
-        cache_key = _generate_cache_key(df, group_capacities, reduced_weights, priority)
+        cache_key = _generate_cache_key(df, group_capacities, score_weights, priority)
         prev_results = _resolve_best_hints(df, cache_key, priority)
 
         result_df, metrics = OptimizationService.run(
             df,
             group_capacities,
-            reduced_weights,
+            score_weights,
             priority,
             timeout,
             grouper_weight=config.DEFAULT_GROUPER_WEIGHT,
@@ -404,7 +390,7 @@ def _handle_optimization_result(
     """Updates session state and navigates based on solver outcome."""
     if result_df is not None:
         st.session_state.warm_start_cache[cache_key] = result_df.copy()
-        if len(st.session_state.warm_start_cache) > MAX_WARM_CACHE_SIZE:
+        if len(st.session_state.warm_start_cache) > config.MAX_WARM_CACHE_SIZE:
             st.session_state.warm_start_cache.popitem(last=False)
 
         st.session_state.results_df = result_df
@@ -420,13 +406,13 @@ def _handle_optimization_result(
         st.session_state.solver_elapsed = metrics["elapsed"]
         st.session_state.solver_error = metrics.get("error")
 
-    session_manager.go_to_step(STEP_RESULTS)
+    session_manager.go_to_step(config.STEP_RESULTS)
 
 
 def render_step_3() -> None:
     """Renders Results step."""
     if st.button("⬅ Back"):
-        session_manager.go_to_step(STEP_CONFIGURE)
+        session_manager.go_to_step(config.STEP_CONFIGURE)
     st.header("Step 3: Results")
 
     status_name = st.session_state.get("solver_status")
@@ -586,6 +572,6 @@ def _render_footer_actions(score_cols: list[str]) -> None:
     if st.button("🔄 Start Over"):
         # Selective reset: Preserve the memoization cache but clear all project data
         for key in list(st.session_state.keys()):
-            if key not in _RESET_PRESERVE_KEYS:
+            if key not in config.RESET_PRESERVE_KEYS:
                 del st.session_state[key]
         st.rerun()

@@ -7,23 +7,22 @@ Enhanced with 'Tree Shaking' logic to exclude unused dependencies and minimize
 the final bundle size and build time.
 """
 
+import importlib.metadata
 import os
 import re
 import shutil
 import subprocess
 import sys
-import tomllib
 from pathlib import Path
 from typing import ClassVar
-
-from packaging.requirements import Requirement
 
 
 class TreeShaker:
     """Analyzes imports and environment to identify modules for exclusion.
 
     Identifies candidates for the PyInstaller --exclude-module flag by
-    scanning project source code and comparing against installed packages.
+    scanning project source code and comparing against all installed packages
+    in the current environment.
     """
 
     # Static list of heavy or irrelevant libraries that should always be excluded
@@ -60,7 +59,6 @@ class TreeShaker:
             "pytest-xdist",
             "coverage",
             "vulture",
-            "interrogate",
             "ruff",
             "pymarkdownlnt",
             "pyinstaller",
@@ -74,7 +72,7 @@ class TreeShaker:
 
     # Critical runtime dependencies that must never be excluded.
     PROTECTED: ClassVar[frozenset[str]] = frozenset(
-        {"streamlit", "pandas", "numpy", "ortools", "openpyxl"}
+        {"streamlit", "pandas", "numpy", "ortools", "openpyxl", "src"}
     )
 
     def __init__(self, project_root: str) -> None:
@@ -84,7 +82,8 @@ class TreeShaker:
             project_root (str): The absolute path to the project root.
         """
         self.root = Path(project_root)
-        self.import_re = re.compile(r"^(?:import|from)\s+([a-zA-Z0-9_]+)")
+        # Regex updated to allow leading whitespace for lazy imports
+        self.import_re = re.compile(r"^\s*(?:import|from)\s+([a-zA-Z0-9_]+)")
 
     def find_all_imports(self) -> set[str]:
         """Scans project source code for top-level module imports.
@@ -93,8 +92,13 @@ class TreeShaker:
             set[str]: Unique top-level module names imported in the project.
         """
         found = set()
-        # Scan src/ and top-level entry points
-        scan_targets = [self.root / "src", self.root / "app.py"]
+        # Scan src/, app.py, and all top-level entry points
+        scan_targets = [
+            self.root / "src",
+            self.root / "app.py",
+            self.root / "group_balancer.py",
+            self.root / "streamlit_launcher.py",
+        ]
 
         for target in scan_targets:
             if target.is_file():
@@ -117,7 +121,7 @@ class TreeShaker:
         try:
             with path.open(encoding="utf-8") as f:
                 for line in f:
-                    match = self.import_re.match(line.strip())
+                    match = self.import_re.match(line)
                     if match:
                         imports.add(match.group(1))
         except (FileNotFoundError, PermissionError, UnicodeDecodeError) as e:
@@ -127,60 +131,44 @@ class TreeShaker:
     def generate_exclusion_list(self) -> list[str]:
         """Identifies modules that are not required for production.
 
-        Calculates the delta between installed packages and project imports,
-        filtering through protected and banned lists.
+        Calculates the delta between all installed packages and project imports,
+        ensuring indirect bloat is captured.
 
         Returns:
             list[str]: Sorted list of module names for PyInstaller exclusion.
         """
         imported = {i.lower() for i in self.find_all_imports()}
 
-        # Deterministic Baseline: Parse declared dependencies from pyproject.toml
-        pyproject_path = self.root / "pyproject.toml"
+        # Aggressive Environmental Baseline:
+        # Detect ALL packages in the current venv. If it's installed but not
+        # explicitly imported (and not protected), exclude it.
         try:
-            with pyproject_path.open("rb") as f:
-                pyproject = tomllib.load(f)
+            installed = {
+                pkg.metadata["Name"].lower()
+                for pkg in importlib.metadata.distributions()
+            }
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️ Warning: Failed to detect environment packages: {e}")
+            installed = set()
 
-            project = pyproject.get("project", {})
-            # Main dependencies
-            deps = set()
-            for req in project.get("dependencies", []):
-                try:
-                    deps.add(Requirement(req).name.lower())
-                except (ValueError, subprocess.SubprocessError) as e:
-                    print(f"⚠️ Warning: Skipping invalid dependency '{req}': {e}")
-
-            # Optional (dev) dependencies
-            optional = pyproject.get("project", {}).get("optional-dependencies", {})
-            for group in optional.values():
-                for req in group:
-                    try:
-                        deps.add(Requirement(req).name.lower())
-                    except (ValueError, subprocess.SubprocessError) as e:
-                        print(
-                            f"⚠️ Warning: Skipping invalid dev dependency '{req}': {e}"
-                        )
-        except (FileNotFoundError, PermissionError) as e:
-            print(f"⚠️ Warning: Failed to parse pyproject.toml: {e}")
-            deps = set()
-
-        # Calculate delta: declared but not imported (candidates for exclusion)
-        dynamic_delta = (deps - imported) - {p.lower() for p in self.PROTECTED}
+        # Calculate delta: installed in environment but not used by code
+        dynamic_excludes = (installed - imported) - {p.lower() for p in self.PROTECTED}
 
         excludes = set()
 
-        # Step 1: Explicit Banned Bloat (if not used)
-        for mod in self.BANNED_BLOAT:
-            if mod.lower() not in imported:
-                excludes.add(mod)
+        # Step 1: Explicit Banned Bloat (Guaranteed removal of heavy-hitters)
+        excludes.update(self.BANNED_BLOAT)
 
-        # Step 2: Explicit Development Packages (if not in PROTECTED)
-        excludes.update(self.DEV_PACKAGES - self.PROTECTED)
+        # Step 2: Explicit Development Packages
+        excludes.update(self.DEV_PACKAGES)
 
-        # Step 3: Dynamic Delta (packages declared in pyproject but not used)
-        excludes.update(dynamic_delta)
+        # Step 3: Dynamic Environmental Excludes (transitive and unused packages)
+        excludes.update(dynamic_excludes)
 
-        # Step 4: Absolute Protection
+        # Step 4: Absolute Protection Guard
+        # Ensure we never accidentally exclude a module that we actually import
+        # or that is vital for the runtime.
+        excludes = {e for e in excludes if e.lower() not in imported}
         excludes -= self.PROTECTED
 
         return sorted(excludes)

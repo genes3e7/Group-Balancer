@@ -4,7 +4,6 @@ This module handles the import of participant data from CSV and Excel files,
 ensuring strict path validation, size limits, and data type coercion.
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -14,11 +13,13 @@ from src import logger
 from src.core import config
 
 
-def validate_file_path(path: str) -> str:
+def validate_file_path(path: str, *, allow_out_of_tree: bool = False) -> str:
     """Validates that a file path exists, is a file, and stays within the project root.
 
     Args:
         path (str): The user-provided path.
+        allow_out_of_tree (bool): If True, bypasses the project root boundary check.
+            Strictly for testing purposes.
 
     Returns:
         str: Validated absolute path.
@@ -36,10 +37,7 @@ def validate_file_path(path: str) -> str:
         raise ValueError(msg) from e
 
     # Ensure path is within project root for traversal protection
-    # Note: We skip this check if specifically running in a test environment
-    # that uses system temporary directories.
-    is_testing = "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST")
-    if not is_testing:
+    if not allow_out_of_tree:
         try:
             # Check if the project root is a parent of the absolute path
             abs_path.relative_to(project_root)
@@ -96,15 +94,16 @@ def get_file_path_from_user() -> str:  # pragma: no cover
             sys.exit(0)
         except (FileNotFoundError, ValueError) as e:
             logger.error(str(e))
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 # pragma: no cover
             logger.exception("Unexpected error during file selection.")
 
 
-def load_data(filepath: str) -> list[dict] | None:
+def load_data(filepath: str, *, allow_out_of_tree: bool = False) -> list[dict] | None:
     """Loads participant data with security checks and sanitization.
 
     Args:
         filepath (str): Path to the source file.
+        allow_out_of_tree (bool): If True, bypasses the project root boundary check.
 
     Returns:
         list[dict] | None: A list of participant records or None on failure.
@@ -117,7 +116,7 @@ def load_data(filepath: str) -> list[dict] | None:
         # For compatibility with tests returning Path objects
         if isinstance(filepath, Path):
             filepath = str(filepath)
-        filepath = validate_file_path(filepath)
+        filepath = validate_file_path(filepath, allow_out_of_tree=allow_out_of_tree)
 
         # Load raw data based on format
         df = _read_raw_file(filepath)
@@ -130,7 +129,7 @@ def load_data(filepath: str) -> list[dict] | None:
     except (PermissionError, FileNotFoundError, ValueError) as e:
         logger.error("Error accessing '%s': %s", filepath, e)
         return None
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 # pragma: no cover
         logger.exception("Critical error loading data from %s", filepath)
         return None
 
@@ -150,7 +149,7 @@ def _read_raw_file(filepath: str) -> pd.DataFrame | None:
 
 def _process_data_service(df: pd.DataFrame, filepath: str) -> list[dict] | None:
     """Internal helper to clean and validate DataFrame contents."""
-    # Fix: Strip whitespace from column names BEFORE validation
+    # Strip whitespace from column names BEFORE validation
     df.columns = df.columns.astype(str).str.strip()
 
     # Enforcement of participant limits

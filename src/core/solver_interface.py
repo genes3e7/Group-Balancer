@@ -34,13 +34,6 @@ except ImportError:
             return None
 
 
-# UI-only normalization factor to scale large objective values for display
-_DISPLAY_OBJECTIVE_DIVISOR_FACTOR = 100
-
-# Performance Tuning
-UPDATE_INTERVAL_SECONDS = 0.25
-
-
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
     """Custom OR-Tools callback to pipe logs to Streamlit."""
 
@@ -68,7 +61,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         self.solution_count += 1
         current_time = time.time()
 
-        if current_time - self.last_update_time >= UPDATE_INTERVAL_SECONDS:
+        if current_time - self.last_update_time >= config.UPDATE_INTERVAL_SECONDS:
             if self.ctx:
                 add_script_run_ctx(threading.current_thread(), self.ctx)
 
@@ -79,7 +72,7 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
             display_obj = obj / (
                 config.SCALE_FACTOR
                 * self.num_people
-                * _DISPLAY_OBJECTIVE_DIVISOR_FACTOR
+                * config.DISPLAY_OBJECTIVE_DIVISOR_FACTOR
             )
 
             if self.status_placeholder:
@@ -110,7 +103,7 @@ def run_optimization(
     Returns:
         tuple[pd.DataFrame | None, dict[str, Any]]: Results and metrics.
     """
-    if status_box:
+    if status_box:  # pragma: no cover
         status_box.info("Solver Status: ⏳ Initializing...")
 
     start_time = time.time()
@@ -153,7 +146,7 @@ def run_optimization(
     }
 
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        if status_box:
+        if status_box:  # pragma: no cover
             _render_success_status(
                 status_box, status_name, elapsed, solver_inst, len(participants)
             )
@@ -163,7 +156,7 @@ def run_optimization(
         _attach_metadata(result_df, cfg)
         return result_df, metrics
 
-    if status_box:
+    if status_box:  # pragma: no cover
         _render_failure_status(status_box, status_name, error_msg)
     return None, metrics
 
@@ -194,7 +187,7 @@ def _render_success_status(
     num_p: int,
 ) -> None:
     """Renders success metrics to the status box."""
-    if not status_box:
+    if not status_box:  # pragma: no cover
         return
 
     with (
@@ -203,7 +196,7 @@ def _render_success_status(
     ):
         st.write(f"Computation time: {elapsed:.2f}s")
         display_obj = solver_inst.ObjectiveValue() / (
-            config.SCALE_FACTOR * num_p * _DISPLAY_OBJECTIVE_DIVISOR_FACTOR
+            config.SCALE_FACTOR * num_p * config.DISPLAY_OBJECTIVE_DIVISOR_FACTOR
         )
         st.write(f"Final weighted objective: {display_obj:.4f}")
 
@@ -214,7 +207,7 @@ def _render_failure_status(
     error_msg: str | None,
 ) -> None:
     """Renders failure messages to the status box."""
-    if not status_box:
+    if not status_box:  # pragma: no cover
         return
 
     with (

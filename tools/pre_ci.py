@@ -338,7 +338,7 @@ class PreCIPipeline:
                     "-v",
                     "--cov=src",
                     "--cov-report=term-missing",
-                    "--cov-fail-under=93",
+                    "--cov-fail-under=95",
                 ],
                 "Unit Tests & Coverage Enforcement",
                 fail_fast=True,

@@ -1,4 +1,4 @@
-"""Unit tests for utility functions in the utils module."""
+"""Unit tests for group helper utilities and statistics."""
 
 import pandas as pd
 import pytest
@@ -73,3 +73,43 @@ def test_aggregate_groups_invalid_score_types() -> None:
     groups = group_helpers.aggregate_groups(df, cfg)
     # "invalid" becomes 0.0, so sum is 10.0, avg is 5.0
     assert groups[0]["averages"]["Score1"] == WANT_AVG_5
+
+
+def test_calculate_balancing_stats_basic() -> None:
+    """Verify standard calculation of group standard deviation."""
+    groups = [
+        {"id": 1, "averages": {"S1": 10.0}, "count": 1},
+        {"id": 2, "averages": {"S1": 20.0}, "count": 1},
+    ]
+    # mean of [10, 20] is 15. std dev with ddof=1 is sqrt((25 + 25) / 1) = sqrt(50) = 7.071
+    stats = group_helpers.calculate_balancing_stats(groups, ["S1"])
+    assert stats[0]["Score Dimension"] == "S1"
+    assert round(stats[0]["Avg Std Dev (Balance)"], 3) == 7.071
+
+
+def test_calculate_balancing_stats_exclude_unassigned() -> None:
+    """Verify that unassigned participants (Group -1) are excluded from stats."""
+    groups = [
+        {"id": 1, "averages": {"S1": 10.0}, "count": 1},
+        {"id": -1, "averages": {"S1": 100.0}, "count": 1},
+    ]
+    stats = group_helpers.calculate_balancing_stats(groups, ["S1"])
+    # std dev of one group is 0.0 per group_helpers.py:125
+    assert stats[0]["Avg Std Dev (Balance)"] == 0.0
+
+
+def test_statistical_parity_between_ui_paths() -> None:
+    """Verify consistency between group averages and calculate_balancing_stats."""
+    df = pd.DataFrame(
+        {
+            config.COL_NAME: ["P1", "P2", "P3", "P4"],
+            config.COL_GROUP: [1, 1, 2, 2],
+            "Score1": [10, 30, 20, 20],
+        }
+    )
+    cfg = group_helpers.GroupingConfig(config.COL_GROUP, ["Score1"], config.COL_NAME)
+    groups = group_helpers.aggregate_groups(df, cfg)
+
+    # G1 avg: 20, G2 avg: 20. Std dev: 0.0
+    stats = group_helpers.calculate_balancing_stats(groups, ["Score1"])
+    assert stats[0]["Avg Std Dev (Balance)"] == 0.0

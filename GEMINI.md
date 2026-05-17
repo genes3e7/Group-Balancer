@@ -7,7 +7,7 @@ This file documents architectural decisions, framework-specific quirks, and less
 This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` or `git push` operation. It serves as a mandatory local Pre-CI check to ensure technical integrity and minimize redundant CI failures.
 
 1. **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
-2. **Architecture Verification**: Verify that the changes align with the established design patterns and have not introduced an unintended "architecture shift."
+2. **Architecture Verification**: Ensure changes align with the established design patterns and have not introduced an unintended "architecture shift."
 3. **Documentation & Changelog Update**:
    - Review and update all related documentation (README, help text, etc.) to reflect the changes.
    - **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
@@ -126,9 +126,9 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 
 ### 5. Integer Range & Overflows
 
-- **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 62) - 1`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
+- **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `config.MAX_INT_LIMIT`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
 - **Implementation:** Theoretical bounds are tracked globally via `max_abs_diff_bound` to ensure `max_dev` and `sq_diff` variables stay within the 64-bit domain.
-- **Fail-Fast Guard:** The solver implements a strict `ValueError` in `get_model` if the theoretical aggregate objective sum exceeds $(1 \ll 62) - 1$, preventing unsafe solves at the architecture level.
+- **Fail-Fast Guard:** The solver implements a strict `ValueError` in `get_model` if the theoretical aggregate objective sum exceeds `config.MAX_INT_LIMIT`, preventing unsafe solves at the architecture level.
 
 ### 6. Categorical Constraints (Groupers/Separators)
 
@@ -148,7 +148,7 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Architecture:** The solver minimizes the **Sum of Squared Deviations** (L2) rather than Absolute Error (L1).
 - **Benefit:** L2 is significantly more aggressive at eliminating outliers, leading to the "Way Lower" optimal Standard Deviation results desired by users.
 - **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
-- **Precision Mandate:** Use **Dynamic Precision Scaling** to automatically calculate the highest possible resolution (up to **0.001 precision**) that stays within 64-bit safety bounds for the given participant count.
+- **Precision Mandate:** Use **Dynamic Precision Scaling** to automatically calculate the highest possible resolution (up to `config.MAX_PRECISION_RESOLUTION`) that stays within 64-bit safety bounds for the given participant count.
 
 ### 10. Priority Tiering (Lexicographic Bit-Slicing)
 
@@ -184,6 +184,28 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Mandate:** Use **Simple Addition** (`main_objective + tie_breaker`) instead of multiplication.
 - **Context:** The 100x scale gap between the Fairness Tier ($10^7$) and the Max Tie-Breaker (~$10^5$) provides sufficient practical subordination without risking numerical overflow.
 - **Enforcement:** The code comment in `get_model()` explaining this rationale is **critical** and MUST NOT be removed or "refactored" into a multiplier. Determinism is instead guaranteed via `interleave_search = True` in tests.
+
+### 15. The "Optimal State" Mathematical Requirements (CRITICAL)
+
+The solver's mathematical foundation is extremely fragile. To maintain the "accurate optimal state," the following requirements MUST be strictly observed:
+
+- **Lexicographic Bit-Slicing Hierarchy**: Objectives must be scaled by specific multipliers to ensure absolute priority. The tiers are:
+  - **Tier 1 (Logical Constraints HI)**: $10^{12}$
+  - **Tier 2 (Logical Constraints LO)**: $10^9$
+  - **Tier 3 (Max-Min Fairness)**: $10^7$
+  - **Tier 4 (L2 Balance)**: $10^0$
+- **Lexicographic Tie-Breaker**: A stable tie-breaker ($g \times \text{index}$) must be added to the final objective with a weight of $1$. This ensures determinism across different runs and OS environments.
+- **Subordination Guard**: Lower tiers MUST stay smaller than the multiplier of the tier above them.
+  - *Failure Case*: On datasets with $N=1000$, the L2 balance sum can reach $10^{13}$, which overpowers the Fairness tier ($10^7$). This is a known limitation of the 64-bit domain.
+- **64-bit Domain Safety**: The aggregate objective sum (sum of all tiers) must NEVER exceed `config.MAX_INT_LIMIT`.
+  - *Failure Case*: Multipliers of $10^{15}$ or higher are unsafe for $N=1000$ and will cause model invalidation.
+- **Precision Scaling**: Raw scores are scaled by `config.SCALE_FACTOR` ($10^5$) and normalized to a target `config.PRECISION_TARGET_SUM` ($10^{15}$) to provide approximately 3 decimal places of internal resolution.
+- **Canonical Symmetry Breaking**: Ordering constraints (`g1_sum <= g2_sum`) must ONLY be applied to the first dimension with a positive weight to avoid over-constraining the solver.
+
+### 16. Dependency & Tree-Shaking Policy
+
+- **Aggressive Environmental Scanning**: The `build.py` script must scan the entire virtual environment (`importlib.metadata`) to exclude transitive bloat (like `matplotlib` or `pydeck`) that Streamlit pulls in but the app does not use.
+- **Lazy Import Detection**: The tree-shaker regex must account for indented imports (e.g. `from src.ui import steps` inside a fragment) to prevent accidental exclusion of core code.
 
 ## Data Handling
 

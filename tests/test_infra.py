@@ -18,6 +18,7 @@ def test_build_executable_cleanup() -> None:
         patch("pathlib.Path.exists", return_value=True),
         patch("shutil.rmtree") as mock_rm,
         patch("pathlib.Path.unlink") as mock_remove,
+        patch("shutil.which", return_value="/usr/bin/pyinstaller"),
         patch("subprocess.run"),
     ):
         build.build_executable()

@@ -176,13 +176,13 @@ class AdvancedScoring(ScoringStrategy):
         max_w = max(1.0, max_w)
 
         # M / (G * W * N^4) is a safe lower bound for the resolution ratio.
-        # We aim to keep total Balance Tier sum below 10^15.
+        # We aim to keep total Balance Tier sum below PRECISION_TARGET_SUM.
         denom = num_g * max_w * (num_p**4)
-        safe_ratio = 10**15 / denom
+        safe_ratio = config.PRECISION_TARGET_SUM / denom
         max_r_per_p = math.sqrt(safe_ratio)
 
-        # Clamp between 1.0 and 1000.0 (user's target precision)
-        res_per_p = max(1.0, min(1000.0, max_r_per_p))
+        # Clamp between 1.0 and MAX_PRECISION_RESOLUTION (user's target precision)
+        res_per_p = max(1.0, min(config.MAX_PRECISION_RESOLUTION, max_r_per_p))
         norm_multiplier = int(res_per_p * num_p)
 
         vectors = []
@@ -290,7 +290,6 @@ class ConstraintBuilder:
             strategy (ScoringStrategy): Scoring strategy to use.
         """
         vectors = strategy.get_score_vectors(self.participants, self.cfg)
-        max_int_limit = (1 << 62) - 1
 
         # Determine the canonical dimension for symmetry breaking
         # Select the first dimension name that has a positive weight
@@ -345,14 +344,14 @@ class ConstraintBuilder:
                 self.model.Add(diff == g_sums[g] * self.num_people - target_product)
 
                 # Lexicographical Fairness Component (Tier 3)
-                capped_abs_bound = min(max_int_limit, local_diff_bound)
+                capped_abs_bound = min(config.MAX_INT_LIMIT, local_diff_bound)
                 a_diff = self.model.NewIntVar(0, capped_abs_bound, f"abs_{name}_{g}")
                 self.model.AddAbsEquality(a_diff, diff)
                 abs_diffs.append(a_diff)
 
                 # L2 Squared Error (Tier 4)
-                # Capped at (1 << 62) - 1 for 64-bit safe math
-                capped_sq_bound = min(max_int_limit, local_diff_bound**2)
+                # Capped at config.MAX_INT_LIMIT for 64-bit safe math
+                capped_sq_bound = min(config.MAX_INT_LIMIT, local_diff_bound**2)
                 sq_diff = self.model.NewIntVar(0, capped_sq_bound, f"sq_{name}_{g}")
                 self.model.AddMultiplicationEquality(sq_diff, [diff, diff])
 
@@ -365,7 +364,7 @@ class ConstraintBuilder:
 
             # Max-Min Fairness Tier
             # Dynamically compute upper bound to prevent 32-bit overflow errors.
-            computed_max_bound = min(max_int_limit, max_abs_diff_bound)
+            computed_max_bound = min(config.MAX_INT_LIMIT, max_abs_diff_bound)
             max_dev = self.model.NewIntVar(0, computed_max_bound, f"maxdev_{name}")
             self.model.AddMaxEquality(max_dev, abs_diffs)
 
@@ -558,7 +557,7 @@ class ConstraintBuilder:
             ValueError: If the theoretical maximum objective exceeds 64-bit limits.
         """
         # Aggregate objective safety guard
-        max_int_limit = (1 << 62) - 1
+        max_int_limit = config.MAX_INT_LIMIT
 
         # Include worst-case tie-breaker in the bound check
         # Tie-breaker sum: g * original_index * x_ig
@@ -574,7 +573,7 @@ class ConstraintBuilder:
         max_tb = max_g * max_idx * self.num_people
         total_bound = sum(self.objective_bounds) + max_tb
 
-        if total_bound > max_int_limit:
+        if total_bound > max_int_limit:  # pragma: no cover
             msg = (
                 f"Aggregate objective theoretical maximum ({total_bound}) "
                 f"exceeds CP-SAT safety bound ({max_int_limit}). "
@@ -680,7 +679,13 @@ def solve_with_ortools(
         name = str(raw_name) if not _is_missing(raw_name) else f"P{i}"
 
         raw_idx = p.get("_original_index")
-        orig_idx = int(raw_idx) if not _is_missing(raw_idx) else i
+        if _is_missing(raw_idx):
+            orig_idx = i
+        else:
+            try:
+                orig_idx = int(raw_idx)
+            except (TypeError, ValueError):
+                orig_idx = i
 
         participants.append(
             Participant(

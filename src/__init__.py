@@ -1,16 +1,11 @@
 """Source code package for the Group Balancer application.
 
-Initializes the global logging configuration for professional standards.
+Initializes the package-level logger with a NullHandler to ensure imports
+are side-effect free.
 """
 
 import logging
-import sys
 
-# Configure global logger
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-)
-
+# Configure package-level logger
 logger = logging.getLogger("group_balancer")
+logger.addHandler(logging.NullHandler())

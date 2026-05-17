@@ -66,20 +66,14 @@ This gate enforces:
 │       └── ci.yml
 ├── .gitignore
 ├── .pymarkdown
-├── CHANGELOG.md
-├── GEMINI.md
-├── LICENSE
-├── README.md
 ├── app.py
 ├── build.py
-├── group_balancer.egg-info/
-│   ├── PKG-INFO
-│   ├── SOURCES.txt
-│   ├── dependency_links.txt
-│   ├── requires.txt
-│   └── top_level.txt
+├── CHANGELOG.md
+├── GEMINI.md
 ├── group_balancer.py
+├── LICENSE
 ├── pyproject.toml
+├── README.md
 ├── src/
 │   ├── __init__.py
 │   ├── core/
@@ -106,21 +100,17 @@ This gate enforces:
 │   ├── __init__.py
 │   ├── conftest.py
 │   ├── test_config.py
-│   ├── test_coverage_bump.py
 │   ├── test_data_loader.py
 │   ├── test_determinism.py
 │   ├── test_exporter.py
+│   ├── test_group_helpers.py
 │   ├── test_infra.py
-│   ├── test_models_unit.py
+│   ├── test_models.py
 │   ├── test_scaling_tiers.py
 │   ├── test_services.py
 │   ├── test_solver.py
 │   ├── test_solver_interface.py
-│   ├── test_solver_unit.py
-│   ├── test_statistics.py
-│   ├── test_steps_edge.py
-│   ├── test_ui.py
-│   └── test_utils.py
+│   └── test_ui.py
 ├── tools/
 │   ├── __init__.py
 │   ├── pre_ci.py

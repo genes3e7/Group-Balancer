@@ -1,5 +1,6 @@
 """Unit tests for the solver interface."""
 
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -142,3 +143,55 @@ def test_render_failure_status_no_msg() -> None:
         solver_interface._render_failure_status(mock_box, "UNKNOWN", None)
         assert mock_status.called
         assert mock_write.called
+
+
+def test_solver_interface_error_msg_default() -> None:
+    """Cover _get_solver_error_msg default branch."""
+    # Use 0 (UNKNOWN) to trigger the default branch
+    msg = solver_interface._get_solver_error_msg(0, "UNKNOWN")
+    assert "status: UNKNOWN" in msg
+
+
+def test_solver_interface_callback_update() -> None:
+    """Trigger the update interval in StreamlitSolverCallback."""
+    mock_placeholder = MagicMock()
+    mock_placeholder.container.return_value.__enter__.return_value = MagicMock()
+
+    cb = solver_interface.StreamlitSolverCallback(mock_placeholder, 10)
+    cb.ctx = MagicMock()
+
+    # Backdate last_update_time to trigger immediate update
+    cb.last_update_time = time.time() - 10.0
+
+    with (
+        patch("src.core.solver_interface.add_script_run_ctx") as mock_add_ctx,
+        patch("streamlit.columns", return_value=[MagicMock()] * 3),
+        patch("streamlit.metric"),
+        patch("streamlit.markdown"),
+    ):
+        cb.on_solution_callback()
+        assert mock_add_ctx.called
+
+
+def test_solver_interface_render_failure() -> None:
+    """Cover _render_failure_status success path."""
+    mock_box = MagicMock()
+    mock_box.__enter__.return_value = mock_box
+    with patch("streamlit.status") as mock_st:
+        mock_st.return_value.__enter__.return_value = MagicMock()
+        solver_interface._render_failure_status(mock_box, "ERROR", "error msg")
+
+
+def test_solver_interface_fallback_scriptrunner() -> None:
+    """Cover fallback branches for add_script_run_ctx."""
+    with patch.dict(
+        "sys.modules",
+        {"streamlit.runtime.scriptrunner": None, "streamlit.scriptrunner": None},
+    ):
+        # Force re-import fallback
+        import importlib
+
+        import src.core.solver_interface
+
+        importlib.reload(src.core.solver_interface)
+        src.core.solver_interface.add_script_run_ctx(None, None)

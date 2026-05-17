@@ -56,7 +56,18 @@ def get_project_tree(root_path: Path) -> str:
 
 def _load_ignore_patterns(root_path: Path) -> list[str]:
     """Loads ignore patterns from .gitignore and defaults."""
-    patterns = [".git/", "__pycache__/", "venv/", ".venv/", "artifacts/"]
+    patterns = [
+        ".git/",
+        "__pycache__/",
+        "venv/",
+        ".venv/",
+        "artifacts/",
+        ".pytest_cache/",
+        ".ruff_cache/",
+        "build/",
+        "dist/",
+        ".coverage",
+    ]
     gitignore_path = root_path / ".gitignore"
 
     if gitignore_path.exists():
@@ -64,8 +75,8 @@ def _load_ignore_patterns(root_path: Path) -> list[str]:
             for line in f:
                 stripped = line.strip()
                 if stripped and not stripped.startswith("#"):
-                    pattern = stripped if stripped.endswith("/") else stripped + "/"
-                    patterns.append(pattern)
+                    # Preserve original pattern (don't force trailing slash)
+                    patterns.append(stripped)
     return patterns
 
 
@@ -78,10 +89,18 @@ def _filter_items(
         item_rel = f"{current_rel}/{item.name}" if current_rel != "." else item.name
         check_path = item_rel + "/" if item.is_dir() else item_rel
 
-        should_ignore = any(
-            check_path.startswith(p) or check_path == p.rstrip("/")
-            for p in ignore_patterns
-        )
+        should_ignore = False
+        for p in ignore_patterns:
+            # Handle directory-only patterns (ending in /)
+            if p.endswith("/"):
+                if check_path.startswith(p) or check_path == p.rstrip("/"):
+                    should_ignore = True
+                    break
+            # Handle file or exact patterns
+            elif item_rel == p or item_rel.startswith(f"{p}/"):
+                should_ignore = True
+                break
+
         if not should_ignore:
             valid.append(item)
     return valid

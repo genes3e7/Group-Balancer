@@ -14,9 +14,6 @@ from types import MappingProxyType
 from src.core import config
 from src.core.tag_utils import canonicalize_tags
 
-# Safety Thresholds
-MAX_WEIGHT_LIMIT = 1_000_000
-
 
 class ConflictPriority(StrEnum):
     """Priority for tag collisions."""
@@ -197,6 +194,6 @@ class SolverConfig:
             if weight < 0:
                 msg = f"{name} cannot be negative."
                 raise ValueError(msg)
-            if weight > MAX_WEIGHT_LIMIT:
-                msg = f"{name} exceeds safe limit of {MAX_WEIGHT_LIMIT:,}."
+            if weight > config.MAX_WEIGHT_LIMIT:
+                msg = f"{name} exceeds safe limit of {config.MAX_WEIGHT_LIMIT:,}."
                 raise ValueError(msg)

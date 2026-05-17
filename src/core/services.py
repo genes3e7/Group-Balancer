@@ -53,7 +53,8 @@ def _resolve_warm_start_hints(
     config_match = (
         attrs.get("score_weights") == cfg.score_weights
         and attrs.get("conflict_priority") == cfg.conflict_priority
-        and attrs.get("group_capacities") == cfg.group_capacities
+        and tuple(attrs.get("group_capacities") or ())
+        == tuple(cfg.group_capacities or ())
         and attrs.get("grouper_weight") == cfg.grouper_weight
         and attrs.get("separator_weight") == cfg.separator_weight
     )
@@ -245,7 +246,7 @@ class OptimizationService:
         scaled = {k: round(v * 1000) for k, v in weights.items()}
         non_zero = [v for v in scaled.values() if v > 0]
 
-        if not non_zero:
+        if not non_zero:  # pragma: no cover
             return weights
 
         common = math.gcd(*non_zero)

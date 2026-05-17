@@ -4,11 +4,19 @@ Provides a terminal interface for loading data and running the optimization
 engine directly without the Streamlit UI.
 """
 
+import logging
 import sys
 
 from src import logger
 from src.core import config, data_loader, solver
 from src.core.models import ConflictPriority, SolverConfig
+
+# Configure global logger for the CLI
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
+)
 
 
 def main() -> None:
@@ -32,8 +40,19 @@ def main() -> None:
     )
 
     try:
-        num_groups = int(input("Enter number of groups: "))
-        timeout = int(input("Enter max search time (seconds, default 60): ") or "60")
+        num_groups_in = input("Enter number of groups: ")
+        timeout_in = input("Enter max search time (seconds, default 60): ") or "60"
+
+        num_groups = int(num_groups_in)
+        timeout = int(timeout_in)
+
+        if num_groups <= 0:
+            logger.error("Number of groups must be a positive integer.")
+            sys.exit(1)
+        if timeout <= 0:
+            logger.error("Timeout must be a positive integer.")
+            sys.exit(1)
+
     except ValueError:
         logger.error("Invalid input. Numeric values required.")
         sys.exit(1)
