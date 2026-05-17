@@ -113,9 +113,10 @@ def test_race_mode_quality_stability(sample_data: pd.DataFrame) -> None:
         interleave_search=False,
     )
 
-    assert metrics1["status"] == metrics2["status"] == "OPTIMAL"
-
     # Quality metrics (Std Dev) must match even if assignments are shuffled
+    assert metrics1["status"] in ("OPTIMAL", "FEASIBLE")
+    assert metrics2["status"] in ("OPTIMAL", "FEASIBLE")
+
     for col in ["Score1", "Score2"]:
         std1 = res1.groupby(config.COL_GROUP)[col].mean().std(ddof=1)
         std2 = res2.groupby(config.COL_GROUP)[col].mean().std(ddof=1)

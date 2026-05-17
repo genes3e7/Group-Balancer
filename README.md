@@ -10,8 +10,8 @@ A high-performance team optimization engine built with Streamlit and Google OR-T
 
 - **Multi-Dimensional Balancing:** Simultaneously balance groups across an unlimited number of scoring categories (e.g., Skill, Experience, Seniority).
 - **Proportional Categorical Distribution:**
-  - **Groupers:** Keep participants with matching tags together in the same group.
-  - **Separators:** Spread participants with matching tags across as many different groups as possible (proportional pigeonhole distribution).
+  - **Groupers:** Encourage participants with matching tags to be grouped together via weighted preferences (soft constraints).
+  - **Separators:** Spread participants with matching tags across as many different groups as possible (proportional pigeonhole distribution). Hard constraints ensure they are split where mathematically possible.
 - **Custom Group Capacities:** Define exact group sizes or use strictly balanced defaults.
 - **Deterministic Quality Metrics:** Ensures consistent balancing quality (identical standard deviations) across runs via stable warm-starts and seed-based search. (Bit-for-bit assignment identity is guaranteed when `interleave_search=True` is enabled).
 - **Security Hardened:**

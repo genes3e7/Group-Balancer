@@ -142,7 +142,7 @@ class ScoringStrategy(ABC):
         Returns:
             list[tuple[str, list[int], int]]: List of (name, scores, weight) tuples.
         """
-        pass  # pragma: no cover
+        ...  # pragma: no cover
 
 
 class AdvancedScoring(ScoringStrategy):

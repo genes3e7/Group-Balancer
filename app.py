@@ -8,7 +8,7 @@ eliminate render lag.
 
 import streamlit as st
 
-from src.ui import components, session_manager, steps
+from src.ui import components, session_manager
 
 # Application Steps
 STEP_DATA_ENTRY = 1
@@ -38,6 +38,8 @@ def main() -> None:
 @st.fragment
 def render_app() -> None:
     """Renders the main application steps asynchronously with lazy imports."""
+    from src.ui import steps  # noqa: PLC0415
+
     if st.session_state.step == STEP_DATA_ENTRY:
         steps.render_step_1()
 

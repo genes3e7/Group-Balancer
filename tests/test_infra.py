@@ -56,8 +56,9 @@ def test_build_executable_success() -> None:
         assert any("app.py" in s for s in add_data_sources)
         assert any("src" in s for s in add_data_sources)
 
-        # Verify the main entry point is present
-        assert any("streamlit_launcher.py" in s for s in cmd)
+        # Verify the main entry point is present via exact basename check
+        entrypoint = [token for token in cmd if not token.startswith("-")][-1]
+        assert os.path.basename(entrypoint) == "streamlit_launcher.py"
 
 
 def test_app_importable() -> None:

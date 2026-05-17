@@ -6,19 +6,18 @@ from typing import Any
 from unittest.mock import MagicMock, Mock
 
 import pytest
-import streamlit as st
 
 
 class DummySessionState(dict):
     """Mock session state that supports both dict and attribute access."""
 
-    def __getattr__(self, key: str) -> Any:
+    def __getattr__(self, key: str) -> object:
         try:
             return self[key]
         except KeyError as err:
             raise AttributeError(key) from err
 
-    def __setattr__(self, key: str, value: Any) -> None:
+    def __setattr__(self, key: str, value: object) -> None:
         self[key] = value
 
     def __delattr__(self, key: str) -> None:
@@ -28,7 +27,7 @@ class DummySessionState(dict):
             raise AttributeError(key) from err
 
 
-def pytest_configure(config: Any) -> None:  # noqa: ARG001
+def pytest_configure(config: "pytest.Config") -> None:  # noqa: ARG001
     """Hooks into pytest startup to patch module-level decorators.
 
     Replaces @st.fragment and @st.cache_data with identity decorators before
@@ -45,11 +44,13 @@ def pytest_configure(config: Any) -> None:  # noqa: ARG001
 
     # Create a strict fail-fast stub for streamlit if it's not installed
     try:
+        import streamlit as st  # noqa: PLC0415
+
         # Check if already installed/aliased
         _ = st.session_state
     except (ModuleNotFoundError, AttributeError):
-        mock_st = MagicMock(name="streamlit")
-        sys.modules["streamlit"] = mock_st
+        st = MagicMock(name="streamlit")
+        sys.modules["streamlit"] = st
 
     # Inject identity decorators to prevent collection-time execution blocks
     st.fragment = identity_decorator

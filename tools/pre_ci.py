@@ -412,7 +412,16 @@ class PreCIPipeline:
         if not self.is_ci:
             uv_path = shutil.which("uv")
             self.run_command(
-                [uv_path, "run", "--no-sync", "pytest", "-v"],
+                [
+                    uv_path,
+                    "run",
+                    "--no-sync",
+                    "pytest",
+                    "-v",
+                    "--cov=src",
+                    "--cov-report=term-missing",
+                    "--cov-fail-under=95",
+                ],
                 "Unit Tests & Coverage Enforcement",
                 fail_fast=True,
             )

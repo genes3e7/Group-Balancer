@@ -17,6 +17,8 @@ import tomllib
 from pathlib import Path
 from typing import ClassVar
 
+from packaging.requirements import Requirement
+
 
 class TreeShaker:
     """Analyzes imports and environment to identify modules for exclusion.
@@ -137,19 +139,23 @@ class TreeShaker:
 
             project = pyproject.get("project", {})
             # Main dependencies
-            deps = {
-                req.split(">")[0].split("=")[0].split("[")[0].strip().lower()
-                for req in project.get("dependencies", [])
-            }
+            deps = set()
+            for req in project.get("dependencies", []):
+                try:
+                    deps.add(Requirement(req).name.lower())
+                except Exception as e:
+                    print(f"⚠️ Warning: Skipping invalid dependency '{req}': {e}")
+
             # Optional (dev) dependencies
             optional = pyproject.get("project", {}).get("optional-dependencies", {})
             for group in optional.values():
-                deps.update(
-                    {
-                        req.split(">")[0].split("=")[0].split("[")[0].strip().lower()
-                        for req in group
-                    }
-                )
+                for req in group:
+                    try:
+                        deps.add(Requirement(req).name.lower())
+                    except Exception as e:
+                        print(
+                            f"⚠️ Warning: Skipping invalid dev dependency '{req}': {e}"
+                        )
         except (FileNotFoundError, PermissionError) as e:
             print(f"⚠️ Warning: Failed to parse pyproject.toml: {e}")
             deps = set()

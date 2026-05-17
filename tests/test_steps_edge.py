@@ -332,7 +332,10 @@ def test_render_step_2_warm_start_attribute_merging() -> None:
             return_value=(results_df, {"status": "OPTIMAL", "elapsed": 0.1}),
         ) as mock_run,
         patch("src.ui.session_manager.go_to_step"),
-        patch("streamlit.button", return_value=True),
+        patch(
+            "streamlit.button",
+            side_effect=lambda label, **_kwargs: label == "🚀 Generate",
+        ),
         patch("streamlit.columns") as mock_cols,
         patch("streamlit.number_input", return_value=1.0),
         patch("streamlit.empty", return_value=MagicMock()),

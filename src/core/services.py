@@ -11,7 +11,7 @@ from typing import Any
 import pandas as pd
 
 from src import logger
-from src.core import config, solver_interface
+from src.core import config
 from src.core.models import (
     ConflictPriority,
     Participant,
@@ -348,6 +348,8 @@ class OptimizationService:
                 hints_by_fingerprint=hints_fp,
                 hints_by_index=hints_idx,
             )
+
+            from src.core import solver_interface  # noqa: PLC0415
 
             return solver_interface.run_optimization(
                 participants, cfg, status_box=status_box

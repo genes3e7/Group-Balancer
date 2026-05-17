@@ -181,7 +181,7 @@ def _process_data_service(df: pd.DataFrame, filepath: str) -> list[dict] | None:
             df[col] = df[col].fillna("").astype(str)
 
     for col in score_cols:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0)
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0).astype(float)
 
     records = df.to_dict("records")
     if not records:
