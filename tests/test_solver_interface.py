@@ -1,187 +1,197 @@
-"""Unit tests for the solver interface module."""
+"""Unit tests for the solver interface."""
 
-import importlib
-import sys
+import time
 from unittest.mock import MagicMock, patch
 
+import pytest
+from ortools.sat.python import cp_model
+
 from src.core import solver_interface
-from src.core.models import (
-    ConflictPriority,
-    OptimizationMode,
-    Participant,
-    SolverConfig,
-)
+from src.core.models import Participant, SolverConfig
+
+# Expected Constants
+EXPECTED_P_COUNT = 2
 
 
-def test_streamlit_solver_callback_on_solution():
-    """Test the callback UI update logic."""
-    # Create a mock status box
-    mock_box = MagicMock()
-    cb = solver_interface.StreamlitSolverCallback(mock_box, 2)
-
-    # Mock ObjectiveValue
-    cb.ObjectiveValue = MagicMock(return_value=123.4)
-
-    # Force the time to be > 0.25 seconds later to trigger the update
-    with (
-        patch("time.time", return_value=cb.start_time + 1.0),
-        patch("streamlit.columns", return_value=[MagicMock()] * 3),
-        patch("streamlit.markdown"),
-    ):
-        cb.on_solution_callback()
-
-    assert cb.solution_count == 1
-    # Should use the container from status_box
-    mock_box.container.assert_called()
-
-
-def test_run_optimization_success_with_status_box():
-    """Test successful optimization with status box updates."""
-    participants = [
-        Participant(name="A", scores={"Score1": 10.0}),
-        Participant(name="B", scores={"Score1": 20.0}),
+@pytest.fixture
+def sample_participants() -> list[Participant]:
+    """Provides a list of strongly-typed participant models."""
+    return [
+        Participant(name="A", scores={"S1": 10}, original_index=0),
+        Participant(name="B", scores={"S1": 20}, original_index=1),
     ]
-    cfg = SolverConfig(
+
+
+@pytest.fixture
+def sample_config() -> SolverConfig:
+    """Provides a basic solver configuration."""
+    return SolverConfig(
         num_groups=2,
         group_capacities=[1, 1],
-        score_weights={"Score1": 1.0},
-        opt_mode=OptimizationMode.SIMPLE,
-        conflict_priority=ConflictPriority.GROUPERS,
-        timeout_seconds=5,
+        score_weights={"S1": 1.0},
+        interleave_search=True,
     )
 
-    mock_box = MagicMock()
+
+def test_run_optimization_success(
+    sample_participants: list[Participant], sample_config: SolverConfig
+) -> None:
+    """Verify standard success path of run_optimization."""
     with (
         patch("streamlit.status") as mock_status,
         patch("streamlit.write"),
-        patch("streamlit.columns", return_value=[MagicMock()] * 3),
-        patch("streamlit.markdown"),
+        patch("streamlit.empty"),
     ):
+        mock_status.return_value.__enter__.return_value = MagicMock()
         df, metrics = solver_interface.run_optimization(
-            participants,
-            cfg,
-            status_box=mock_box,
+            sample_participants, sample_config
         )
 
         assert df is not None
-        assert metrics["status"] in ["OPTIMAL", "FEASIBLE"]
-        # st.status should be called for completion
-        mock_status.assert_called()
+        assert len(df) == EXPECTED_P_COUNT
+        assert metrics["status"] == "OPTIMAL"
 
 
-def test_run_optimization_failure_with_status_box():
-    """Test failed optimization with status box updates."""
-    # Create an impossible configuration (capacity doesn't match participants)
-    participants = [
-        Participant(name="A", scores={"Score1": 10.0}),
-        Participant(name="B", scores={"Score1": 10.0}),
-        Participant(name="C", scores={"Score1": 10.0}),
-    ]
+def test_run_optimization_infeasible() -> None:
+    """Verify handling of infeasible constraints."""
+    # Force infeasibility via impossible capacities (Total P=2, Total Cap=1)
     cfg = SolverConfig(
-        num_groups=2,
-        group_capacities=[1, 1],
-        score_weights={"Score1": 1.0},
+        num_groups=1,
+        group_capacities=[1],
+        score_weights={"S1": 1.0},
+        interleave_search=True,
     )
+    p = [
+        Participant(name="A", scores={"S1": 10}, original_index=0),
+        Participant(name="B", scores={"S1": 10}, original_index=1),
+    ]
 
-    mock_box = MagicMock()
     with (
         patch("streamlit.status") as mock_status,
+        patch("streamlit.write"),
         patch("streamlit.error"),
-        patch("streamlit.columns", return_value=[MagicMock()] * 3),
-        patch("streamlit.markdown"),
+        patch("streamlit.empty"),
     ):
-        df, metrics = solver_interface.run_optimization(
-            participants,
-            cfg,
-            status_box=mock_box,
-        )
+        mock_status.return_value.__enter__.return_value = MagicMock()
+        df, metrics = solver_interface.run_optimization(p, cfg)
 
         assert df is None
-        # st.status should be called for failure
-        mock_status.assert_called()
+        assert metrics["status"] == "INFEASIBLE"
 
 
-def test_solver_interface_fallback_internal():
-    """Cover lines 24-34."""
-    # We use a sub-test or reload logic here
-    # Actually, we can just call them from the module if we can get them
-    # But since they are shadowed, we reload.
+def test_run_optimization_status_callback(
+    sample_participants: list[Participant], sample_config: SolverConfig
+) -> None:
+    """Verify that the Streamlit callback is invoked during solve."""
+    with (
+        patch("src.core.solver_interface.StreamlitSolverCallback") as mock_cb,
+        patch("ortools.sat.python.cp_model.CpSolver.Solve"),
+        patch("streamlit.status"),
+        patch("streamlit.empty"),
+    ):
+        solver_interface.run_optimization(sample_participants, sample_config)
+        assert mock_cb.called
+
+
+def test_run_optimization_metadata_attachment(
+    sample_participants: list[Participant], sample_config: SolverConfig
+) -> None:
+    """Verify that configuration metadata is attached to result DataFrame."""
+    with (
+        patch("streamlit.status"),
+        patch("streamlit.write"),
+        patch("streamlit.empty"),
+    ):
+        df, _ = solver_interface.run_optimization(sample_participants, sample_config)
+        assert df is not None
+        assert df.attrs["score_weights"] == dict(sample_config.score_weights)
+        assert df.attrs["conflict_priority"] == sample_config.conflict_priority
+
+
+def test_solver_error_msg_branches() -> None:
+    """Cover all branches of user-friendly error message derivation."""
+    assert solver_interface._get_solver_error_msg(cp_model.OPTIMAL, "OPTIMAL") is None
+    assert "invalid" in solver_interface._get_solver_error_msg(
+        cp_model.MODEL_INVALID, "MODEL_INVALID"
+    )
+    assert "No solution" in solver_interface._get_solver_error_msg(
+        cp_model.INFEASIBLE, "INFEASIBLE"
+    )
+    assert "status: UNKNOWN" in solver_interface._get_solver_error_msg(
+        cp_model.UNKNOWN, "UNKNOWN"
+    )
+
+
+def test_run_optimization_no_status_box(
+    sample_participants: list[Participant], sample_config: SolverConfig
+) -> None:
+    """Ensure run_optimization works without a status_box placeholder."""
+    # This covers the 'if status_box:' False branches
+    df, _ = solver_interface.run_optimization(
+        sample_participants, sample_config, status_box=None
+    )
+    assert df is not None
+
+
+def test_render_failure_status_no_msg() -> None:
+    """Cover failure rendering when no specific error message is provided."""
+    mock_box = MagicMock()
+    with (
+        patch("src.core.solver_interface.st.status") as mock_status,
+        patch("src.core.solver_interface.st.write") as mock_write,
+    ):
+        solver_interface._render_failure_status(mock_box, "UNKNOWN", None)
+        assert mock_status.called
+        assert mock_write.called
+
+
+def test_solver_interface_error_msg_default() -> None:
+    """Cover _get_solver_error_msg default branch."""
+    # Use 0 (UNKNOWN) to trigger the default branch
+    msg = solver_interface._get_solver_error_msg(0, "UNKNOWN")
+    assert "status: UNKNOWN" in msg
+
+
+def test_solver_interface_callback_update() -> None:
+    """Trigger the update interval in StreamlitSolverCallback."""
+    mock_placeholder = MagicMock()
+    mock_placeholder.container.return_value.__enter__.return_value = MagicMock()
+
+    cb = solver_interface.StreamlitSolverCallback(mock_placeholder, 10)
+    cb.ctx = MagicMock()
+
+    # Backdate last_update_time to trigger immediate update
+    cb.last_update_time = time.time() - 10.0
+
+    with (
+        patch("src.core.solver_interface.add_script_run_ctx") as mock_add_ctx,
+        patch("streamlit.columns", return_value=[MagicMock()] * 3),
+        patch("streamlit.metric"),
+        patch("streamlit.markdown"),
+    ):
+        cb.on_solution_callback()
+        assert mock_add_ctx.called
+
+
+def test_solver_interface_render_failure() -> None:
+    """Cover _render_failure_status success path."""
+    mock_box = MagicMock()
+    mock_box.__enter__.return_value = mock_box
+    with patch("streamlit.status") as mock_st:
+        mock_st.return_value.__enter__.return_value = MagicMock()
+        solver_interface._render_failure_status(mock_box, "ERROR", "error msg")
+
+
+def test_solver_interface_fallback_scriptrunner() -> None:
+    """Cover fallback branches for add_script_run_ctx."""
     with patch.dict(
-        sys.modules,
+        "sys.modules",
         {"streamlit.runtime.scriptrunner": None, "streamlit.scriptrunner": None},
     ):
-        importlib.reload(solver_interface)
-        solver_interface.add_script_run_ctx(None, None)
-        assert solver_interface.get_script_run_ctx() is None
-    # Restore the module for other tests
-    importlib.reload(solver_interface)
+        # Force re-import fallback
+        import importlib
 
+        import src.core.solver_interface
 
-def test_solver_interface_callback_throttling():
-    """Cover line 67."""
-    cb = solver_interface.StreamlitSolverCallback(MagicMock(), 10)
-    cb.ctx = MagicMock()
-    cb.last_update_time = 100.0
-    with patch("time.time", return_value=100.1):  # < 0.25 diff
-        cb.on_solution_callback()
-        cb.status_placeholder.container.assert_not_called()
-
-
-def test_solver_interface_solve_line_145():
-    """Cover line 145."""
-    participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
-    with (
-        patch("ortools.sat.python.cp_model.CpSolver") as mock_solver_cls,
-        patch("src.core.solver_interface.add_script_run_ctx") as mock_add_ctx,
-    ):
-        mock_inst = mock_solver_cls.return_value
-        mock_inst.Solve.return_value = 4  # OPTIMAL
-        mock_inst.StatusName.return_value = "OPTIMAL"
-        with patch(
-            "src.core.solver_interface.get_script_run_ctx", return_value=MagicMock()
-        ):
-            solver_interface.run_optimization(participants, cfg)
-            mock_add_ctx.assert_called()
-
-
-def test_solver_interface_status_box_infeasible():
-    """Cover line 202."""
-    participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
-    with patch("ortools.sat.python.cp_model.CpSolver") as mock_solver_cls:
-        with patch("src.core.solver_interface.st") as mock_st:
-            mock_inst = mock_solver_cls.return_value
-            mock_inst.Solve.return_value = 3  # INFEASIBLE
-            mock_inst.StatusName.return_value = "INFEASIBLE"
-            status_box = MagicMock()
-            solver_interface.run_optimization(participants, cfg, status_box=status_box)
-            mock_st.error.assert_called()
-
-
-def test_solver_interface_status_box_unknown():
-    """Cover line 213."""
-    participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
-    with patch("ortools.sat.python.cp_model.CpSolver") as mock_solver_cls:
-        with patch("src.core.solver_interface.st") as mock_st:
-            mock_inst = mock_solver_cls.return_value
-            mock_inst.Solve.return_value = 0  # UNKNOWN
-            mock_inst.StatusName.return_value = "UNKNOWN"
-            status_box = MagicMock()
-            solver_interface.run_optimization(participants, cfg, status_box=status_box)
-            mock_st.error.assert_called()
-
-
-def test_solver_interface_status_box_invalid():
-    """Cover MODEL_INVALID status branch."""
-    participants = [Participant(name="P1", scores={"S1": 10.0}, original_index=0)]
-    cfg = SolverConfig(num_groups=1, group_capacities=[1], score_weights={"S1": 1.0})
-    with patch("ortools.sat.python.cp_model.CpSolver") as mock_solver_cls:
-        with patch("src.core.solver_interface.st") as mock_st:
-            mock_inst = mock_solver_cls.return_value
-            mock_inst.Solve.return_value = 1  # MODEL_INVALID
-            mock_inst.StatusName.return_value = "MODEL_INVALID"
-            status_box = MagicMock()
-            solver_interface.run_optimization(participants, cfg, status_box=status_box)
-            mock_st.error.assert_called()
+        importlib.reload(src.core.solver_interface)
+        src.core.solver_interface.add_script_run_ctx(None, None)

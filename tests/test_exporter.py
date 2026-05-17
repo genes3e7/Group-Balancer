@@ -1,120 +1,105 @@
-"""Unit tests for the exporter utility."""
+"""Unit tests for the Excel exporter module."""
 
 import io
 
 import pandas as pd
+import pytest
 
 from src.core import config
 from src.utils import exporter
 
-SCORE_COL = f"{config.SCORE_PREFIX}1"
 
-
-def test_generate_excel_bytes():
-    """Test that excel generation returns non-empty bytes."""
-    df = pd.DataFrame(
-        {
-            config.COL_NAME: ["Alice", "Bob"],
-            config.COL_GROUP: [1, 2],
-            SCORE_COL: [10, 20],
-        },
+@pytest.fixture
+def sample_df() -> pd.DataFrame:
+    """Fixture providing a typical optimized result set."""
+    return pd.DataFrame(
+        [
+            {config.COL_NAME: "A", config.COL_GROUP: 1, "Score1": 10},
+            {config.COL_NAME: "B", config.COL_GROUP: 1, "Score1": 20},
+            {config.COL_NAME: "C", config.COL_GROUP: 2, "Score1": 30},
+            {config.COL_NAME: "D", config.COL_GROUP: 2, "Score1": 40},
+        ],
     )
-    score_cols = [SCORE_COL]
 
+
+def test_generate_excel_bytes_valid(sample_df: pd.DataFrame) -> None:
+    """Verify standard Excel generation with valid data."""
     excel_bytes = exporter.generate_excel_bytes(
-        df,
-        config.COL_GROUP,
-        score_cols,
-        config.COL_NAME,
+        sample_df, config.COL_GROUP, ["Score1"], config.COL_NAME
     )
 
     assert isinstance(excel_bytes, bytes)
     assert len(excel_bytes) > 0
 
-    # Optional: Verify it's a valid Excel file
-    with io.BytesIO(excel_bytes) as f:
-        xl = pd.ExcelFile(f)
-        assert "Balanced_Groups" in xl.sheet_names
-        df_out = pd.read_excel(f, sheet_name="Balanced_Groups")
-        # Verify it has some data.
-        assert not df_out.empty
-
-
-def test_generate_excel_bytes_empty():
-    """Test behavior with empty dataframe."""
-    df = pd.DataFrame()
-    excel_bytes = exporter.generate_excel_bytes(
-        df,
-        config.COL_GROUP,
-        [],
-        config.COL_NAME,
-    )
-
-    # Should still return valid empty template bytes
-    assert isinstance(excel_bytes, bytes)
-    with io.BytesIO(excel_bytes) as f:
-        xl = pd.ExcelFile(f)
-        assert "Balanced_Groups" in xl.sheet_names
-        df_out = xl.parse("Balanced_Groups")
-        assert df_out.empty
-
-
-def test_generate_excel_bytes_multiple_members():
-    """Test aggregation with more members per group."""
-    df = pd.DataFrame(
-        {
-            config.COL_NAME: ["A", "B", "C", "D"],
-            config.COL_GROUP: [1, 1, 2, 2],
-            SCORE_COL: [10, 20, 30, 40],
-        },
-    )
-    score_cols = [SCORE_COL]
-    excel_bytes = exporter.generate_excel_bytes(
-        df,
-        config.COL_GROUP,
-        score_cols,
-        config.COL_NAME,
-    )
-    assert isinstance(excel_bytes, bytes)
-    assert len(excel_bytes) > 0
+    # Verify content via pandas
     with io.BytesIO(excel_bytes) as f:
         sheet = pd.read_excel(f, sheet_name="Balanced_Groups", header=None)
-    values = set(sheet.stack().astype(str))
+
+    # Convert to set of all cell strings to check for markers
+    values = {str(val) for val in sheet.to_numpy().flatten()}
     assert {"GROUP 1", "GROUP 2", "A", "B", "C", "D"}.issubset(values)
 
 
-def test_generate_excel_bytes_odd_groups():
-    """Test with odd number of groups to cover g2 is None branches."""
-    df = pd.DataFrame(
-        {
-            config.COL_NAME: ["A", "B"],
-            config.COL_GROUP: [1, 1],
-            SCORE_COL: [10, 20],
-        },
-    )
-    score_cols = [SCORE_COL]
+def test_generate_excel_bytes_empty() -> None:
+    """Verify behavior with empty input."""
+    df = pd.DataFrame()
     excel_bytes = exporter.generate_excel_bytes(
-        df,
-        config.COL_GROUP,
-        score_cols,
-        config.COL_NAME,
+        df, config.COL_GROUP, ["Score1"], config.COL_NAME
     )
     assert isinstance(excel_bytes, bytes)
-    assert len(excel_bytes) > 0
+
+    # Empty result should still produce a valid (but essentially empty) sheet
+    with io.BytesIO(excel_bytes) as f:
+        sheet = pd.read_excel(f, sheet_name="Balanced_Groups")
+    assert sheet.empty
+
+
+def test_matrix_layout_alignment() -> None:
+    """Verify the interleaved 2-column matrix layout logic."""
+    df = pd.DataFrame(
+        [
+            {config.COL_NAME: "A", config.COL_GROUP: 1, "Score1": 10},
+            {config.COL_NAME: "C", config.COL_GROUP: 2, "Score1": 30},
+        ],
+    )
+    excel_bytes = exporter.generate_excel_bytes(
+        df, config.COL_GROUP, ["Score1"], config.COL_NAME
+    )
+
+    with io.BytesIO(excel_bytes) as f:
+        # Load with header=None so we can see the literal content of all cells
+        sheet = pd.read_excel(f, sheet_name="Balanced_Groups", header=None)
+
+    # G1 should be on the left, G2 on the right
+    # Because to_excel writes headers by default, row 0 is "A", "B", "C"...
+    # "GROUP 1" and "GROUP 2" should be in the same row (row 1)
+    # Check all rows just in case of header shifts
+    all_rows = [row.tolist() for row in sheet.to_numpy()]
+    header_row_found = False
+    for row in all_rows:
+        row_strs = [str(s) for s in row]
+        if any("GROUP 1" in s for s in row_strs) and any(
+            "GROUP 2" in s for s in row_strs
+        ):
+            header_row_found = True
+            break
+
+    assert header_row_found
+
+
+def test_generate_excel_bytes_odd_groups() -> None:
+    """Verify that odd number of groups are handled (last group is single).."""
+    df = pd.DataFrame(
+        [
+            {config.COL_NAME: "A", config.COL_GROUP: 1, "Score1": 10},
+        ],
+    )
+    excel_bytes = exporter.generate_excel_bytes(
+        df, config.COL_GROUP, ["Score1"], config.COL_NAME
+    )
+
     with io.BytesIO(excel_bytes) as f:
         sheet = pd.read_excel(f, sheet_name="Balanced_Groups", header=None)
-    values = set(sheet.stack().astype(str))
+    values = {str(val) for val in sheet.to_numpy().flatten()}
     assert "GROUP 1" in values
     assert "GROUP 2" not in values
-
-
-def test_exporter_no_groups_edge():
-    """Cover 'if not groups' branch in exporter."""
-    df = pd.DataFrame()
-    res = exporter.generate_excel_bytes(df, "Group", ["S1"], "Name")
-    assert isinstance(res, bytes)
-    assert len(res) > 0
-    with io.BytesIO(res) as f:
-        xl = pd.ExcelFile(f)
-        assert "Balanced_Groups" in xl.sheet_names
-        assert xl.parse("Balanced_Groups").empty

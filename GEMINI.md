@@ -6,21 +6,22 @@ This file documents architectural decisions, framework-specific quirks, and less
 
 This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` or `git push` operation. It serves as a mandatory local Pre-CI check to ensure technical integrity and minimize redundant CI failures.
 
-1.  **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
-2.  **Architecture Verification**: Verify that the changes align with the established design patterns and have not introduced an unintended "architecture shift."
-3.  **Documentation & Changelog Update**: 
-    -   Review and update all related documentation (README, help text, etc.) to reflect the changes.
-    -   **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
-4.  **Automated Technical Validation**: Run `uv run python tools/pre_ci.py`. This script is the **final gate** and ensures:
-    -   **EXCEPTION**: If the changes are strictly limited to non-code and non-configuration files (e.g., `.txt`, `CHANGELOG.md`), this step may be skipped.
-    -   **MANDATORY**: Any change to code, tests, configuration (e.g., `.yaml`, `.toml`, `.gitignore`), or `README.md` (which is auto-updated by the script) **MUST** trigger a full validation.
-    -   Dependencies are synced (`uv sync`).
-    -   Ruff linting and formatting compliance (0 errors).
-    -   Dead code analysis (`vulture` > 80% confidence, ensuring effectively 0 dead code).
-    -   Docstring coverage (`interrogate` == 100%).
-    -   Functional test coverage (`pytest-cov` >= 90%).
-    -   README tree and metadata are updated.
-    -   Build integrity is verified.
+1. **Adversarial Mindset Vetting**: Perform a ruthless self-review of the changes to hunt for logic bugs, security flaws, or edge-case failures that automated tests might miss.
+2. **Architecture Verification**: Ensure changes align with the established design patterns and have not introduced an unintended "architecture shift."
+3. **Documentation & Changelog Update**:
+   - Review and update all related documentation (README, help text, etc.) to reflect the changes.
+   - **MANDATORY**: Summarize all user-facing and architectural changes in `CHANGELOG.md` under the appropriate version header.
+4. **Automated Technical Validation**: Run `uv run python tools/pre_ci.py`. This script is the **final gate** and ensures:
+   - **EXCEPTION**: If the changes are strictly limited to non-code and non-configuration files (e.g., `.txt`, `CHANGELOG.md`), this step may be skipped.
+   - **MANDATORY**: Any change to code, tests, configuration (e.g., `.yaml`, `.toml`, `.gitignore`), or `README.md` (which is auto-updated by the script) **MUST** trigger a full validation.
+   - Dependencies are synced (`uv sync`).
+   - Ruff linting and formatting compliance (0 errors).
+   - Dead code analysis (`vulture` > 80% confidence, ensuring effectively 0 dead code).
+   - Docstring coverage (`interrogate` == 100%).
+   - Markdown standard compliance (`pymarkdownlnt`).
+   - Functional test coverage (`pytest-cov` >= 95%).
+   - README tree and metadata are updated.
+   - Build integrity is verified.
 
 ### 💡 CI/CD & Pipeline Learnings
 
@@ -29,10 +30,12 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 - **Least Privilege Configuration**: CI workflows (`ci.yml`) should never grant global `permissions: contents: write`. Instead, write permissions are scoped exclusively to the specific job (e.g., `finalize-updates`) that needs to push automated commits back to the branch.
 
 ## 💻 Environment & Syntax
+
 - **Maintainer's local shell**: PowerShell — examples may use PowerShell syntax.
 - **POSIX Equivalents**: POSIX equivalents apply on Linux/macOS, and CI runners (e.g., `runs-on: ubuntu-latest`) should use POSIX syntax. The `PreCIPipeline` orchestrator and `uv` toolchain are designed to be strictly cross-platform.
 
 ## 🧠 AI Behavioral Mandates
+
 - **GitHub CLI Integration**: Always check if the GitHub CLI (`gh`) is available and authenticated. If so, use it to fetch PR reviews, check CI status, or manage issues before starting work on a branch or PR. This ensures you are aware of feedback or pending requests that might not be visible in the local git history.
 - **Anti-Sycophancy**: Do **NOT** blindly accept reviews or suggestions (from human or AI reviewers) if they contradict established design intent or architectural logic.
 - **Design Intent Integrity**: Always prioritize the long-term vision and stability of the codebase. If a change feels forced or illogical, question it.
@@ -42,104 +45,208 @@ This workflow **MUST** be executed in its entirety **BEFORE** any `git commit` o
 ## Streamlit UI & Components
 
 ### 1. Parameter Deprecation: `use_container_width`
+
 - **Observation:** As of April 2026, Streamlit has deprecated `use_container_width` in favor of a more unified `width` parameter.
-- **Constraint:** 
+- **Constraint:**
   - Use `width="stretch"` instead of `use_container_width=True`.
   - Use `width="content"` instead of `use_container_width=False`.
 - **Reasoning:** Ensures compatibility with Streamlit >= 1.49.0 and avoids runtime deprecation warnings.
 
-### 2. Progress Bar Implementation
-- **Technique:** Custom SVG data URIs rendered via `st.image` are used to create a contiguous, themed progress bar.
-- **Quirk:** Must use `width="stretch"` to ensure the SVG fills the column container exactly.
+### 2. High-Performance Progress Bars
+
+- **Technique:** Native HTML/CSS `div` elements are used instead of `st.image` SVG data URIs to bypass Streamlit's media manager.
+- **Result:** Instant rendering of progress bars without the "picture retrieval" lag observed in media-based implementations.
 
 ### 3. Stable Widget Keys
+
 - **Lesson:** UI widgets (e.g., `st.number_input`) must have explicit, stable keys based on data identity (e.g., `key=f"cap_{num_groups}_{i}"`) or scale (e.g., incorporating `total_p`) rather than relying on positional rendering.
 - **Risk:** Without stable keys, changing participant counts or reordering groups can cause Streamlit to attach stale values to the wrong inputs or trigger `StreamlitAPIException`.
+- **Harden:** Always use `try/except` coercion and `max(min(...))` clamping when initializing widget values from session state to prevent crashes from stale data types or out-of-bounds values.
 
 ### 4. Decoupling Logic from Display Text
-- **Lesson:** UI controls (like radio buttons) should map to stable tokens (e.g., `"simple"` or `"advanced"`) for backend logic, rather than forwarding full display labels.
-- **Risk:** Forwarding display strings into the core solver makes the logic brittle; changing a UI label could silently break `startswith` branching.
+
+- **Lesson:** UI controls (like radio buttons) should map to stable tokens (e.g., `"groupers"`) for backend logic, rather than forwarding full display labels.
+- **Risk:** Forwarding display strings into the core solver makes the logic brittle; changing a UI label could silently break branching.
 
 ### 5. Defensive State Clamping
-- **Lesson**: When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
-- **Risk**: Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
 
-### 6. Performance: UI Caching
-- **Lesson**: Memoize heavy binary generation (e.g., `exporter.generate_excel_bytes`) using `@st.cache_data` to ensure the UI remains responsive during rapid reassignments.
-- **Risk**: Without caching, the entire Excel file is re-generated on every streamlit rerun, causing significant lag.
+- **Lesson:** When rendering inputs that depend on session state (like group capacities), always clamp the value to current bounds (e.g., `min_value`..`total_p`).
+- **Risk:** Stale values from a previous larger dataset can persist in session state and cause validation errors when a smaller dataset is loaded.
+
+### 6. Async UI: Fragmentation & Lazy Loading
+
+- **Architecture:** The tool header (Description and Progress) is de-fragmented for instant primary page load. The tool body (Step content) is wrapped in `st.fragment` with **Lazy Loading** (OR-Tools imports are deferred inside the fragment).
+- **Benefit:** Ensures the tool skeleton and labels appear immediately while the heavy solver engine initializes in the background.
 
 ### 7. Import Hygiene
-- **Lesson**: Move all third-party imports (like `re`) to the top-level module block to comply with E402 and ensure consistent initialization.
-- **Risk**: Local imports can lead to redundant overhead or confusing dependency cycles in long-running processes like `pre_ci.py`.
+
+- **Lesson:** Move all third-party imports (like `re`) to the top-level module block to comply with E402 and ensure consistent initialization.
+- **Risk:** Local imports can lead to redundant overhead or confusing dependency cycles in long-running processes like `pre_ci.py`.
+
+### 8. File Upload Resilience
+
+- **Lesson:** Use a cryptographic hash (MD5) of raw file bytes (`uploaded.getvalue()`) rather than metadata (filename/size) to detect content edits.
+- **Risk:** Filename and size remain identical if a user corrects a single cell and re-uploads, causing Streamlit to skip re-processing and leading to stale data.
+
+### 9. Row-Stable Interactive Sync
+
+- **Lesson:** Manual group reassignments in the results cards must be synchronized back to the global state using the `_original_index` as the anchor.
+- **Implementation:** Ensure `_original_index` is included in the `data_editor` column list (even if hidden via `column_config`) to maintain state integrity during user edits.
+- **Risk:** Using positional indexing (`iloc`) causes data corruption if the user reorders the UI table (e.g., by name or score) before making a change.
 
 ## Optimization & Solver (OR-Tools)
 
 ### 1. Symmetry Breaking
+
 - **Lesson:** In multi-dimensional problems, symmetry breaking (ordering groups) must be restricted to a single "canonical" dimension (the first one with a positive weight).
 - **Risk:** Over-constraining secondary dimensions or zero-weight dimensions can lead to sub-optimal solutions or unnecessary infeasibility.
 
-### 2. Integer Range & Overflows
-- **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `(1 << 60) - 1`) to avoid model construction failures.
-- **Implementation:** Weighted deviations and cohesion penalties are multiplied by a `SCALE_FACTOR` but validated against safety bounds before being added to the model.
-- **Optimization**: The cohesion penalty budget (`per_term_cap`) is calculated by counting only active grouper sets (`len(g_set) > 1`) to maximize the available penalty range while preventing overflow.
+### 2. Participant Identity & Warm Starts
 
-### 3. Categorical Constraints (Groupers/Separators)
+- **Lesson:** For robust iterative optimization (warm starts), participants must be identified via a stable content-based fingerprint rather than row indices.
+- **Implementation:** `Participant.fingerprint` computes a stable MD5 hash of Name, Scores, and canonicalized Tags.
+- **Warm Start Logic:** `OptimizationService.run` validates the multiset of fingerprints and configuration. If identical, it applies assignments to seed the solver.
+- **Risk:** Using indices for warm starts after reordering causes "hallucinated" hints.
+
+### 3. Configuration Cache (LRU Memoization)
+
+- **Architecture:** The application implements a high-level memoization layer using a `collections.OrderedDict` as a Least Recently Used (LRU) cache.
+- **Composite Key:** Each cache entry is keyed by a hash of both the **Dataset** (content-aware) and the **Configuration** (weights, capacities, priority).
+- **Behavior:** This allows users to switch between different weight profiles instantly. If the user reverts a data change, the system automatically retrieves the best-found solution for that specific state from memory, enabling "non-linear" iterative refinement.
+- **Capacity:** Capped at 50 configurations per active session to maintain strict memory hygiene while providing a massive refinement buffer.
+- **Persistence:** The cache is preserved during 'Start Over' operations, allowing for a continuous workspace experience while resetting the current project's data state.
+
+### 4. Solver Determinism: Stability vs. Speed (Race Mode)
+
+- **Observation:** In multi-threaded environments, OR-Tools' high-speed "Race Mode" (`interleave_search = False`) can return different symmetric optima across different operating systems (Linux vs. Windows) or Python versions.
+- **Architecture:** The application implements **Dual-Layer Validation** to balance stability and performance:
+  - **Level 1 (Interleaved):** For tests and audits, `interleave_search = True` is used to force worker synchronization, guaranteeing bit-for-bit identical personnel assignments.
+  - **Level 2 (Race Mode):** For production UI, the flag is disabled to provide the absolute fastest "alive" feel, with stability guaranteed only at the mathematical quality level (identical Standard Deviations).
+- **Control:** The flag is exposed via `SolverConfig` for explicit consumer control.
+
+### 5. Integer Range & Overflows
+
+- **Constraint:** CP-SAT operates on 64-bit integers. Objectives and penalties must be carefully scaled and capped (e.g., at `config.MAX_INT_LIMIT`) to avoid model construction failures or non-deterministic behavior due to silent overflows.
+- **Implementation:** Theoretical bounds are tracked globally via `max_abs_diff_bound` to ensure `max_dev` and `sq_diff` variables stay within the 64-bit domain.
+- **Fail-Fast Guard:** The solver implements a strict `ValueError` in `get_model` if the theoretical aggregate objective sum exceeds `config.MAX_INT_LIMIT`, preventing unsafe solves at the architecture level.
+
+### 6. Categorical Constraints (Groupers/Separators)
+
 - **Design:** Every character in the tag string is treated as a unique constraint.
-- **UI Mapping:** The `_original_index` must be preserved through any DataFrame transformations (like aggregation for group cards) to ensure UI edits can be mapped back to the global state correctly.
+- **Canonicalization:** Tags must be order- and whitespace-insensitive. Logic is extracted into `src/core/tag_utils.py`.
 
-### 4. Capacity-Aware Bounds
-- **Lesson:** Distribution bounds (like pigeonhole constraints for "stars" or separators) must be calculated relative to each group's specific capacity, rather than using a flat global average.
-- **Risk:** Using flat distribution bounds can mathematically force infeasibility when custom capacities are skewed.
+### 7. Capacity-Aware Bounds
+
+- **Lesson:** Distribution bounds must be calculated relative to each group's specific capacity, rather than using a flat global average.
+
+### 8. Standard Deviation of Group Averages
+
+- **Lesson:** To balance groups effectively, the metric of interest is the dispersion between the group averages, not individual participants. Uses Sample Standard Deviation (`ddof=1`) of group means.
+
+### 9. Squared Exact Math (L2 Optimization)
+
+- **Architecture:** The solver minimizes the **Sum of Squared Deviations** (L2) rather than Absolute Error (L1).
+- **Benefit:** L2 is significantly more aggressive at eliminating outliers, leading to the "Way Lower" optimal Standard Deviation results desired by users.
+- **Formula:** Uses exact cross-multiplication: `(GroupSum * TotalPeople) - (TotalSum * GroupCapacity)` to eliminate rounding and division errors entirely.
+- **Precision Mandate:** Use **Dynamic Precision Scaling** to automatically calculate the highest possible resolution (up to `config.MAX_PRECISION_RESOLUTION`) that stays within 64-bit safety bounds for the given participant count.
+
+### 10. Priority Tiering (Lexicographic Bit-Slicing)
+
+- **Mandate:** Logical constraints MUST always be met before score balancing occurs.
+- **Dynamic Hierarchy:** The UI 'Priority' toggle dynamically swaps the primary and secondary bit-slices:
+  - **HI Priority Tier ($10^{12}$):** Assigned to user's choice (Separators or Groupers).
+  - **LO Priority Tier ($10^9$):** Secondary constraint layer.
+  - **Tier 3: Max-Min Fairness ($10^7$):** Tertiary priority (Minimize worst outlier).
+  - **Tier 4: Balance (L2 Squared Error, $10^0$):** Quaternary priority (Overall balance).
+- **Stable Identity:** Anchored to `original_index` to ensure that sorting in the UI never shifts the preferred mathematical optimal.
+
+### 11. Search & Branching Strategy
+
+- **Worker Portfolio:** Dynamically utilizes parallel search workers (defaulting to 4 or `os.cpu_count()`) with `interleave_search = False` (Race Mode) to utilize multi-core performance for rapid proof of optimality.
+- **High-Impact Branching:** Explicitly prioritizes decision variables for participants with the largest absolute score magnitudes.
+- **Tie-Breaker:** Uses a deterministic tie-breaker (Impact DESC, Original Index ASC) to ensure search stability. Previous implementations using enumeration indices were brittle to UI reordering; the current implementation utilizes stable dataset indices.
+
+### 12. Relative Weight Scaling & GCD Reduction
+
+- **Problem:** Prematurely rounding fractional weights (e.g., 0.1) to integers can coarsen the objective function and distort user-defined importance ratios.
+- **Solution:** The normalization engine (now handled safely in `OptimizationService`) identifies all positive weights, scales them by $10^3$ to handle up to 0.001 UI precision, and then uses a **Greatest Common Divisor (GCD)** reduction to convert the weights into their simplest irreducible integer ratios (e.g., 0.2:0.4 becomes 1:2).
+- **Performance:** This produces smaller, strictly proportional integer coefficients. Smaller coefficients allow CP-SAT's **Presolve** and **Linear Relaxation** phases to prune the search tree more aggressively, leading to much faster convergence on the optimal solution.
+- **UI Integration:** The reduced weights are passed to the solver and used as part of the `Configuration Cache` composite key, ensuring that equivalent fractional ratios (e.g., 1:2 and 2:4) hit the same cache entry.
+
+### 13. Dynamic Safety Bounds
+
+- **Mechanism:** Theoretical objective bounds are calculated using the actual maximum `original_index` and `num_groups` present in the current dataset.
+- **Safety:** This ensures that the `get_model` Fail-Fast check is precise, preventing unnecessary `ValueError` exceptions for small datasets while strictly blocking unsafe overflows for large-scale solves.
+
+### 14. Objective Scaling & Tie-Breaker Subordination
+
+- **Lesson:** Mathematically "pure" lexicographic priority (scaling the main objective by the tie-breaker maximum) is incompatible with CP-SAT's 64-bit integer limits when using large priority multipliers (e.g., $10^{12}$).
+- **Mandate:** Use **Simple Addition** (`main_objective + tie_breaker`) instead of multiplication.
+- **Context:** The 100x scale gap between the Fairness Tier ($10^7$) and the Max Tie-Breaker (~$10^5$) provides sufficient practical subordination without risking numerical overflow.
+- **Enforcement:** The code comment in `get_model()` explaining this rationale is **critical** and MUST NOT be removed or "refactored" into a multiplier. Determinism is instead guaranteed via `interleave_search = True` in tests.
+
+### 15. The "Optimal State" Mathematical Requirements (CRITICAL)
+
+The solver's mathematical foundation is extremely fragile. To maintain the "accurate optimal state," the following requirements MUST be strictly observed:
+
+- **Lexicographic Bit-Slicing Hierarchy**: Objectives must be scaled by specific multipliers to ensure absolute priority. The tiers are:
+  - **Tier 1 (Logical Constraints HI)**: $10^{12}$
+  - **Tier 2 (Logical Constraints LO)**: $10^9$
+  - **Tier 3 (Max-Min Fairness)**: $10^7$
+  - **Tier 4 (L2 Balance)**: $10^0$
+- **Lexicographic Tie-Breaker**: A stable tie-breaker ($g \times \text{index}$) must be added to the final objective with a weight of $1$. This ensures determinism across different runs and OS environments.
+- **Subordination Guard**: Lower tiers MUST stay smaller than the multiplier of the tier above them.
+  - *Failure Case*: On datasets with $N=1000$, the L2 balance sum can reach $10^{13}$, which overpowers the Fairness tier ($10^7$). This is a known limitation of the 64-bit domain.
+- **64-bit Domain Safety**: The aggregate objective sum (sum of all tiers) must NEVER exceed `config.MAX_INT_LIMIT`.
+  - *Failure Case*: Multipliers of $10^{15}$ or higher are unsafe for $N=1000$ and will cause model invalidation.
+- **Precision Scaling**: Raw scores are scaled by `config.SCALE_FACTOR` ($10^5$) and normalized to a target `config.PRECISION_TARGET_SUM` ($10^{15}$) to provide approximately 3 decimal places of internal resolution.
+- **Canonical Symmetry Breaking**: Ordering constraints (`g1_sum <= g2_sum`) must ONLY be applied to the first dimension with a positive weight to avoid over-constraining the solver.
+
+### 16. Dependency & Tree-Shaking Policy
+
+- **Aggressive Environmental Scanning**: The `build.py` script must scan the entire virtual environment (`importlib.metadata`) to exclude transitive bloat (like `matplotlib` or `pydeck`) that Streamlit pulls in but the app does not use.
+- **Lazy Import Detection**: The tree-shaker regex must account for indented imports (e.g. `from src.ui import steps` inside a fragment) to prevent accidental exclusion of core code.
 
 ## Data Handling
 
 ### 1. Column Coercion
-- **Lesson:** When loading data from Excel/CSV, column headers should be explicitly coerced to `str` before stripping/processing.
-- **Risk:** Numeric or null headers in the raw file can cause `AttributeError` during prefix checks (e.g., `.startswith("Score")`).
+
+- **Lesson:** Column headers should be explicitly coerced to `str` before stripping/processing to avoid `AttributeError`.
 
 ### 2. Missing Value Normalization
-- **Lesson:** Missing values (`NaN`, `None`, `pd.NA`, `pd.NaT`) in both text and numeric columns must be explicitly normalized.
-- **Implementation**: 
-  - Text columns (`Grouper`, `Separator`) normalize to empty strings (`""`).
-  - Score columns normalize to `0.0`.
-- **Risk:** OR-Tools solvers and pandas operations can crash or produce non-deterministic results when encountering mixed-type missing scalars.
 
-### 3. Coercion Warnings
-- **Lesson:** When using `pd.to_numeric(errors="coerce")`, distinguish between originally missing data (blank cells) and truly invalid strings.
-- **Risk:** Failing to separate these cases leads to false-positive warnings that confuse users about "invalid" data.
+- **Lesson:** Missing values in text columns normalize to `""`, numeric to `0.0`.
 
-### 4. Path Sanitization
-- **Lesson**: CLI path inputs must be stripped of shell artifacts (quotes, ampersands) before validation.
-- **Implementation**: `get_file_path_from_user` uses a regex to sanitize raw input before passing it to `validate_file_path`.
+### 3. Path Sanitization
+
+- **Implementation:** CLI path inputs must be stripped of shell artifacts before validation.
 
 ## 🛡️ Defensive Programming & Data Safety
 
-- **Fail-Fast**: The program MUST terminate immediately if a validation step fails or a critical configuration is missing.
-- **Idempotency**: Ensure solver operations and file exports are idempotent; multiple runs with the same input should yield deterministic results.
-- **Supply Chain Security**: All GitHub Actions in `.github/workflows/` MUST be pinned to 40-character **immutable commit SHAs** rather than mutable version tags (e.g., `@v4`). This prevents supply-chain attacks via tag-shifting and ensures deterministic CI behavior.
+- **Fail-Fast:** The program MUST terminate immediately if a validation step fails or a critical configuration is missing.
+- **Supply Chain Security:** All GitHub Actions must be pinned to 40-character **immutable commit SHAs**.
 
 ## 🧪 Testing Standards
 
-### 1. Mocking Streamlit Cache
-- **Lesson**: When testing functions decorated with `@st.cache_data` (or `@st.cache_resource`), ensure all mocked arguments are serializable (no `MagicMock`).
-- **Risk**: Streamlit's caching mechanism attempts to hash/pickle arguments; passing a `MagicMock` triggers `UnserializableReturnValueError` or `TypeError`.
-- **Mitigation**: Mock the cached function itself rather than its internal dependencies when unit testing UI logic, or provide real but minimal data objects (e.g., small DataFrames).
+### 1. Mocking Streamlit Architecture
+
+- **Lesson:** Use `unittest.mock.MagicMock` with explicit identity decorators for `@st.fragment` and `@st.cache_data` in `conftest.py`.
+- **Constraint:** Ensure all mocked arguments to cached functions are serializable. Guard application entry points with `if __name__ == "__main__":` to allow safe imports of UI modules in non-Streamlit environments.
+
+## 📦 Build & Distribution
+
+### 1. Automated Tree Shaking
+
+- **Mechanism:** The `build.py` script implements a `TreeShaker` class that performs static analysis of `src/` and `app.py` to identify imported top-level modules.
+- **Exclusion Strategy:** It calculates the delta between installed packages and required imports, feeding it to PyInstaller's `--exclude-module` flag.
+- **Safety:** Explicitly protects core runtime dependencies (`streamlit`, `pandas`, `ortools`, `numpy`) and avoids dynamic dependency analysis of the entire environment to prevent stripping of indirect sub-dependencies.
+- **Reliability:** Anchor all build artifact paths (`build/`, `dist/`) to the project root using `os.path.join(os.path.dirname(__file__), ...)` to ensure consistent behavior across different execution environments.
 
 ## 🗒️ Complex Change Management (Planning & State)
 
-For large-scale refactorings or multi-phase integrations, follow this integrated lifecycle:
+For large-scale refactorings, follow this integrated lifecycle:
 
-1.  **Drafting the Plan**: Enter `Plan Mode` to research and design a comprehensive execution strategy.
-2.  **Creating the Spec Sheet**: Save the plan as a standalone markdown file (e.g., `REFACTOR_PLAN.md`) in the project root. This acts as a persistent "Source of Truth" that survives session crashes or pauses.
-3.  **Iterative Execution & Validation**:
-    -   Perform work in distinct phases.
-    -   **Post-Phase Validation**: After every phase, you MUST execute the **Post-Change Validation Workflow** (`uv run python tools/pre_ci.py`). This is a mandatory gate to prevent regression accumulation.
-    -   **Update the Spec**: Explicitly mark tasks as completed in the spec sheet file only after a successful `pre_ci.py` pass.
-4.  **Finalization & Landing**:
-    -   **Update Learnings**: Before closing the task, review the changes for new architectural insights, quirks, or standard shifts and document them in `GEMINI.md`.
-    -   **Cleanup**: Delete the ephemeral spec sheet (`REFACTOR_PLAN.md`).
-    -   **Final Validation**: Run a final, full pass of `tools/pre_ci.py` **AFTER** deleting the spec sheet to ensure the `README.md` project tree is accurate for the final push.
-    -   **Commit & Push**: Push the finalized code and updated learnings.
-    -   **Review Scheduling**: By default, schedule the next review in **60 minutes** using the `@coderabbitai review` command (NEVER `@coderabbitai resume` as it triggers mass replies and immediate rate throttling). Using `review` while paused ensures the system remains paused for future manual triggers.
-
-
+1. Drafting the Plan (Plan Mode).
+2. Spec Sheet: Save as `REFACTOR_PLAN.md`.
+3. Iterative Execution & Validation: Phased approach, Post-Phase Validation (`uv run python tools/pre_ci.py`).
+4. Finalization & Landing: Update `GEMINI.md`, Cleanup, Final Validation, Commit.

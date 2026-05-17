@@ -4,6 +4,8 @@ Initializes the Streamlit session state and guarantees that missing keys
 (like the advanced constraints) are injected to prevent application crashes.
 """
 
+import collections
+
 import pandas as pd
 import streamlit as st
 
@@ -26,6 +28,7 @@ def init_session() -> None:
         "score_cols": [f"{config.SCORE_PREFIX}1"],
         "solver_status": None,
         "solver_elapsed": 0.0,
+        "warm_start_cache": collections.OrderedDict(),
     }
 
     for key, value in defaults.items():
@@ -45,12 +48,11 @@ def init_session() -> None:
 
 
 def go_to_step(target_step: int) -> None:
-    """Updates the step state and reruns the app.
-
-    Input validation clamps the target_step between 1 and 3.
+    """Updates the step state and reruns the entire application.
 
     Args:
         target_step (int): The step number to navigate to (1-3).
     """
     st.session_state.step = max(1, min(3, target_step))
-    st.rerun()
+    # Scope "app" ensures the top-level header and progress bars update
+    st.rerun(scope="app")

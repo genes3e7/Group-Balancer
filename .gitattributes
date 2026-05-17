@@ -1,0 +1,10 @@
+# Enforce LF line endings for all text files
+# This ensures cross-platform consistency (Windows/Linux/MacOS)
+* text=auto eol=lf
+
+# Explicitly mark binary files
+*.xlsx binary
+*.xls binary
+*.png binary
+*.jpg binary
+*.ico binary

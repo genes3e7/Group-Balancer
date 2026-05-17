@@ -14,35 +14,35 @@ from ortools.sat.python import cp_model
 
 from src.core import config, solver
 from src.core.models import (
-    OptimizationMode,
     Participant,
     SolverConfig,
 )
+from src.core.solver import apply_solver_tuning
 
 try:
     from streamlit.runtime.scriptrunner import add_script_run_ctx, get_script_run_ctx
 except ImportError:
     try:
         from streamlit.scriptrunner import add_script_run_ctx, get_script_run_ctx
-    except ImportError:
+    except ImportError:  # pragma: no cover
 
-        def add_script_run_ctx(_: Any, c: Any = None) -> None:
-            """Fallback for add_script_run_ctx if streamlit is not installed."""
+        def add_script_run_ctx(_: object, c: object = None) -> None:
+            """Fallback for add_script_run_ctx."""
 
-        def get_script_run_ctx() -> Any:
-            """Fallback for get_script_run_ctx if streamlit is not installed."""
+        def get_script_run_ctx() -> Any:  # noqa: ANN401
+            """Fallback for get_script_run_ctx."""
             return None
 
 
 class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
     """Custom OR-Tools callback to pipe logs to Streamlit."""
 
-    def __init__(self, status_placeholder: Any, num_people: int) -> None:
+    def __init__(self, status_placeholder: Any, num_people: int) -> None:  # noqa: ANN401
         """Initializes the callback with a Streamlit status placeholder.
 
         Args:
             status_placeholder: A Streamlit placeholder object to update.
-            num_people: Total count of participants for scaling metrics.
+            num_people (int): Total count of participants for scaling metrics.
         """
         cp_model.CpSolverSolutionCallback.__init__(self)
         self.status_placeholder = status_placeholder
@@ -56,21 +56,24 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
         """Update UI with live progress variables.
 
         Calculates elapsed time and current objective value, then updates the
-        Streamlit status placeholder with a progress summary including solution
-        count and weighted deviation.
+        Streamlit status placeholder with a progress summary.
         """
         self.solution_count += 1
         current_time = time.time()
 
-        if current_time - self.last_update_time >= 0.25:
+        if current_time - self.last_update_time >= config.UPDATE_INTERVAL_SECONDS:
             if self.ctx:
                 add_script_run_ctx(threading.current_thread(), self.ctx)
 
             obj = self.ObjectiveValue()
             elapsed = max(0.01, current_time - self.start_time)
 
-            # Scale down to human readable units (Weighted Average Absolute Error)
-            display_obj = obj / (config.SCALE_FACTOR * self.num_people * 100)
+            # Scale down to human readable units
+            display_obj = obj / (
+                config.SCALE_FACTOR
+                * self.num_people
+                * config.DISPLAY_OBJECTIVE_DIVISOR_FACTOR
+            )
 
             if self.status_placeholder:
                 with self.status_placeholder.container():
@@ -85,28 +88,25 @@ class StreamlitSolverCallback(cp_model.CpSolverSolutionCallback):
 def run_optimization(
     participants: list[Participant],
     cfg: SolverConfig,
-    status_box: Any = None,
+    status_box: Any = None,  # noqa: ANN401
 ) -> tuple[pd.DataFrame | None, dict[str, Any]]:
     """Runs the optimization using Participant models and SolverConfig.
 
-    Orchestrates the entire solver lifecycle: model building, constraint
-    addition, scoring strategy execution, and the final solve process.
-    Updates the UI via the provided status_box placeholder.
+    Orchestrates the entire solver lifecycle and updates the UI via the
+    provided status_box placeholder.
 
     Args:
-        participants: List of strongly-typed Participant models.
-        cfg: The solver configuration parameters.
-        status_box: Optional Streamlit placeholder for live progress updates.
+        participants (list[Participant]): List of strongly-typed models.
+        cfg (SolverConfig): The solver configuration parameters.
+        status_box (Any): Optional Streamlit placeholder for updates.
 
     Returns:
-        A tuple of (results_df, metrics_dict). results_df is None if the
-        solver fails to find any feasible solution.
+        tuple[pd.DataFrame | None, dict[str, Any]]: Results and metrics.
     """
-    if status_box:
+    if status_box:  # pragma: no cover
         status_box.info("Solver Status: ⏳ Initializing...")
 
     start_time = time.time()
-    # 1. Build Model using Builder
     builder = solver.ConstraintBuilder(participants, cfg)
     builder.build_variables()
 
@@ -114,22 +114,19 @@ def run_optimization(
         participants,
         cfg.conflict_priority,
     )
-    builder.add_pigeonhole_constraints(separators)
+    builder.add_separator_penalties(separators)
 
-    strategy = (
-        solver.AdvancedScoring()
-        if cfg.opt_mode == OptimizationMode.ADVANCED
-        else solver.SimpleScoring()
-    )
+    strategy = solver.AdvancedScoring()
     builder.add_scoring_objectives(strategy)
     builder.add_cohesion_penalties(groupers)
+    builder.add_participant_symmetry_breaking()
+    builder.add_solution_hints()
+    builder.add_branching_strategy()
 
     model = builder.get_model()
 
-    # 2. Solve with Callback
     solver_inst = cp_model.CpSolver()
-    solver_inst.parameters.max_time_in_seconds = float(cfg.timeout_seconds)
-    solver_inst.parameters.num_search_workers = cfg.num_workers
+    apply_solver_tuning(solver_inst, cfg)
 
     cb = StreamlitSolverCallback(status_box, len(participants))
     status = solver_inst.Solve(model, cb)
@@ -139,21 +136,7 @@ def run_optimization(
     elapsed = time.time() - start_time
 
     status_name = solver_inst.StatusName(status)
-    error_msg = None
-    if status not in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        if status_name == "MODEL_INVALID":
-            error_msg = (
-                "The solver model is invalid. This often happens due to "
-                "numerical overflows from extremely large weights or "
-                "conflicting constraints."
-            )
-        elif status_name == "INFEASIBLE":
-            error_msg = (
-                "No solution exists that satisfies all hard constraints "
-                "(capacities and separator tags)."
-            )
-        else:
-            error_msg = f"Solver stopped with status: {status_name}"
+    error_msg = _get_solver_error_msg(status, status_name)
 
     metrics = {
         "status": status_name,
@@ -162,44 +145,113 @@ def run_optimization(
         "error": error_msg,
     }
 
-    # 3. Results
     if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
-        if status_box:
-            with status_box:
-                with st.status(
-                    f"✅ Optimization Complete ({status_name})", expanded=False
-                ):
-                    st.write(f"Computation time: {elapsed:.2f}s")
-                    display_obj = solver_inst.ObjectiveValue() / (
-                        config.SCALE_FACTOR * len(participants) * 100
-                    )
-                    st.write(f"Final weighted objective: {display_obj:.4f}")
+        if status_box:  # pragma: no cover
+            _render_success_status(
+                status_box, status_name, elapsed, solver_inst, len(participants)
+            )
 
-        results = []
-        for i, p in enumerate(participants):
-            assigned_group = -1
-            for g in range(cfg.num_groups):
-                if solver_inst.Value(builder.x[(i, g)]) == 1:
-                    assigned_group = g + 1
-                    break
+        results = _build_results_list(participants, cfg, builder, solver_inst)
+        result_df = pd.DataFrame(results)
+        _attach_metadata(result_df, cfg)
+        return result_df, metrics
 
-            p_dict = {
-                config.COL_NAME: p.name,
-                config.COL_GROUP: assigned_group,
-                config.COL_GROUPER: p.groupers,
-                config.COL_SEPARATOR: p.separators,
-                "_original_index": p.original_index,
-            }
-            p_dict.update(p.scores)
-            results.append(p_dict)
-
-        return pd.DataFrame(results), metrics
-
-    if status_box:
-        with status_box:
-            with st.status(f"❌ Optimization Failed ({status_name})", state="error"):
-                if error_msg:
-                    st.error(error_msg)
-                else:
-                    st.write(f"Solver stopped with status: {status_name}")
+    if status_box:  # pragma: no cover
+        _render_failure_status(status_box, status_name, error_msg)
     return None, metrics
+
+
+def _get_solver_error_msg(status: int, status_name: str) -> str | None:
+    """Derives a user-friendly error message from solver status."""
+    if status in (cp_model.OPTIMAL, cp_model.FEASIBLE):
+        return None
+    if status_name == "MODEL_INVALID":
+        return (
+            "The solver model is invalid. This often happens due to "
+            "numerical overflows from extremely large weights or "
+            "conflicting constraints."
+        )
+    if status_name == "INFEASIBLE":
+        return (
+            "No solution exists that satisfies all hard constraints "
+            "(capacities and separator tags)."
+        )
+    return f"Solver stopped with status: {status_name}"
+
+
+def _render_success_status(
+    status_box: Any,  # noqa: ANN401
+    status_name: str,
+    elapsed: float,
+    solver_inst: Any,  # noqa: ANN401
+    num_p: int,
+) -> None:
+    """Renders success metrics to the status box."""
+    if not status_box:  # pragma: no cover
+        return
+
+    with (
+        status_box,
+        st.status(f"✅ Optimization Complete ({status_name})", expanded=False),
+    ):
+        st.write(f"Computation time: {elapsed:.2f}s")
+        display_obj = solver_inst.ObjectiveValue() / (
+            config.SCALE_FACTOR * num_p * config.DISPLAY_OBJECTIVE_DIVISOR_FACTOR
+        )
+        st.write(f"Final weighted objective: {display_obj:.4f}")
+
+
+def _render_failure_status(
+    status_box: Any,  # noqa: ANN401
+    status_name: str,
+    error_msg: str | None,
+) -> None:
+    """Renders failure messages to the status box."""
+    if not status_box:  # pragma: no cover
+        return
+
+    with (
+        status_box,
+        st.status(f"❌ Optimization Failed ({status_name})", state="error"),
+    ):
+        if error_msg:
+            st.error(error_msg)
+        else:
+            st.write(f"Solver stopped with status: {status_name}")
+
+
+def _build_results_list(
+    participants: list[Participant],
+    cfg: SolverConfig,
+    builder: Any,  # noqa: ANN401
+    solver_inst: Any,  # noqa: ANN401
+) -> list[dict]:
+    """Constructs the raw results list from solver assignments."""
+    results = []
+    for i, p in enumerate(participants):
+        assigned_group = -1
+        for g in range(cfg.num_groups):
+            if solver_inst.Value(builder.x[(i, g)]) == 1:
+                assigned_group = g + 1
+                break
+
+        p_dict = {
+            config.COL_NAME: p.name,
+            config.COL_GROUP: assigned_group,
+            config.COL_GROUPER: p.groupers,
+            config.COL_SEPARATOR: p.separators,
+            "_original_index": p.original_index,
+            "participant_fingerprint": p.fingerprint,
+        }
+        p_dict.update(p.scores)
+        results.append(p_dict)
+    return results
+
+
+def _attach_metadata(df: pd.DataFrame, cfg: SolverConfig) -> None:
+    """Attaches solver configuration metadata to the result DataFrame."""
+    df.attrs["score_weights"] = dict(cfg.score_weights)
+    df.attrs["conflict_priority"] = cfg.conflict_priority
+    df.attrs["group_capacities"] = list(cfg.group_capacities)
+    df.attrs["grouper_weight"] = cfg.grouper_weight
+    df.attrs["separator_weight"] = cfg.separator_weight

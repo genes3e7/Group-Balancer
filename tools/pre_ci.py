@@ -10,7 +10,7 @@ import subprocess
 import sys
 from typing import ClassVar
 
-DEFAULT_MIN_PY = "3.10"
+DEFAULT_MIN_PY = "3.11"
 DEFAULT_MAX_PY = "3.14"
 
 
@@ -37,7 +37,7 @@ class PreCIPipeline:
         """Initializes the PreCIPipeline with Python version bounds.
 
         Args:
-            min_ver: The minimum supported Python version string (e.g. "3.10").
+            min_ver: The minimum supported Python version string (e.g. "3.11").
             max_ver: The maximum supported Python version string (e.g. "3.14").
         """
         self._results: list[tuple[str, bool | str]] = []
@@ -56,9 +56,6 @@ class PreCIPipeline:
             description: Human-readable label for the step being recorded.
             passed: ``True`` on success, ``False`` on failure, or ``"SKIPPED"``
                 when a step is intentionally bypassed.
-
-        Returns:
-            None
         """
         self._results.append((description, passed))
 
@@ -68,11 +65,9 @@ class PreCIPipeline:
         """Executes a single shell command and records its pass/fail status.
 
         Args:
-            command: The command and its arguments as a list of strings,
-                e.g. ``["uv", "run", "ruff", "check", "."]``.
+            command: The command and its arguments as a list of strings.
             description: Human-readable label printed before and after execution.
-            fail_fast: When ``True``, calls ``sys.exit`` immediately on non-zero
-                return code instead of returning ``False``.
+            fail_fast: When ``True``, calls ``sys.exit`` immediately on failure.
 
         Returns:
             ``True`` if the command exits with code 0, ``False`` otherwise.
@@ -82,45 +77,35 @@ class PreCIPipeline:
         env["PYTHONIOENCODING"] = "utf-8"
         try:
             # capture_output=False (default) streams directly to our stdout/stderr
-            # preventing pipe deadlocks for large output volumes (like Pytest).
             subprocess.run(  # noqa: S603
                 command,
                 check=True,
                 env=env,
             )
-
-            print(f"✅ {description} completed successfully.", flush=True)
-            self.record_result(description, True)
-            return True
-
-        except subprocess.CalledProcessError as e:
+        except (
+            subprocess.CalledProcessError,
+            subprocess.SubprocessError,
+            OSError,
+        ) as e:
+            ret_code = getattr(e, "returncode", 1)
             print(
-                f"\n❌ FATAL: '{description}' failed with exit code {e.returncode}",
+                f"\n❌ FATAL: '{description}' failed with code {ret_code}: {e}",
                 flush=True,
             )
             self.record_result(description, False)
             if fail_fast:
-                sys.exit(e.returncode)
+                sys.exit(ret_code)
             return False
-        except (subprocess.SubprocessError, OSError) as e:
-            print(f"\n❌ FATAL: '{description}' error: {e}", flush=True)
-            self.record_result(description, False)
-
-            if fail_fast:
-                sys.exit(1)
-            return False
+        else:
+            print(f"✅ {description} completed successfully.", flush=True)
+            self.record_result(description, True)
+            return True
 
     def run_commands_parallel(self, tasks: list[tuple[list[str], str]]) -> bool:
         """Executes multiple shell commands concurrently via a thread pool.
 
-        Each task is submitted to a ``ThreadPoolExecutor``. stdout/stderr from
-        every subprocess is captured and printed after all futures complete.
-        Failures are aggregated; no individual failure short-circuits the others.
-
         Args:
-            tasks: A list of ``(command, description)`` tuples where ``command``
-                is a list of strings (as in ``run_command``) and ``description``
-                is the human-readable step label.
+            tasks: A list of ``(command, description)`` tuples.
 
         Returns:
             ``True`` if every task exits with code 0, ``False`` if any task fails.
@@ -133,7 +118,7 @@ class PreCIPipeline:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             future_to_desc = {
                 executor.submit(
-                    subprocess.run,  # noqa: S603
+                    subprocess.run,
                     cmd,
                     capture_output=True,
                     text=True,
@@ -145,51 +130,35 @@ class PreCIPipeline:
 
             for future in concurrent.futures.as_completed(future_to_desc):
                 desc = future_to_desc[future]
-                try:
-                    result = future.result()
-                    print(f"\n--- Output from {desc} ---", flush=True)
-                    if result.stdout:
-                        print(result.stdout.strip(), flush=True)
-                    if result.stderr:
-                        print(result.stderr.strip(), flush=True)
-
-                    if result.returncode == 0:
-                        print(f"✅ {desc} completed successfully.", flush=True)
-                        self.record_result(desc, True)
-                    else:
-                        print(
-                            f"❌ FATAL: '{desc}' failed with exit code "
-                            f"{result.returncode}",
-                            flush=True,
-                        )
-                        self.record_result(desc, False)
-                        success_overall = False
-                except (subprocess.SubprocessError, OSError) as exc:
-                    print(
-                        f"\n❌ FATAL: '{desc}' generated an exception: {exc}",
-                        flush=True,
-                    )
-                    # Surface any partial output captured on the failing process.
-                    partial_stdout = getattr(exc, "stdout", None)
-                    partial_stderr = getattr(exc, "stderr", None)
-                    if partial_stdout:
-                        print(
-                            partial_stdout
-                            if isinstance(partial_stdout, str)
-                            else partial_stdout.decode(errors="replace"),
-                            flush=True,
-                        )
-                    if partial_stderr:
-                        print(
-                            partial_stderr
-                            if isinstance(partial_stderr, str)
-                            else partial_stderr.decode(errors="replace"),
-                            flush=True,
-                        )
-                    self.record_result(desc, False)
-                    success_overall = False
+                success_overall &= self._process_parallel_result(future, desc)
 
         return success_overall
+
+    def _process_parallel_result(
+        self, future: concurrent.futures.Future, desc: str
+    ) -> bool:
+        """Helper to process and log a single parallel command result."""
+        try:
+            result = future.result()
+            print(f"\n--- Output from {desc} ---", flush=True)
+            if result.stdout:
+                print(result.stdout.strip(), flush=True)
+            if result.stderr:
+                print(result.stderr.strip(), flush=True)
+
+            if result.returncode != 0:
+                ret = result.returncode
+                print(f"❌ FATAL: '{desc}' failed with code {ret}", flush=True)
+                self.record_result(desc, False)
+                return False
+        except (subprocess.SubprocessError, OSError) as exc:
+            print(f"\n❌ FATAL: '{desc}' generated an exception: {exc}", flush=True)
+            self.record_result(desc, False)
+            return False
+        else:
+            print(f"✅ {desc} completed successfully.", flush=True)
+            self.record_result(desc, True)
+            return True
 
     def all_passed(self) -> bool:
         """Predicate to check if every recorded result is a strict PASS.
@@ -206,9 +175,7 @@ class PreCIPipeline:
             title: The heading printed above the summary table.
 
         Returns:
-            ``True`` if there are no explicit ``False`` results (i.e., ``True``
-            and ``"SKIPPED"`` entries are treated as non-failures);
-            ``False`` otherwise.
+            ``True`` if there are no explicit ``False`` results.
         """
         print("\n" + "=" * 60, flush=True)
         print(title, flush=True)
@@ -225,18 +192,14 @@ class PreCIPipeline:
         return no_failures
 
     def cleanup(self) -> None:
-        """Removes build artifacts and caches from the local workspace.
-
-        Args:
-            None
-
-        Returns:
-            None
-        """
+        """Removes build artifacts and caches from the local workspace."""
         print("\n>>> [Cleanup] Purging caches and build artifacts...", flush=True)
-        root = pathlib.Path(".")
+        root = pathlib.Path()
+        self._cleanup_standard_targets(root)
+        self._cleanup_nested_pycache(root)
 
-        # Standard top-level targets that we want to remove explicitly
+    def _cleanup_standard_targets(self, root: pathlib.Path) -> None:
+        """Internal helper to remove top-level artifacts."""
         base_targets = [
             "build",
             "dist",
@@ -246,69 +209,27 @@ class PreCIPipeline:
             "python_version_*.txt",
             "artifacts",
         ]
+        for pattern in base_targets:
+            for path in root.glob(pattern):
+                self._remove_path(path)
 
-        # Dynamically find nested artifacts, explicitly skipping venvs, hidden dirs,
-        # and the top-level base_targets we will rmtree wholesale.
-        venv_names = {"venv", ".venv"}
-        # Pruneable directory names = literal (non-glob) entries from base_targets,
-        # excluding hidden ones (already filtered via startswith(".")) and files.
-        base_target_names = {
-            t
-            for t in base_targets
-            if not any(c in t for c in "*?[")
-            and not t.startswith(".")
-            and not pathlib.Path(t).suffix
-        }
-        if os.environ.get("VIRTUAL_ENV"):
-            venv_names.add(pathlib.Path(os.environ["VIRTUAL_ENV"]).name)
-
-        folders = []
-        for base in base_targets:
-            folders.extend(root.glob(base))
-
-        for dirpath, dirnames, _filenames in os.walk(root):
+    def _cleanup_nested_pycache(self, root: pathlib.Path) -> None:
+        """Recursively finds and removes __pycache__ and egg-info."""
+        for dirpath, dirnames, _ in os.walk(root):
             path = pathlib.Path(dirpath)
+            # Prune descent into venvs
+            if ".venv" in dirnames:
+                dirnames.remove(".venv")
+            if "venv" in dirnames:
+                dirnames.remove("venv")
 
-            # Prune common environment, hidden, and base target directories
-            # before descending.
-            # Only prune a directory matching venv_names if it contains venv markers.
-            pruned_dirnames = []
-            for d in dirnames:
-                if d in base_target_names or d.startswith("."):
-                    continue
-
-                if d in venv_names:
-                    d_path = path / d
-                    is_venv = (
-                        (d_path / "pyvenv.cfg").exists()
-                        or (d_path / "bin" / "activate").exists()
-                        or (d_path / "Scripts" / "activate").exists()
-                    )
-                    if is_venv:
-                        continue
-
-                pruned_dirnames.append(d)
-
-            dirnames[:] = pruned_dirnames
-
-            # Identify and prune artifacts in the current (non-skipped) directory
             for d in list(dirnames):
                 if d == "__pycache__" or d.endswith(".egg-info"):
-                    folders.append(path / d)
+                    self._remove_path(path / d)
                     dirnames.remove(d)
 
-        for target in sorted(set(folders)):
-            self._remove_path(target)
-
     def _remove_path(self, path: pathlib.Path) -> None:
-        """Removes a file or directory, suppressing errors.
-
-        Args:
-            path: The path to the file or directory to remove.
-
-        Returns:
-            None
-        """
+        """Removes a file or directory, suppressing errors."""
         try:
             if path.is_dir():
                 shutil.rmtree(path)
@@ -318,142 +239,165 @@ class PreCIPipeline:
             print(f"⚠️ Warning: Could not remove {path}: {e}", flush=True)
 
     def execute(self) -> None:
-        """Runs the full Pre-CI gate sequence and exits non-zero on failure.
+        """Runs the full Pre-CI gate sequence and exits non-zero on failure."""
+        try:
+            self._phase_prepare()
+            self._phase_static_analysis()
+            self._phase_unit_tests()
+            self._phase_style_and_lint()
+            self._phase_build()
 
-        Execution order: environment sync → README update → parallel checks
-        (Vulture + Interrogate) → sequential Pytest (local only) →
-        Ruff lint/format → optional build verification → cleanup → final report.
+        finally:
+            self.cleanup()
+            self._report_final()
 
-        Args:
-            None
-
-        Returns:
-            None
-        """
+    def _phase_prepare(self) -> None:
+        """Environment preparation phase."""
         print("\n" + "=" * 60, flush=True)
         mode = "CI PIPELINE" if self.is_ci else "LOCAL PRE-CI"
         print(f"🚀 GROUP BALANCER {mode} GATE", flush=True)
         print("=" * 60, flush=True)
 
-        try:
-            # 1. Sync Dependencies (Fail-fast as subsequent steps depend on it)
+        uv_path = shutil.which("uv")
+        if not uv_path:
+            print("\n❌ FATAL: 'uv' executable not found in PATH.", flush=True)
+            sys.exit(1)
+
+        self.run_command(
+            [uv_path, "sync", "--all-extras", "--frozen"],
+            "Syncing Project Environment",
+            fail_fast=True,
+        )
+
+        # 2. Update README
+        print("\n>>> [Step: Updating README structure]", flush=True)
+        env = os.environ.copy()
+        res = subprocess.run(  # noqa: S603
+            [
+                uv_path,
+                "run",
+                "--no-sync",
+                "python",
+                "tools/update_readme.py",
+                self.min_ver,
+                self.max_ver,
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+            encoding="utf-8",
+            env=env,
+        )
+        if res.stdout:
+            print(res.stdout.strip(), flush=True)
+        if res.stderr:
+            print(res.stderr.strip(), flush=True)
+
+        if res.returncode != 0 or re.search(
+            r"^ERROR:|^CRITICAL:", res.stdout + res.stderr, re.MULTILINE
+        ):
+            print("\n❌ FATAL: 'Updating README structure' failed.", flush=True)
+            self.record_result("Updating README structure", False)
+            sys.exit(1)
+
+        print("✅ Updating README structure completed successfully.", flush=True)
+        self.record_result("Updating README structure", True)
+
+    def _phase_static_analysis(self) -> None:
+        """Parallel static analysis phase."""
+        uv_path = shutil.which("uv")
+        parallel_tasks = [
+            (
+                [
+                    uv_path,
+                    "run",
+                    "--no-sync",
+                    "vulture",
+                    "src/",
+                    "--min-confidence",
+                    "80",
+                ],
+                "Dead Code Analysis (Vulture)",
+            ),
+        ]
+        success_parallel = self.run_commands_parallel(parallel_tasks)
+        if not success_parallel:
+            print("\n❌ FATAL: Parallel checks failed. Aborting.", flush=True)
+            sys.exit(1)
+
+    def _phase_unit_tests(self) -> None:
+        """Functional testing phase."""
+        if not self.is_ci:
+            uv_path = shutil.which("uv")
             self.run_command(
-                ["uv", "sync", "--all-extras", "--frozen"],
-                "Syncing Project Environment",
+                [
+                    uv_path,
+                    "run",
+                    "--no-sync",
+                    "pytest",
+                    "-v",
+                    "--cov=src",
+                    "--cov-report=term-missing",
+                    "--cov-fail-under=95",
+                ],
+                "Unit Tests & Coverage Enforcement",
                 fail_fast=True,
             )
 
-            # 2. Update README
-            print("\n>>> [Step: Updating README structure]", flush=True)
-            res = subprocess.run(
-                [
-                    "uv",
-                    "run",
-                    "--no-sync",
-                    "python",
-                    "tools/update_readme.py",
-                    self.min_ver,
-                    self.max_ver,
-                ],
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                env=os.environ.copy(),
-            )  # noqa: S603
-            if res.stdout:
-                print(res.stdout.strip(), flush=True)
-            if res.stderr:
-                print(res.stderr.strip(), flush=True)
-
-            # Fail fast if script failed or output contains anchored ERROR/CRITICAL
-            if res.returncode != 0 or re.search(
-                r"^ERROR:|^CRITICAL:", res.stdout + res.stderr, re.MULTILINE
-            ):
-                print(
-                    "\n❌ FATAL: 'Updating README structure' failed.",
-                    flush=True,
-                )
-                self.record_result("Updating README structure", False)
-                sys.exit(1)
-
-            print("✅ Updating README structure completed successfully.", flush=True)
-            self.record_result("Updating README structure", True)
-
-            # 3. Parallel Checks (Vulture, Interrogate)
-            # These are lightweight enough to run concurrently.
-            parallel_tasks = [
-                (
-                    [
-                        "uv",
-                        "run",
-                        "--no-sync",
-                        "vulture",
-                        "src/",
-                        "--min-confidence",
-                        "80",
-                    ],
-                    "Dead Code Analysis (Vulture)",
-                ),
-                (
-                    ["uv", "run", "--no-sync", "interrogate", "."],
-                    "Docstring Coverage Enforcement",
-                ),
-            ]
-
-            self.run_commands_parallel(parallel_tasks)
-
-            # 4. Unit Tests (Run sequentially to see clear progress)
-            # Pytest executes in the remote test-matrix job. Prevent redundancy in CI.
-            if not self.is_ci:
-                self.run_command(
-                    ["uv", "run", "--no-sync", "pytest", "-v"],
-                    "Unit Tests & Coverage Enforcement",
-                )
-
-            # 5. Linting and Formatting (Apply only if checks passed, or if local)
-            if self.is_ci:
-                # In CI, fail-fast on style drift instead of auto-fixing.
-                self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "check", "."],
-                    "Ruff Linting",
-                )
-                self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "format", "--check", "."],
-                    "Ruff Formatting",
-                )
-            elif self.all_passed():
-                # Locally, allow auto-fixing if logic is sound.
-                self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "check", ".", "--fix"],
-                    "Ruff Linting",
-                )
-                self.run_command(
-                    ["uv", "run", "--no-sync", "ruff", "format", "."], "Ruff Formatting"
-                )
-            else:
-                self.record_result("Ruff Linting", "SKIPPED")
-                self.record_result("Ruff Formatting", "SKIPPED")
-
-            # 6. Build Verification Gate
+    def _phase_style_and_lint(self) -> None:
+        """Linting and formatting phase."""
+        uv_path = shutil.which("uv")
+        if self.is_ci:
+            self.run_command(
+                [uv_path, "run", "--no-sync", "ruff", "check", "."],
+                "Ruff Linting",
+                fail_fast=True,
+            )
+            self.run_command(
+                [uv_path, "run", "--no-sync", "ruff", "format", "--check", "."],
+                "Ruff Formatting",
+                fail_fast=True,
+            )
+            self.run_command(
+                [uv_path, "run", "--no-sync", "pymarkdown", "scan", "."],
+                "Markdown Linting",
+                fail_fast=True,
+            )
+        else:
+            self.run_command(
+                [uv_path, "run", "--no-sync", "pymarkdown", "scan", "."],
+                "Markdown Linting",
+                fail_fast=True,
+            )
             if self.all_passed():
                 self.run_command(
-                    ["uv", "run", "--no-sync", "python", "build.py"],
-                    "Verifying Build Integrity",
+                    [uv_path, "run", "--no-sync", "ruff", "check", ".", "--fix"],
+                    "Ruff Linting",
+                    fail_fast=True,
                 )
-            else:
-                self.record_result("Verifying Build Integrity", "SKIPPED")
+                self.run_command(
+                    [uv_path, "run", "--no-sync", "ruff", "format", "."],
+                    "Ruff Formatting",
+                    fail_fast=True,
+                )
 
-        finally:
-            # 7. Cleanup
-            # Removes build artifacts (including "build" and "dist").
-            self.cleanup()
+    def _phase_build(self) -> None:
+        """Build integrity phase."""
+        if self.all_passed():
+            uv_path = shutil.which("uv")
+            self.run_command(
+                [uv_path, "run", "--no-sync", "python", "build.py"],
+                "Verifying Build Integrity",
+                fail_fast=True,
+            )
 
-            # 8. Final Report
-            if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
-                print("\n✨ ALL CHECKS PASSED.\n", flush=True)
-            else:
-                print("\n❌ Pipeline failed. See logs above.\n", flush=True)
-                sys.exit(1)
+    def _report_final(self) -> None:
+        """Final reporting and exit."""
+        if self.print_summary(title="📋 FINAL PRE-CI SUMMARY"):
+            print("\n✨ ALL CHECKS PASSED.\n", flush=True)
+        else:
+            print("\n❌ Pipeline failed. See logs above.\n", flush=True)
+            sys.exit(1)
 
 
 if __name__ == "__main__":
@@ -472,7 +416,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # Regex for semantic-ish versions like 3.10 or 3.14-dev
+    # Regex for semantic-ish versions like 3.11 or 3.14-dev
     _ver_re = re.compile(r"^\d+\.\d+(?:-[a-zA-Z0-9]+)?$")
 
     def _validate(label: str, val: str | None, fallback: str) -> str:
@@ -481,7 +425,7 @@ if __name__ == "__main__":
         if not _ver_re.match(val):
             print(
                 f"❌ FATAL: {label}={val!r} is not a valid version "
-                f"(expected e.g. '3.10' or '3.14-dev').",
+                f"(expected e.g. '3.11' or '3.14-dev').",
                 flush=True,
             )
             sys.exit(2)
@@ -492,7 +436,7 @@ if __name__ == "__main__":
 
     def _ver_tuple(v: str) -> tuple[int, int]:
         """Parses a version string into a (major, minor) integer tuple."""
-        # Handles 3.10 and 3.14-dev
+        # Handles 3.11 and 3.14-dev
         parts = v.split("-", 1)[0].split(".")
         return int(parts[0]), int(parts[1])
 
