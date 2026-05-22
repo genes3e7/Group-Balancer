@@ -99,7 +99,7 @@ narwhals==2.15.0
     # via
     #   -c requirements.txt
     #   altair
-numpy==2.4.4
+numpy==2.4.6
     # via
     #   -c requirements.txt
     #   -r requirements.in
@@ -172,7 +172,7 @@ rpds-py==0.30.0
     #   -c requirements.txt
     #   jsonschema
     #   referencing
-ruff==0.15.13
+ruff==0.15.14
     # via -r requirements-dev.in
 six==1.17.0
     # via
