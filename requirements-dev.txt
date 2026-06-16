@@ -154,7 +154,7 @@ python-dateutil==2.9.0.post0
     # via
     #   -c requirements.txt
     #   pandas
-python-multipart==0.0.27
+python-multipart==0.0.31
     # via
     #   -c requirements.txt
     #   streamlit

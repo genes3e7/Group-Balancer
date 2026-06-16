@@ -90,7 +90,7 @@ pydeck==0.9.1
     # via streamlit
 python-dateutil==2.9.0.post0
     # via pandas
-python-multipart==0.0.27
+python-multipart==0.0.31
     # via streamlit
 referencing==0.37.0
     # via
