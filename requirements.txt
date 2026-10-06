@@ -30,8 +30,6 @@ click==8.3.1
     #   uvicorn
 et-xmlfile==2.0.0
     # via openpyxl
-exceptiongroup==1.3.1
-    # via anyio
 gitdb==4.0.12
     # via gitpython
 gitpython==3.1.47
@@ -80,7 +78,7 @@ pandas==2.3.3
     #   -r requirements.in
     #   ortools
     #   streamlit
-pillow==12.2.0
+pillow==12.3.0
     # via streamlit
 protobuf==6.33.5
     # via
@@ -121,13 +119,8 @@ toml==0.10.2
 typing-extensions==4.15.0
     # via
     #   altair
-    #   anyio
-    #   exceptiongroup
     #   ortools
-    #   referencing
-    #   starlette
     #   streamlit
-    #   uvicorn
 tzdata==2026.2
     # via pandas
 urllib3==2.7.0
