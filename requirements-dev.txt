@@ -12,7 +12,7 @@ altair==6.0.0
     # via
     #   -c requirements.txt
     #   streamlit
-anyio==4.13.0
+anyio==4.14.2
     # via
     #   -c requirements.txt
     #   starlette
